@@ -25,7 +25,7 @@ extensions.configure<ApplicationExtension> {
     defaultConfig {
         applicationId = "com.mvrk.vrka"
         minSdk {
-            version = release(24)
+            version = release(26)
         }
         targetSdk {
             version = release(36)
@@ -112,5 +112,8 @@ dependencies {
     implementation("androidx.webkit:webkit:1.16.0")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:153.0.20260810162159")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
 

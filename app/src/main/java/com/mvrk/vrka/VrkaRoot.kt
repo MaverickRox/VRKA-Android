@@ -85,8 +85,17 @@ fun VrkaRoot(
         ?.takeIf {
             it.state == JobState.WAITING_FOR_USER || it.state == JobState.BROWSER_FALLBACK
         }
+    var showGeckoShell by remember { mutableStateOf(false) }
     val activeJob = jobs.firstOrNull { !it.state.isTerminal }
     VrkaTheme(themeMode = settings.themeMode, amoled = settings.amoled) {
+        if (showGeckoShell) {
+            GeckoViewScreen(
+                initialUrl = "https://example.com",
+                onClose = { showGeckoShell = false },
+            )
+            return@VrkaTheme
+        }
+
         if (browserJob != null) {
             BrowserFallbackScreen(
                 job = browserJob,
@@ -172,6 +181,7 @@ fun VrkaRoot(
                     runtime = runtime,
                     repository = manager.settingsRepository,
                     onUpdateRuntime = manager::updateRuntime,
+                    onLaunchGeckoShell = { showGeckoShell = true },
                     modifier = Modifier.padding(padding),
                 )
             }

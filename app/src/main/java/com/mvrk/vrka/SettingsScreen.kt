@@ -45,6 +45,7 @@ internal fun SettingsScreen(
     runtime: RuntimeStatus,
     repository: SettingsRepository,
     onUpdateRuntime: (UpdatePreference) -> Unit,
+    onLaunchGeckoShell: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -155,6 +156,21 @@ internal fun SettingsScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        SettingsHeading("GeckoView Engine")
+        Text(
+            "Mozilla GeckoView 153.0 (arm64-v8a)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (onLaunchGeckoShell != null) {
+            Button(
+                onClick = onLaunchGeckoShell,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text("Launch GeckoView Shell")
+            }
+        }
 
         SettingsHeading("About")
         Text("VRKA Android 1.0.0 • MVRK")
