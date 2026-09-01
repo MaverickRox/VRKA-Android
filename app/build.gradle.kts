@@ -30,8 +30,8 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 40100
+        versionName = "4.0.1"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -109,7 +109,6 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 
     implementation("androidx.datastore:datastore-preferences:1.2.1")
-    implementation("androidx.webkit:webkit:1.16.0")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     implementation("org.mozilla.geckoview:geckoview-arm64-v8a:153.0.20260810162159")

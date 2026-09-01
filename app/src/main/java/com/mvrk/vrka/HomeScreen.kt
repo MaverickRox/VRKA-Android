@@ -72,11 +72,11 @@ internal fun HomeScreen(
             color = MaterialTheme.colorScheme.primary,
         )
         Text(
-            "Save video and audio without getting in your way.",
+            "Capture high-fidelity media streams directly from supported sources.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(20.dp))
 
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant,

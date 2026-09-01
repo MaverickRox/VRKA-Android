@@ -1,33 +1,18 @@
 package com.mvrk.vrka
 
 import android.content.Intent
-import androidx.compose.animation.animateColorAsState
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -37,6 +22,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
 @Composable
@@ -45,11 +32,18 @@ internal fun SettingsScreen(
     runtime: RuntimeStatus,
     repository: SettingsRepository,
     onUpdateRuntime: (UpdatePreference) -> Unit,
-    onLaunchGeckoShell: (() -> Unit)? = null,
+    onLaunchBrowser: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val updateManager = remember { ComponentUpdateManager.getInstance(context) }
+    val componentMap by updateManager.components.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        updateManager.refreshInstalledVersions()
+    }
+
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
@@ -71,9 +65,10 @@ internal fun SettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(18.dp),
     ) {
-        Text("Settings", style = MaterialTheme.typography.headlineSmall)
+        Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
-        SettingsHeading("Download location")
+        // 1. DOWNLOAD LOCATION
+        SettingsHeading("Download Location")
         Text(
             if (settings.outputTreeUri.isBlank()) {
                 "Downloads/VRKA (recommended)"
@@ -94,49 +89,105 @@ internal fun SettingsScreen(
             }
         }
 
-        SettingsHeading("yt-dlp runtime")
-        Text(
-            runtime.message,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        // 2. BROWSER SUBSYSTEM
+        SettingsHeading("Browser Subsystem")
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
         ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Browser Engine", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Mozilla GeckoView 153.0 (arm64-v8a)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Text("Bundled", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Ad & Tracker Blocking", fontSize = 13.sp)
+                    Text("uBlock Origin Active", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Media Detection", fontSize = 13.sp)
+                    Text("Puemos Discovery Active", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+
+                if (onLaunchBrowser != null) {
+                    Button(
+                        onClick = onLaunchBrowser,
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                    ) {
+                        Text("Open VRKA Browser", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // 3. COMPONENTS & UPDATES
+        SettingsHeading("Components & Updates")
+        Text(
+            "Independently managed runtime and filter components.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        componentMap.values.forEach { comp ->
+            ComponentUpdateCard(
+                component = comp,
+                onCheck = { updateManager.checkUpdate(comp.id) },
+                onUpdate = { updateManager.applyUpdate(comp.id) }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = { updateManager.checkAllUpdates() },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Check All Updates")
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("yt-dlp Channel:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             UpdatePreference.entries.forEach { item ->
                 FilterChip(
                     selected = settings.updatePreference == item,
-                    onClick = {
-                        scope.launch { repository.setUpdatePreference(item) }
-                    },
+                    onClick = { scope.launch { repository.setUpdatePreference(item) } },
                     label = { Text(item.label) },
                 )
             }
         }
-        Button(
-            onClick = { onUpdateRuntime(settings.updatePreference) },
-            enabled = !runtime.busy,
-            modifier = Modifier.padding(top = 8.dp),
-        ) {
-            Text(if (runtime.busy) "Updating…" else "Check for yt-dlp update")
-        }
-        Text(
-            "A failed update retains the bundled known-good runtime.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp),
-        )
 
-        SettingsHeading("Browser fallback")
-        SettingSwitch(
-            label = "Block confident ads and popups",
-            description = "Uncertain player, challenge, and session traffic is allowed.",
-            checked = settings.adBlocking,
-            onCheckedChange = {
-                scope.launch { repository.setAdBlocking(it) }
-            },
-        )
-
+        // 4. APPEARANCE
         SettingsHeading("Appearance")
         ThemeModeControl(
             selected = settings.themeMode,
@@ -150,30 +201,88 @@ internal fun SettingsScreen(
             onCheckedChange = { scope.launch { repository.setAmoled(it) } },
         )
 
+        // 5. CONCURRENCY
         SettingsHeading("Concurrency")
         Text(
-            "One active job at a time; additional jobs wait in the queue to limit heat and memory use.",
+            "One active job at a time; additional jobs wait in the queue to limit device heat and memory pressure.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        SettingsHeading("GeckoView Engine")
-        Text(
-            "Mozilla GeckoView 153.0 (arm64-v8a)",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (onLaunchGeckoShell != null) {
-            Button(
-                onClick = onLaunchGeckoShell,
-                modifier = Modifier.padding(top = 8.dp),
-            ) {
-                Text("Launch GeckoView Shell")
+        // 6. ABOUT
+        SettingsHeading("About")
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("VRKA Android 4.0.1", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("Build 017 Desktop Parity Edition", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                Text("Architecture: arm64-v8a", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Mozilla GeckoView 153.0 • uBlock Origin 1.74.0 • Puemos Stream Discovery", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("© 2026 MVRK • Open Source & Licensed Components", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
 
-        SettingsHeading("About")
-        Text("VRKA Android 1.0.0 • MVRK")
+@Composable
+private fun ComponentUpdateCard(
+    component: ComponentStatus,
+    onCheck: () -> Unit,
+    onUpdate: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(component.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text("Installed: v${component.installedVersion}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (component.latestVersion != null && component.latestVersion != component.installedVersion) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer
+                    ) {
+                        Text("Update: v${component.latestVersion}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                }
+            }
+
+            if (component.message.isNotBlank()) {
+                Text(component.message, fontSize = 11.sp, color = if (component.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onCheck,
+                    enabled = !component.isChecking && !component.isUpdating
+                ) {
+                    Text(if (component.isChecking) "Checking..." else "Check")
+                }
+
+                if (component.latestVersion != null && component.latestVersion != component.installedVersion) {
+                    Button(
+                        onClick = onUpdate,
+                        enabled = !component.isUpdating,
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text(if (component.isUpdating) "Updating..." else "Update")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -239,7 +348,8 @@ private fun SettingsHeading(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 22.dp, bottom = 8.dp),
     )
 }
 
@@ -260,7 +370,7 @@ private fun SettingSwitch(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(label)
+            Text(label, fontWeight = FontWeight.SemiBold)
             Text(
                 description,
                 style = MaterialTheme.typography.bodySmall,

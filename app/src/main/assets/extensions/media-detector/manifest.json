@@ -1,0 +1,30 @@
+{
+  "manifest_version": 2,
+  "name": "VRKA Media Detector",
+  "version": "1.0.0",
+  "description": "Embedded media and HLS stream discovery engine for VRKA Android",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "media-detector@vrka.mvrk.com",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": [
+    "webRequest",
+    "webRequestBlocking",
+    "tabs",
+    "nativeMessaging",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}
