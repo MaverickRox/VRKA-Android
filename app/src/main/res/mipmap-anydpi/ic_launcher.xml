@@ -1,0 +1,5 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_background" />
+    <item android:left="16dp" android:top="16dp" android:right="16dp" android:bottom="16dp"
+        android:drawable="@drawable/ic_vrka" />
+</layer-list>
