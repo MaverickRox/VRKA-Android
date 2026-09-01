@@ -33,12 +33,10 @@ class VrkaDownloadManager(
     private val initialized = AtomicBoolean(false)
     private val store = JobStore(context)
     private val publisher = OutputPublisher(context, settingsRepository)
-    private val stagingRoot = File(context.getExternalFilesDir(null), "staging")
+    private val stagingRoot by lazy { File(context.getExternalFilesDir(null), "staging") }
     private val speedPattern = Regex("""\bat\s+([^\s]+/s)""", RegexOption.IGNORE_CASE)
 
-    private val _jobs = MutableStateFlow(
-        store.load().sortedByDescending(DownloadJob::createdAt),
-    )
+    private val _jobs = MutableStateFlow<List<DownloadJob>>(emptyList())
     val jobs: StateFlow<List<DownloadJob>> = _jobs.asStateFlow()
 
     private val _browserJobId = MutableStateFlow<String?>(null)
@@ -49,6 +47,7 @@ class VrkaDownloadManager(
 
     init {
         scope.launch(Dispatchers.IO) {
+            _jobs.value = store.load().sortedByDescending(DownloadJob::createdAt)
             for (ignored in persistRequests) {
                 store.save(_jobs.value)
             }

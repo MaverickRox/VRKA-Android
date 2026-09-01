@@ -4,12 +4,8 @@ import android.app.Application
 import android.content.Context
 
 class VrkaApplication : Application() {
-    lateinit var downloads: VrkaDownloadManager
-        private set
-
-    override fun onCreate() {
-        super.onCreate()
-        downloads = VrkaDownloadManager.create(this)
+    val downloads: VrkaDownloadManager by lazy {
+        VrkaDownloadManager.create(this)
     }
 }
 
