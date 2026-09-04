@@ -48,23 +48,23 @@ internal fun ConfigurationSummary(
         if (trimStart.isNotBlank() || trimEnd.isNotBlank()) add("Trim enabled")
         if (sponsorBlock) add("SponsorBlock")
     }
-    Surface(
-        color = VrkaSurfaceCard,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, VrkaCardBorder),
-        modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+    VrkaInsetSurface(
+        cornerRadius = VrkaTokens.RadiusCard,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp),
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text(
                 "DOWNLOAD PLAN",
-                style = MaterialTheme.typography.labelSmall,
-                color = VrkaPurpleLight,
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                color = VrkaTokens.AccentLight,
                 fontWeight = FontWeight.Bold,
             )
             Text(
                 primary,
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = VrkaTokens.TextPrimary,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -74,7 +74,7 @@ internal fun ConfigurationSummary(
                 Text(
                     extras.joinToString("  ·  "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = VrkaTokens.TextSecondary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 3.dp),

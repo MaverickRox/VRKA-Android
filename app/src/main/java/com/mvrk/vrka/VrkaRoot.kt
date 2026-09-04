@@ -57,13 +57,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-private enum class Destination(val label: String, @param:DrawableRes val iconRes: Int) {
-    DOWNLOAD("Download", R.drawable.ic_download),
-    QUEUE("Queue", R.drawable.ic_queue),
-    HISTORY("History", R.drawable.ic_history),
-    SETTINGS("Settings", R.drawable.ic_settings),
-}
-
 @Composable
 fun VrkaRoot(
     manager: VrkaDownloadManager,
@@ -74,7 +67,7 @@ fun VrkaRoot(
     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
-    var destination by remember { mutableStateOf(Destination.DOWNLOAD) }
+    var destination by remember { mutableStateOf(VrkaDestination.DOWNLOAD) }
     var pendingRequest by remember { mutableStateOf<DownloadRequest?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -98,7 +91,7 @@ fun VrkaRoot(
         } else {
             manager.enqueue(request)
         }
-        destination = Destination.QUEUE
+        destination = VrkaDestination.QUEUE
     }
 
     val activeJob = jobs.firstOrNull { !it.state.isTerminal }
@@ -112,26 +105,18 @@ fun VrkaRoot(
             Box(
                 modifier = Modifier.fillMaxSize(),
             ) {
-            // Screen content with animated destination transitions
+            // Screen content with ultra-fast fade destination transitions (100ms)
             AnimatedContent(
                 targetState = destination,
                 transitionSpec = {
-                    val forward = targetState.ordinal >= initialState.ordinal
-                    val slideOffset = if (forward) 1 else -1
-                    (slideInHorizontally(
-                        initialOffsetX = { width -> slideOffset * (width / 5) },
-                        animationSpec = tween(230, easing = FastOutSlowInEasing),
-                    ) + fadeIn(animationSpec = tween(210))) togetherWith
-                        (slideOutHorizontally(
-                            targetOffsetX = { width -> -slideOffset * (width / 5) },
-                            animationSpec = tween(200, easing = FastOutSlowInEasing),
-                        ) + fadeOut(animationSpec = tween(180)))
+                    fadeIn(animationSpec = tween(110)) togetherWith
+                        fadeOut(animationSpec = tween(90))
                 },
                 label = "destination_transition",
                 modifier = Modifier.fillMaxSize(),
             ) { targetDest ->
                 when (targetDest) {
-                    Destination.DOWNLOAD -> HomeScreen(
+                    VrkaDestination.DOWNLOAD -> HomeScreen(
                         settings = settings,
                         runtime = runtime,
                         modifier = Modifier
@@ -146,7 +131,7 @@ fun VrkaRoot(
                             }
                         },
                     )
-                    Destination.QUEUE -> JobsScreen(
+                    VrkaDestination.QUEUE -> JobsScreen(
                         jobs = jobs.filterNot { it.state.isTerminal },
                         emptyMessage = "Your active queue is empty.",
                         modifier = Modifier
@@ -160,7 +145,7 @@ fun VrkaRoot(
                         onDelete = manager::deleteJob,
                         onShowFallback = manager::showFallbackView,
                     )
-                    Destination.HISTORY -> JobsScreen(
+                    VrkaDestination.HISTORY -> JobsScreen(
                         jobs = jobs.filter { it.state.isTerminal },
                         emptyMessage = "Completed and failed downloads appear here.",
                         modifier = Modifier
@@ -174,7 +159,7 @@ fun VrkaRoot(
                         onDelete = manager::deleteJob,
                         onClear = manager::clearFinished,
                     )
-                    Destination.SETTINGS -> SettingsScreen(
+                    VrkaDestination.SETTINGS -> SettingsScreen(
                         settings = settings,
                         runtime = runtime,
                         repository = manager.settingsRepository,
@@ -200,108 +185,38 @@ fun VrkaRoot(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .navigationBarsPadding(),
+                    .navigationBarsPadding()
+                    .padding(bottom = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Floating Active Download Strip
                 AnimatedVisibility(
-                    visible = activeJob != null && destination != Destination.QUEUE,
+                    visible = activeJob != null && destination != VrkaDestination.QUEUE,
                     enter = slideInVertically(
                         initialOffsetY = { it },
-                        animationSpec = tween(240, easing = FastOutSlowInEasing),
-                    ) + fadeIn(animationSpec = tween(200)),
+                        animationSpec = tween(220, easing = FastOutSlowInEasing),
+                    ) + fadeIn(animationSpec = tween(180)),
                     exit = slideOutVertically(
                         targetOffsetY = { it },
-                        animationSpec = tween(200, easing = FastOutSlowInEasing),
-                    ) + fadeOut(animationSpec = tween(160)),
+                        animationSpec = tween(180, easing = FastOutSlowInEasing),
+                    ) + fadeOut(animationSpec = tween(140)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 6.dp),
+                        .padding(horizontal = 24.dp, vertical = 6.dp),
                 ) {
                     if (activeJob != null) {
                         ActiveDownloadStrip(
                             job = activeJob,
-                            onClick = { destination = Destination.QUEUE },
+                            onClick = { destination = VrkaDestination.QUEUE },
                         )
                     }
                 }
 
                 // Floating Glass Pill Navigation Bar
-                Surface(
-                    shape = RoundedCornerShape(32.dp),
-                    color = VrkaGlassSurface,
-                    border = BorderStroke(1.dp, VrkaGlassBorder),
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .shadow(16.dp, RoundedCornerShape(32.dp)),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(horizontal = 6.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Destination.entries.forEach { item ->
-                            val isSelected = destination == item
-                            val pillBg by animateColorAsState(
-                                targetValue = if (isSelected) VrkaPurple.copy(alpha = 0.22f) else Color.Transparent,
-                                animationSpec = tween(200),
-                                label = "pill_bg",
-                            )
-                            val contentColor by animateColorAsState(
-                                targetValue = if (isSelected) VrkaPurpleLight else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                                animationSpec = tween(200),
-                                label = "pill_color",
-                            )
-
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .background(pillBg)
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = { destination = item },
-                                    )
-                                    .padding(
-                                        horizontal = if (isSelected) 14.dp else 10.dp,
-                                        vertical = 8.dp,
-                                    ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center,
-                                ) {
-                                    Icon(
-                                        painter = painterResource(item.iconRes),
-                                        contentDescription = item.label,
-                                        tint = contentColor,
-                                        modifier = Modifier.size(19.dp),
-                                    )
-                                    androidx.compose.animation.AnimatedVisibility(
-                                        visible = isSelected,
-                                        enter = androidx.compose.animation.fadeIn(tween(180)) +
-                                            androidx.compose.animation.expandHorizontally(tween(200)),
-                                        exit = androidx.compose.animation.fadeOut(tween(140)) +
-                                            androidx.compose.animation.shrinkHorizontally(tween(160)),
-                                    ) {
-                                        Text(
-                                            text = item.label,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = contentColor,
-                                            fontSize = 12.sp,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            modifier = Modifier.padding(start = 6.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                VrkaFloatingNavBar(
+                    selectedDestination = destination,
+                    onDestinationSelected = { destination = it },
+                )
             }
 
             val activeFallback by manager.activeFallback.collectAsStateWithLifecycle()
@@ -317,7 +232,7 @@ fun VrkaRoot(
 }
 
     LaunchedEffect(openQueueToken) {
-        if (openQueueToken > 0L) destination = Destination.QUEUE
+        if (openQueueToken > 0L) destination = VrkaDestination.QUEUE
     }
 }
 

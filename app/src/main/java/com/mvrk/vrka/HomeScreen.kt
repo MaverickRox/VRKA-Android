@@ -3,6 +3,9 @@ package com.mvrk.vrka
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -35,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -85,331 +90,357 @@ internal fun HomeScreen(
             Column {
                 Text(
                     "VRKA",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = VrkaPurpleLight,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        fontFamily = VrkaMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                    ),
+                    color = VrkaTokens.TextPrimary,
                 )
                 Text(
-                    "High-fidelity media acquisition engine",
+                    "Precision media engine",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = VrkaTokens.TextSecondary,
                 )
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(18.dp))
 
-        // Hero URL Input Card with Integrated Paste / Clear Affordance
-        Surface(
-            color = VrkaSurfaceCard,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-            border = BorderStroke(
-                1.dp,
-                if (validation.isNotBlank()) MaterialTheme.colorScheme.error else VrkaCardBorder,
-            ),
-            modifier = Modifier.fillMaxWidth(),
+        // Hero URL Input Capsule
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(VrkaTokens.SurfaceInset)
+                .border(
+                    1.dp,
+                    if (validation.isNotBlank()) VrkaTokens.Error else VrkaTokens.BorderSubtle,
+                    RoundedCornerShape(16.dp),
+                )
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_download),
-                        contentDescription = null,
-                        tint = VrkaPurpleLight,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    androidx.compose.foundation.text.BasicTextField(
-                        value = url,
-                        onValueChange = {
-                            url = it.trim()
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_download),
+                    contentDescription = null,
+                    tint = VrkaTokens.AccentLight,
+                    modifier = Modifier.size(19.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                androidx.compose.foundation.text.BasicTextField(
+                    value = url,
+                    onValueChange = {
+                        url = it.trim()
+                        validation = ""
+                    },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = VrkaTokens.TextPrimary,
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(VrkaTokens.AccentLight),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { innerTextField ->
+                        if (url.isEmpty()) {
+                            Text(
+                                "Enter or paste media URL...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = VrkaTokens.TextTertiary,
+                            )
+                        }
+                        innerTextField()
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+                if (url.isNotEmpty()) {
+                    Surface(
+                        onClick = {
+                            url = ""
                             validation = ""
                         },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                        ),
-                        modifier = Modifier.weight(1f),
-                        decorationBox = { innerTextField ->
-                            if (url.isEmpty()) {
-                                Text(
-                                    "Enter or paste media URL...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                                )
-                            }
-                            innerTextField()
-                        },
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    if (url.isNotEmpty()) {
-                        Surface(
-                            onClick = {
-                                url = ""
-                                validation = ""
-                            },
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.size(28.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_close),
-                                    contentDescription = "Clear",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp),
-                                )
-                            }
+                        shape = CircleShape,
+                        color = VrkaTokens.SurfaceElevated,
+                        border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close),
+                                contentDescription = "Clear",
+                                tint = VrkaTokens.TextSecondary,
+                                modifier = Modifier.size(13.dp),
+                            )
                         }
-                    } else {
-                        Surface(
-                            onClick = {
-                                val clipboard = context.getSystemService(
-                                    Context.CLIPBOARD_SERVICE,
-                                ) as ClipboardManager
-                                url = clipboard.primaryClip
-                                    ?.getItemAt(0)
-                                    ?.coerceToText(context)
-                                    ?.toString()
-                                    ?.trim()
-                                    .orEmpty()
-                                validation = ""
-                            },
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                            color = VrkaPurple.copy(alpha = 0.18f),
-                        ) {
-                            Text(
-                                "Paste",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = VrkaPurpleLight,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    }
+                } else {
+                    Surface(
+                        onClick = {
+                            val clipboard = context.getSystemService(
+                                Context.CLIPBOARD_SERVICE,
+                            ) as ClipboardManager
+                            url = clipboard.primaryClip
+                                ?.getItemAt(0)
+                                ?.coerceToText(context)
+                                ?.toString()
+                                ?.trim()
+                                .orEmpty()
+                            validation = ""
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        color = VrkaTokens.AccentContainer,
+                        border = BorderStroke(1.dp, VrkaTokens.BorderActive),
+                    ) {
+                        Text(
+                            "Paste",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = VrkaTokens.AccentLight,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+            }
+        }
+        if (validation.isNotBlank()) {
+            Text(
+                validation,
+                style = MaterialTheme.typography.bodySmall,
+                color = VrkaTokens.Error,
+                modifier = Modifier.padding(start = 6.dp, top = 6.dp),
+            )
+        }
+
+        // Unified Format & Quality Surface
+        VrkaCard(
+            modifier = Modifier.padding(top = 16.dp),
+            contentPadding = 16.dp,
+        ) {
+            // Mode Segmented Control
+            VrkaSegmentedControl(
+                items = MediaMode.entries,
+                selectedItem = mode,
+                onItemSelected = { mode = it },
+                label = { it.label },
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            if (mode == MediaMode.VIDEO) {
+                Text(
+                    "Video Resolution",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = VrkaTokens.TextSecondary,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                ChoiceRow {
+                    VideoQuality.entries.forEach { item ->
+                        val chipLabel = when (item) {
+                            VideoQuality.BEST -> "Best available"
+                            VideoQuality.P2160 -> "2160p 4K"
+                            VideoQuality.P1440 -> "1440p 2K"
+                            VideoQuality.P1080 -> "1080p FHD"
+                            VideoQuality.P720 -> "720p HD"
+                            VideoQuality.P480 -> "480p"
+                            VideoQuality.P360 -> "360p"
+                        }
+                        VrkaChip(
+                            selected = quality == item,
+                            onClick = { quality = item },
+                            label = chipLabel,
+                            isMonospace = item != VideoQuality.BEST,
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    "Audio Format",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = VrkaTokens.TextSecondary,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                ChoiceRow {
+                    AudioFormat.entries.forEach { item ->
+                        VrkaChip(
+                            selected = audioFormat == item,
+                            onClick = { audioFormat = item },
+                            label = item.label.substringBefore(" ("),
+                        )
+                    }
+                }
+
+                if (audioFormat == AudioFormat.MP3) {
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "MP3 Bitrate",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VrkaTokens.TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    ChoiceRow {
+                        listOf(320, 256, 192, 128).forEach { item ->
+                            VrkaChip(
+                                selected = bitrate == item,
+                                onClick = { bitrate = item },
+                                label = "$item kbps",
+                                isMonospace = true,
                             )
                         }
                     }
                 }
-                if (validation.isNotBlank()) {
-                    Text(
-                        validation,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-            }
-        }
 
-        SectionTitle("Output Mode")
-        ChoiceRow {
-            MediaMode.entries.forEach { item ->
-                FilterChip(
-                    selected = mode == item,
-                    onClick = { mode = item },
-                    label = { Text(item.label) },
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = VrkaPurple,
-                        selectedLabelColor = androidx.compose.ui.graphics.Color.White,
-                    ),
+                Text(
+                    when (audioFormat) {
+                        AudioFormat.MP3 -> "Compressed audio. 320 kbps recommended."
+                        AudioFormat.WAV -> "Uncompressed source stream with large file sizes."
+                        AudioFormat.FLAC -> "Lossless container preservation."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VrkaTokens.TextTertiary,
+                    modifier = Modifier.padding(top = 10.dp),
                 )
             }
         }
 
-        if (mode == MediaMode.VIDEO) {
-            SectionTitle("Video Quality")
-            ChoiceRow {
-                VideoQuality.entries.forEach { item ->
-                    FilterChip(
-                        selected = quality == item,
-                        onClick = { quality = item },
-                        label = { Text(item.label) },
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = VrkaPurple,
-                            selectedLabelColor = androidx.compose.ui.graphics.Color.White,
-                        ),
-                    )
-                }
-            }
-        } else {
-            SectionTitle("Audio Format")
-            ChoiceRow {
-                AudioFormat.entries.forEach { item ->
-                    FilterChip(
-                        selected = audioFormat == item,
-                        onClick = { audioFormat = item },
-                        label = { Text(item.label.substringBefore(" (")) },
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = VrkaPurple,
-                            selectedLabelColor = androidx.compose.ui.graphics.Color.White,
-                        ),
-                    )
-                }
-            }
-            if (audioFormat == AudioFormat.MP3) {
-                SectionTitle("MP3 Bitrate")
-                ChoiceRow {
-                    listOf(320, 256, 192, 128).forEach { item ->
-                        FilterChip(
-                            selected = bitrate == item,
-                            onClick = { bitrate = item },
-                            label = { Text("$item kbps", fontFamily = VrkaMonoFamily) },
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-                            colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = VrkaPurple,
-                                selectedLabelColor = androidx.compose.ui.graphics.Color.White,
-                            ),
-                        )
-                    }
-                }
-            }
-            Text(
-                when (audioFormat) {
-                    AudioFormat.MP3 -> "Compressed audio. 320 kbps recommended."
-                    AudioFormat.WAV -> "Uncompressed source stream with large file sizes."
-                    AudioFormat.FLAC -> "Lossless container preservation."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp),
-            )
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        // Advanced Options Toggle Card
-        Surface(
-            onClick = { advanced = !advanced },
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-            color = VrkaSurfaceCard,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            border = BorderStroke(1.dp, VrkaCardBorder),
-            modifier = Modifier.fillMaxWidth(),
+        // Advanced Options Collapsible Card
+        VrkaCard(
+            modifier = Modifier.padding(top = 12.dp),
+            contentPadding = 16.dp,
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { advanced = !advanced },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    if (advanced) "Hide advanced options" else "Show advanced options",
-                    style = MaterialTheme.typography.labelLarge,
+                    if (advanced) "Hide Advanced Options" else "Advanced Options",
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
+                    color = VrkaTokens.TextPrimary,
                 )
                 Text(
                     if (advanced) "▲" else "▼",
                     style = MaterialTheme.typography.labelMedium,
-                    color = VrkaPurpleLight,
+                    color = VrkaTokens.AccentLight,
                 )
             }
-        }
 
-        androidx.compose.animation.AnimatedVisibility(
-            visible = advanced,
-            enter = androidx.compose.animation.expandVertically(
-                animationSpec = androidx.compose.animation.core.tween(220),
-            ) + androidx.compose.animation.fadeIn(
-                animationSpec = androidx.compose.animation.core.tween(200),
-            ),
-            exit = androidx.compose.animation.shrinkVertically(
-                animationSpec = androidx.compose.animation.core.tween(180),
-            ) + androidx.compose.animation.fadeOut(
-                animationSpec = androidx.compose.animation.core.tween(160),
-            ),
-        ) {
-            Column(modifier = Modifier.padding(top = 10.dp)) {
-                if (mode == MediaMode.VIDEO) {
-                    OptionToggle("Prefer 60 FPS when available", prefer60Fps) { prefer60Fps = it }
-                }
-                OptionToggle("Playlist or range", playlist) { playlist = it }
-                if (playlist) {
-                    Row(
-                        modifier = Modifier.padding(top = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        CompactNumberField(
-                            value = playlistStart,
-                            label = "Start",
-                            modifier = Modifier.weight(1f),
-                            onValueChange = { playlistStart = digitsOnly(it) },
-                        )
-                        CompactNumberField(
-                            value = playlistEnd,
-                            label = "End",
-                            modifier = Modifier.weight(1f),
-                            onValueChange = { playlistEnd = digitsOnly(it) },
-                        )
-                    }
-                }
-                OptionToggle("Download subtitles", subtitles) { subtitles = it }
-                if (subtitles) {
-                    OptionToggle("Include auto-generated captions", automaticCaptions) {
-                        automaticCaptions = it
-                    }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = advanced,
+                enter = androidx.compose.animation.expandVertically(
+                    animationSpec = androidx.compose.animation.core.tween(200),
+                ) + androidx.compose.animation.fadeIn(
+                    animationSpec = androidx.compose.animation.core.tween(180),
+                ),
+                exit = androidx.compose.animation.shrinkVertically(
+                    animationSpec = androidx.compose.animation.core.tween(160),
+                ) + androidx.compose.animation.fadeOut(
+                    animationSpec = androidx.compose.animation.core.tween(140),
+                ),
+            ) {
+                Column(modifier = Modifier.padding(top = 12.dp)) {
+                    VrkaDivider()
+                    Spacer(Modifier.height(8.dp))
                     if (mode == MediaMode.VIDEO) {
-                        OptionToggle("Embed subtitles in video", embedSubtitles) {
-                            embedSubtitles = it
+                        OptionToggle("Prefer 60 FPS when available", prefer60Fps) { prefer60Fps = it }
+                    }
+                    OptionToggle("Playlist or range", playlist) { playlist = it }
+                    if (playlist) {
+                        Row(
+                            modifier = Modifier.padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            CompactNumberField(
+                                value = playlistStart,
+                                label = "Start",
+                                modifier = Modifier.weight(1f),
+                                onValueChange = { playlistStart = digitsOnly(it) },
+                            )
+                            CompactNumberField(
+                                value = playlistEnd,
+                                label = "End",
+                                modifier = Modifier.weight(1f),
+                                onValueChange = { playlistEnd = digitsOnly(it) },
+                            )
                         }
                     }
-                    OutlinedTextField(
-                        value = subtitleLanguages,
-                        onValueChange = { subtitleLanguages = it.take(80) },
-                        label = { Text("Subtitle language pattern") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    )
-                }
-                OptionToggle("Embed title and media metadata", embedMetadata) {
-                    embedMetadata = it
-                }
-                if (mode == MediaMode.AUDIO) {
-                    OptionToggle("Embed thumbnail in audio", embedThumbnail) {
-                        embedThumbnail = it
+                    OptionToggle("Download subtitles", subtitles) { subtitles = it }
+                    if (subtitles) {
+                        OptionToggle("Include auto-generated captions", automaticCaptions) {
+                            automaticCaptions = it
+                        }
+                        if (mode == MediaMode.VIDEO) {
+                            OptionToggle("Embed subtitles in video", embedSubtitles) {
+                                embedSubtitles = it
+                            }
+                        }
+                        OutlinedTextField(
+                            value = subtitleLanguages,
+                            onValueChange = { subtitleLanguages = it.take(80) },
+                            label = { Text("Subtitle language pattern") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        )
                     }
-                }
-                OptionToggle("Remove SponsorBlock segments", sponsorBlock) {
-                    sponsorBlock = it
-                }
-                if (sponsorBlock) {
-                    OutlinedTextField(
-                        value = sponsorCategories,
-                        onValueChange = { sponsorCategories = it.take(120) },
-                        label = { Text("SponsorBlock categories") },
-                        supportingText = {
-                            Text("Comma-separated category names")
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    OptionToggle("Embed title and media metadata", embedMetadata) {
+                        embedMetadata = it
+                    }
+                    if (mode == MediaMode.AUDIO) {
+                        OptionToggle("Embed thumbnail in audio", embedThumbnail) {
+                            embedThumbnail = it
+                        }
+                    }
+                    OptionToggle("Remove SponsorBlock segments", sponsorBlock) {
+                        sponsorBlock = it
+                    }
+                    if (sponsorBlock) {
+                        OutlinedTextField(
+                            value = sponsorCategories,
+                            onValueChange = { sponsorCategories = it.take(120) },
+                            label = { Text("SponsorBlock categories") },
+                            supportingText = {
+                                Text("Comma-separated category names")
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        )
+                    }
+                    Text(
+                        "Optional trim (HH:MM:SS or seconds)",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VrkaTokens.TextSecondary,
+                        modifier = Modifier.padding(top = 10.dp),
                     )
-                }
-                Text(
-                    "Optional trim (HH:MM:SS or seconds)",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 10.dp),
-                )
-                Row(
-                    modifier = Modifier.padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    OutlinedTextField(
-                        value = trimStart,
-                        onValueChange = { trimStart = it.take(16) },
-                        label = { Text("Start") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedTextField(
-                        value = trimEnd,
-                        onValueChange = { trimEnd = it.take(16) },
-                        label = { Text("End") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = trimStart,
+                            onValueChange = { trimStart = it.take(16) },
+                            label = { Text("Start") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                        OutlinedTextField(
+                            value = trimEnd,
+                            onValueChange = { trimEnd = it.take(16) },
+                            label = { Text("End") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
@@ -432,7 +463,10 @@ internal fun HomeScreen(
         Spacer(Modifier.height(18.dp))
 
         // Hero Action Button
-        Button(
+        VrkaPrimaryButton(
+            text = "Add to Queue",
+            iconRes = R.drawable.ic_download,
+            enabled = url.isNotBlank(),
             onClick = {
                 val issue = validateRequest(
                     url = url,
@@ -472,41 +506,18 @@ internal fun HomeScreen(
                     validation = ""
                 }
             },
-            enabled = url.isNotBlank(),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                containerColor = VrkaPurple,
-                contentColor = androidx.compose.ui.graphics.Color.White,
-                disabledContainerColor = VrkaPurple.copy(alpha = 0.25f),
-                disabledContentColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.45f),
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_download),
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "Add to queue",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-        }
+        )
 
         if (runtime.message.isNotBlank()) {
             Text(
                 runtime.message,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = VrkaTokens.TextSecondary,
                 modifier = Modifier.padding(top = 10.dp),
             )
         }
 
-        Spacer(Modifier.height(100.dp))
+        Spacer(Modifier.height(16.dp))
     }
 }
 

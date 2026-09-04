@@ -73,46 +73,33 @@ internal fun SettingsScreen(
             "Settings",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = VrkaTokens.TextPrimary,
         )
 
-        // 1. DOWNLOAD LOCATION
-        SettingsHeading("Download Location")
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = VrkaSurfaceCard,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            border = BorderStroke(1.dp, VrkaCardBorder),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = if (settings.outputTreeUri.isBlank()) {
-                        "Downloads/VRKA (recommended)"
-                    } else {
-                        "Custom folder selected"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        // 1. STORAGE
+        SettingsHeading("Storage")
+        VrkaCard {
+            VrkaSettingRow(
+                title = "Download Directory",
+                subtitle = if (settings.outputTreeUri.isBlank()) {
+                    "Downloads/VRKA (recommended)"
+                } else {
+                    "Custom folder selected"
+                },
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Button(
+                    VrkaOutlinedButton(
+                        text = "Choose",
                         onClick = { folderPicker.launch(null) },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = VrkaPurple),
-                    ) {
-                        Text("Choose folder")
-                    }
+                    )
                     if (settings.outputTreeUri.isNotBlank()) {
-                        OutlinedButton(
+                        VrkaTextButton(
+                            text = "Reset",
                             onClick = { scope.launch { repository.setOutputTree("") } },
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Text("Use Downloads")
-                        }
+                        )
                     }
                 }
             }
@@ -120,57 +107,30 @@ internal fun SettingsScreen(
 
         // 2. BROWSER SUBSYSTEM
         SettingsHeading("Browser Subsystem")
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = VrkaSurfaceCard,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            border = BorderStroke(1.dp, VrkaCardBorder),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp)) {
-                        Text("Browser Engine", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("Mozilla GeckoView 153.0 (arm64-v8a)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = VrkaPurple.copy(alpha = 0.2f),
-                    ) {
-                        Text(
-                            "Bundled",
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            fontWeight = FontWeight.SemiBold,
-                            color = VrkaPurpleLight,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        )
-                    }
-                }
+        VrkaCard {
+            VrkaSettingRow(
+                title = "Browser Engine",
+                subtitle = "Mozilla GeckoView 153.0 (arm64-v8a)",
+            ) {
+                VrkaStatusBadge("Bundled", VrkaTokens.AccentLight)
+            }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            VrkaDivider()
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Ad & Tracker Blocking", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Text("uBlock Origin Active", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = VrkaSuccess)
-                }
+            VrkaSettingRow(
+                title = "Ad & Tracker Blocking",
+                subtitle = "uBlock Origin",
+            ) {
+                VrkaStatusBadge("Active", VrkaTokens.Success)
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Media Detection", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Text("Puemos Discovery Active", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = VrkaSuccess)
-                }
+            VrkaDivider()
+
+            VrkaSettingRow(
+                title = "Media Detection",
+                subtitle = "Puemos HLS Discovery",
+            ) {
+                VrkaStatusBadge("Active", VrkaTokens.Success)
             }
         }
 
@@ -179,101 +139,144 @@ internal fun SettingsScreen(
         Text(
             "Independently managed runtime and filter components.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 8.dp),
+            color = VrkaTokens.TextSecondary,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
         )
-
-        componentMap.values.forEach { comp ->
-            ComponentUpdateCard(
-                component = comp,
-                onCheck = { updateManager.checkUpdate(comp.id) },
-                onUpdate = { updateManager.applyUpdate(comp.id) },
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
 
         val isAnyCheckingOrUpdating = componentMap.values.any { it.isChecking || it.isUpdating }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
+        VrkaCard {
+            componentMap.values.forEachIndexed { index, comp ->
+                if (index > 0) VrkaDivider()
+                VrkaSettingRow(
+                    title = comp.name,
+                    subtitle = "Installed: v${comp.installedVersion}",
+                    isSubtitleMono = true,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (comp.latestVersion != null && comp.latestVersion != comp.installedVersion) {
+                            VrkaStatusBadge("v${comp.latestVersion}", VrkaTokens.AccentLight, isMonospace = true)
+                            VrkaOutlinedButton(
+                                text = if (comp.isUpdating) "Updating..." else "Update",
+                                onClick = { updateManager.applyUpdate(comp.id) },
+                                enabled = !comp.isUpdating,
+                            )
+                        } else {
+                            VrkaOutlinedButton(
+                                text = if (comp.isChecking) "Checking..." else "Check",
+                                onClick = { updateManager.checkUpdate(comp.id) },
+                                enabled = !comp.isChecking && !comp.isUpdating,
+                            )
+                        }
+                    }
+                }
+                if (comp.message.isNotBlank()) {
+                    Text(
+                        comp.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (comp.error != null) VrkaTokens.Error else VrkaTokens.TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+            }
+
+            VrkaDivider()
+
+            VrkaOutlinedButton(
+                text = if (isAnyCheckingOrUpdating) "Checking updates..." else "Check All Updates",
                 onClick = { updateManager.checkAllUpdates() },
                 enabled = !isAnyCheckingOrUpdating,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (isAnyCheckingOrUpdating) "Checking updates..." else "Check All Updates")
-            }
-        }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                height = 42.dp,
+            )
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("yt-dlp Channel:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            UpdatePreference.entries.forEach { item ->
-                FilterChip(
-                    selected = settings.updatePreference == item,
-                    onClick = { scope.launch { repository.setUpdatePreference(item) } },
-                    label = { Text(item.label) },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = VrkaPurple,
-                        selectedLabelColor = Color.White,
-                    ),
+            Spacer(Modifier.height(10.dp))
+            VrkaDivider()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "yt-dlp Channel",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = VrkaTokens.TextPrimary,
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    UpdatePreference.entries.forEach { item ->
+                        VrkaChip(
+                            selected = settings.updatePreference == item,
+                            onClick = { scope.launch { repository.setUpdatePreference(item) } },
+                            label = item.label,
+                        )
+                    }
+                }
             }
         }
 
         // 4. APPEARANCE
         SettingsHeading("Appearance")
-        ThemeModeControl(
-            selected = settings.themeMode,
-            onSelected = { mode -> scope.launch { repository.setThemeMode(mode) } },
-        )
-        SettingSwitch(
-            label = "AMOLED black",
-            description = "Use true black backgrounds when Dark mode is active.",
-            checked = settings.amoled,
-            enabled = settings.themeMode == ThemeMode.DARK,
-            onCheckedChange = { scope.launch { repository.setAmoled(it) } },
-        )
+        VrkaCard {
+            Text(
+                "Theme Mode",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = VrkaTokens.TextPrimary,
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
+            VrkaSegmentedControl(
+                items = ThemeMode.entries,
+                selectedItem = settings.themeMode,
+                onItemSelected = { mode -> scope.launch { repository.setThemeMode(mode) } },
+                label = { it.label },
+            )
+
+            Spacer(Modifier.height(12.dp))
+            VrkaDivider()
+
+            VrkaSettingRow(
+                title = "AMOLED Black",
+                subtitle = "Use pure black backgrounds when Dark mode is active",
+            ) {
+                Switch(
+                    checked = settings.amoled,
+                    enabled = settings.themeMode == ThemeMode.DARK,
+                    onCheckedChange = { scope.launch { repository.setAmoled(it) } },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = VrkaTokens.Accent,
+                    ),
+                )
+            }
+        }
 
         // 5. CONCURRENCY
         SettingsHeading("Concurrency")
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = VrkaSurfaceCard,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            border = BorderStroke(1.dp, VrkaCardBorder),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
+        VrkaCard {
             Text(
-                "One active job at a time; additional jobs wait in the queue to limit device heat and memory pressure.",
+                "One active job at a time; additional jobs wait in the queue to optimize performance and prevent thermal throttling.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(16.dp),
+                color = VrkaTokens.TextSecondary,
             )
         }
 
         // 6. ABOUT
         SettingsHeading("About")
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            color = VrkaSurfaceCard,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            border = BorderStroke(1.dp, VrkaCardBorder),
-            shape = RoundedCornerShape(18.dp),
+        VrkaCard(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = 20.dp,
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -282,21 +285,20 @@ internal fun SettingsScreen(
                 ) {
                     Text(
                         text = "VRKA v4.0",
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        style = MaterialTheme.typography.titleLarge.copy(
                             fontFamily = VrkaMonoFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
+                            letterSpacing = 1.sp,
                         ),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = VrkaTokens.TextPrimary,
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "By MVRK",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = VrkaMonoFamily,
-                            fontSize = 14.sp,
                         ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = VrkaTokens.TextSecondary,
                     )
                 }
 
@@ -304,211 +306,22 @@ internal fun SettingsScreen(
                     painter = painterResource(R.drawable.vrka_logo_512),
                     contentDescription = "VRKA Logo",
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                    modifier = Modifier.size(80.dp),
+                    modifier = Modifier.size(76.dp),
                 )
             }
         }
 
-        Spacer(Modifier.height(100.dp))
-    }
-}
-
-@Composable
-private fun ComponentUpdateCard(
-    component: ComponentStatus,
-    onCheck: () -> Unit,
-    onUpdate: () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = VrkaSurfaceCard,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, VrkaCardBorder),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(if (component.error != null) MaterialTheme.colorScheme.error else VrkaSuccess),
-                    )
-                    Column {
-                        Text(component.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text(
-                            text = "Installed: v${component.installedVersion}",
-                            fontFamily = VrkaMonoFamily,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                if (component.latestVersion != null && component.latestVersion != component.installedVersion) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = VrkaPurple.copy(alpha = 0.2f),
-                    ) {
-                        Text(
-                            text = "Update: v${component.latestVersion}",
-                            fontFamily = VrkaMonoFamily,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = VrkaPurpleLight,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        )
-                    }
-                }
-            }
-
-            if (component.message.isNotBlank()) {
-                Text(
-                    component.message,
-                    fontSize = 11.sp,
-                    color = if (component.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(
-                    onClick = onCheck,
-                    enabled = !component.isChecking && !component.isUpdating,
-                    shape = RoundedCornerShape(10.dp),
-                ) {
-                    Text(if (component.isChecking) "Checking..." else "Check")
-                }
-
-                if (component.latestVersion != null && component.latestVersion != component.installedVersion) {
-                    Button(
-                        onClick = onUpdate,
-                        enabled = !component.isUpdating,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = VrkaPurple),
-                        modifier = Modifier.padding(start = 8.dp),
-                    ) {
-                        Text(if (component.isUpdating) "Updating..." else "Update")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThemeModeControl(
-    selected: ThemeMode,
-    onSelected: (ThemeMode) -> Unit,
-) {
-    Surface(
-        color = VrkaSurfaceCard,
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, VrkaCardBorder),
-        modifier = Modifier.width(232.dp).height(50.dp).selectableGroup(),
-    ) {
-        Row(Modifier.padding(4.dp)) {
-            ThemeMode.entries.forEach { mode ->
-                val isSelected = selected == mode
-                val color by animateColorAsState(
-                    if (isSelected) VrkaPurple.copy(alpha = 0.22f)
-                    else Color.Transparent,
-                    label = "theme segment",
-                )
-                Surface(
-                    color = color,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f).fillMaxSize(),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .selectable(
-                                selected = isSelected,
-                                role = Role.RadioButton,
-                                onClick = { onSelected(mode) },
-                            )
-                            .padding(horizontal = 10.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            painter = painterResource(
-                                if (mode == ThemeMode.LIGHT) R.drawable.ic_sun
-                                else R.drawable.ic_moon,
-                            ),
-                            contentDescription = null,
-                            tint = if (isSelected) VrkaPurpleLight
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp),
-                        )
-                        Text(
-                            mode.label,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) VrkaPurpleLight else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 7.dp),
-                        )
-                    }
-                }
-            }
-        }
+        Spacer(Modifier.height(16.dp))
     }
 }
 
 @Composable
 private fun SettingsHeading(text: String) {
     Text(
-        text,
+        text = text,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.padding(top = 22.dp, bottom = 8.dp),
+        color = VrkaTokens.TextPrimary,
+        modifier = Modifier.padding(top = 20.dp, bottom = 8.dp, start = 4.dp),
     )
 }
-
-@Composable
-private fun SettingSwitch(
-    label: String,
-    description: String,
-    checked: Boolean,
-    enabled: Boolean = true,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(if (enabled) 1f else 0.5f)
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(label, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(
-            checked = checked,
-            enabled = enabled,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = VrkaPurple,
-            ),
-        )
-    }
-}
-

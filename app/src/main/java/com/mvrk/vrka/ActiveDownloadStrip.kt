@@ -44,8 +44,8 @@ internal fun ActiveDownloadStrip(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
-        color = VrkaGlassSurface,
-        border = BorderStroke(1.dp, VrkaGlassBorder),
+        color = VrkaTokens.SurfaceElevated,
+        border = BorderStroke(1.dp, VrkaTokens.BorderActive.copy(alpha = 0.5f)),
         modifier = modifier
             .fillMaxWidth()
             .shadow(12.dp, RoundedCornerShape(20.dp)),
@@ -62,14 +62,15 @@ internal fun ActiveDownloadStrip(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = VrkaPurple.copy(alpha = 0.18f),
+                    color = VrkaTokens.AccentContainer,
+                    border = BorderStroke(1.dp, VrkaTokens.BorderActive),
                     modifier = Modifier.size(34.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             painter = painterResource(R.drawable.ic_download),
                             contentDescription = null,
-                            tint = VrkaPurpleLight,
+                            tint = VrkaTokens.AccentLight,
                             modifier = Modifier.size(17.dp),
                         )
                     }
@@ -80,6 +81,7 @@ internal fun ActiveDownloadStrip(
                         text = job.title.ifBlank { "Active download" },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
+                        color = VrkaTokens.TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -91,19 +93,19 @@ internal fun ActiveDownloadStrip(
                         Text(
                             text = jobStatusLabel(job),
                             style = MaterialTheme.typography.labelSmall,
-                            color = VrkaPurpleLight,
+                            color = VrkaTokens.AccentLight,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
                             text = "•",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            color = VrkaTokens.TextTertiary,
                         )
                         Text(
                             text = if (job.speed.isNotBlank()) "${job.progress.toInt()}%  (${job.speed})" else "${job.progress.toInt()}%",
                             fontFamily = VrkaMonoFamily,
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = VrkaTokens.TextSecondary,
                             maxLines = 1,
                         )
                     }
@@ -114,8 +116,8 @@ internal fun ActiveDownloadStrip(
                 LinearProgressIndicator(
                     progress = { animatedProgress },
                     strokeCap = StrokeCap.Round,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    color = VrkaPurple,
+                    trackColor = VrkaTokens.SurfaceInset,
+                    color = VrkaTokens.Accent,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)

@@ -85,34 +85,9 @@ val SpaceMono = FontFamily(
 val VrkaMonoFamily = SpaceMono
 val VrkaSansFamily = FontFamily.Default
 
-// Disciplined Typography: SpaceMono is VRKA's core identity and retained for all typography styles
-private val MaterialTypography = Typography()
-private val VrkaTypography = Typography(
-    displayLarge = MaterialTypography.displayLarge.copy(fontFamily = SpaceMono),
-    displayMedium = MaterialTypography.displayMedium.copy(fontFamily = SpaceMono),
-    displaySmall = MaterialTypography.displaySmall.copy(fontFamily = SpaceMono),
-    headlineLarge = MaterialTypography.headlineLarge.copy(
-        fontFamily = SpaceMono,
-        fontWeight = FontWeight.Bold,
-    ),
-    headlineMedium = MaterialTypography.headlineMedium.copy(
-        fontFamily = SpaceMono,
-        fontWeight = FontWeight.Bold,
-    ),
-    headlineSmall = MaterialTypography.headlineSmall.copy(
-        fontFamily = SpaceMono,
-        fontWeight = FontWeight.Bold,
-    ),
-    titleLarge = MaterialTypography.titleLarge.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
-    titleMedium = MaterialTypography.titleMedium.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
-    titleSmall = MaterialTypography.titleSmall.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
-    bodyLarge = MaterialTypography.bodyLarge.copy(fontFamily = SpaceMono),
-    bodyMedium = MaterialTypography.bodyMedium.copy(fontFamily = SpaceMono),
-    bodySmall = MaterialTypography.bodySmall.copy(fontFamily = SpaceMono),
-    labelLarge = MaterialTypography.labelLarge.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
-    labelMedium = MaterialTypography.labelMedium.copy(fontFamily = SpaceMono),
-    labelSmall = MaterialTypography.labelSmall.copy(fontFamily = SpaceMono),
-)
+// Disciplined Typography: High-clarity System Sans for readable UI hierarchy;
+// SpaceMono (VrkaMonoFamily) is preserved specifically for technical metrics, versions, bitrates, and telemetry.
+private val VrkaTypography = Typography()
 
 @Composable
 fun VrkaTheme(

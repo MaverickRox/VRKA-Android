@@ -3,6 +3,7 @@ package com.mvrk.vrka
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,14 +66,14 @@ internal fun JobsScreen(
                 text = if (onClear == null) "Queue" else "History",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
+                color = VrkaTokens.TextPrimary,
             )
             if (onClear != null && jobs.isNotEmpty()) {
-                TextButton(
+                VrkaTextButton(
+                    text = "Clear history",
                     onClick = onClear,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                ) {
-                    Text("Clear list", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                    color = VrkaTokens.TextSecondary,
+                )
             }
         }
         if (jobs.isEmpty()) {
@@ -84,30 +85,31 @@ internal fun JobsScreen(
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.padding(horizontal = 36.dp),
                 ) {
-                    Surface(
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        color = VrkaPurple.copy(alpha = 0.14f),
-                        modifier = Modifier.size(60.dp),
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(VrkaTokens.AccentContainer)
+                            .border(1.dp, VrkaTokens.BorderActive, CircleShape),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            androidx.compose.material3.Icon(
-                                painter = androidx.compose.ui.res.painterResource(
-                                    if (onClear == null) R.drawable.ic_queue else R.drawable.ic_history,
-                                ),
-                                contentDescription = null,
-                                tint = VrkaPurpleLight,
-                                modifier = Modifier.size(28.dp),
-                            )
-                        }
+                        androidx.compose.material3.Icon(
+                            painter = androidx.compose.ui.res.painterResource(
+                                if (onClear == null) R.drawable.ic_queue else R.drawable.ic_history,
+                            ),
+                            contentDescription = null,
+                            tint = VrkaTokens.AccentLight,
+                            modifier = Modifier.size(28.dp),
+                        )
                     }
                     Text(
                         text = if (onClear == null) "Queue is empty" else "No download history",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = VrkaTokens.TextPrimary,
                     )
                     Text(
                         text = if (onClear == null)
@@ -115,7 +117,7 @@ internal fun JobsScreen(
                         else
                             "Completed and failed downloads will be recorded here.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = VrkaTokens.TextSecondary,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                 }
@@ -126,9 +128,9 @@ internal fun JobsScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    bottom = 100.dp,
+                    bottom = 16.dp,
                 ),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(jobs, key = DownloadJob::id) { job ->
                     JobCard(
@@ -161,206 +163,169 @@ private fun JobCard(
         label = "job_card_progress",
     )
 
-    Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-        color = VrkaSurfaceCard,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, VrkaCardBorder),
+    VrkaCard(
         modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-            ) {
-                Text(
-                    text = job.title.ifBlank { sourceLabel(job.request.url) },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                StatusBadge(job, Modifier.padding(start = 10.dp))
-            }
-            Text(
-                text = requestSummary(job.request),
-                style = MaterialTheme.typography.labelMedium,
-                color = VrkaPurpleLight,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 4.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = if (job.state == JobState.FAILED) friendlyFailureTitle(job) else job.detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (job.state == JobState.FAILED) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                fontWeight = if (job.state == JobState.FAILED) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            if (job.state == JobState.FAILED) {
-                Text(
-                    text = friendlyFailureDetail(job),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
-            }
-
-            if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
-                LinearProgressIndicator(
-                    progress = { animatedProgress },
-                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
-                    color = VrkaPurple,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "${job.progress.toInt()}%",
-                        fontFamily = VrkaMonoFamily,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = VrkaPurpleLight,
-                    )
-                    Text(
-                        text = listOfNotNull(
-                            job.speed.takeIf(String::isNotBlank),
-                            job.etaSeconds?.let(::formatEtaCompact),
-                        ).joinToString(" • "),
-                        fontFamily = VrkaMonoFamily,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Text(
-                text = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                    .format(Date(job.createdAt)),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                modifier = Modifier.padding(top = 8.dp),
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                when {
-                    !job.state.isTerminal -> {
-                        if (job.state == JobState.BROWSER_FALLBACK && onShowFallback != null) {
-                            Button(
-                                onClick = onShowFallback,
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = VrkaPurple),
-                            ) { Text("Interact with Page") }
-                        }
-                        OutlinedButton(
-                            onClick = onCancel,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                        ) { Text("Cancel") }
-                    }
-                    job.state == JobState.DONE && job.outputUris.isNotEmpty() -> {
-                        Button(
-                            onClick = { onOpen(job.outputUris.first()) },
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = VrkaPurple),
-                        ) {
-                            Text("Open")
-                        }
-                        OutlinedButton(
-                            onClick = { onShare(job.outputUris.first()) },
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                        ) {
-                            Text("Share")
-                        }
-                        TextButton(
-                            onClick = onDelete,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                        ) { Text("Delete") }
-                    }
-                    else -> {
-                        Button(
-                            onClick = onRetry,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = VrkaPurple),
-                        ) { Text("Retry") }
-                        TextButton(
-                            onClick = onDelete,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                        ) { Text("Remove") }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatusBadge(job: DownloadJob, modifier: Modifier = Modifier) {
-    val color = stateColor(job.state)
-    Surface(
-        color = color.copy(alpha = 0.14f),
-        contentColor = color,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.28f)),
-        modifier = modifier,
+        contentPadding = 16.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(5.dp)
-                    .clip(CircleShape)
-                    .background(color),
+            Text(
+                text = job.title.ifBlank { sourceLabel(job.request.url) },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = VrkaTokens.TextPrimary,
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            VrkaStatusBadge(
+                label = jobStatusLabel(job),
+                color = stateColor(job.state),
+                modifier = Modifier.padding(start = 10.dp),
+            )
+        }
+
+        Text(
+            text = requestSummary(job.request),
+            style = MaterialTheme.typography.labelMedium.copy(fontFamily = VrkaMonoFamily),
+            color = VrkaTokens.AccentLight,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 4.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        if (job.state == JobState.FAILED) {
+            Text(
+                text = friendlyFailureTitle(job),
+                style = MaterialTheme.typography.bodySmall,
+                color = VrkaTokens.Error,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 4.dp),
             )
             Text(
-                text = jobStatusLabel(job),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
+                text = friendlyFailureDetail(job),
+                style = MaterialTheme.typography.bodySmall,
+                color = VrkaTokens.TextSecondary,
+                modifier = Modifier.padding(top = 2.dp),
             )
+        } else if (job.detail.isNotBlank()) {
+            Text(
+                text = job.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = VrkaTokens.TextSecondary,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+
+        if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
+            LinearProgressIndicator(
+                progress = { animatedProgress },
+                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+                color = VrkaTokens.Accent,
+                trackColor = VrkaTokens.SurfaceInset,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "${job.progress.toInt()}%",
+                    fontFamily = VrkaMonoFamily,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = VrkaTokens.AccentLight,
+                )
+                Text(
+                    text = listOfNotNull(
+                        job.speed.takeIf(String::isNotBlank),
+                        job.etaSeconds?.let(::formatEtaCompact),
+                    ).joinToString(" • "),
+                    fontFamily = VrkaMonoFamily,
+                    fontSize = 11.sp,
+                    color = VrkaTokens.TextSecondary,
+                )
+            }
+        }
+
+        Text(
+            text = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                .format(Date(job.createdAt)),
+            style = MaterialTheme.typography.labelSmall,
+            color = VrkaTokens.TextTertiary,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            when {
+                !job.state.isTerminal -> {
+                    if (job.state == JobState.BROWSER_FALLBACK && onShowFallback != null) {
+                        VrkaOutlinedButton(
+                            text = "Interact with Page",
+                            onClick = onShowFallback,
+                        )
+                    }
+                    VrkaOutlinedButton(
+                        text = "Cancel",
+                        onClick = onCancel,
+                    )
+                }
+                job.state == JobState.DONE && job.outputUris.isNotEmpty() -> {
+                    VrkaOutlinedButton(
+                        text = "Open",
+                        onClick = { onOpen(job.outputUris.first()) },
+                    )
+                    VrkaOutlinedButton(
+                        text = "Share",
+                        onClick = { onShare(job.outputUris.first()) },
+                    )
+                    VrkaTextButton(
+                        text = "Delete",
+                        onClick = onDelete,
+                        color = VrkaTokens.TextTertiary,
+                    )
+                }
+                else -> {
+                    VrkaOutlinedButton(
+                        text = "Retry",
+                        onClick = onRetry,
+                    )
+                    VrkaTextButton(
+                        text = "Remove",
+                        onClick = onDelete,
+                        color = VrkaTokens.TextTertiary,
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun stateColor(state: JobState): Color = when (state) {
-    JobState.DONE -> VrkaSuccess
-    JobState.FAILED -> MaterialTheme.colorScheme.error
-    JobState.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
-    JobState.WAITING_FOR_USER, JobState.BROWSER_FALLBACK -> VrkaWarning
-    else -> VrkaPurpleLight
+    JobState.DONE -> VrkaTokens.Success
+    JobState.FAILED -> VrkaTokens.Error
+    JobState.CANCELLED -> VrkaTokens.TextTertiary
+    JobState.WAITING_FOR_USER, JobState.BROWSER_FALLBACK -> VrkaTokens.Warning
+    else -> VrkaTokens.AccentLight
 }
 
 private fun sourceLabel(url: String): String =
     runCatching { Uri.parse(url).host }.getOrNull().orEmpty().ifBlank { "Untitled download" }
-
-private fun formatEta(seconds: Long): String {
-    val minutes = seconds / 60
-    val remainder = seconds % 60
-    return if (minutes > 0) "$minutes:${remainder.toString().padStart(2, '0')} left"
-    else "${remainder}s left"
-}
 
