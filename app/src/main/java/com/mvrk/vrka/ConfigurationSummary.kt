@@ -49,24 +49,22 @@ internal fun ConfigurationSummary(
         if (sponsorBlock) add("SponsorBlock")
     }
     Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shape = MaterialTheme.shapes.large,
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
-        ),
+        color = VrkaSurfaceCard,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, VrkaCardBorder),
         modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text(
                 "DOWNLOAD PLAN",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = VrkaPurpleLight,
                 fontWeight = FontWeight.Bold,
             )
             Text(
                 primary,
                 style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

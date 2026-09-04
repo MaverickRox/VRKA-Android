@@ -30,10 +30,19 @@ class MainActivity : ComponentActivity() {
             openQueueRequests.value = System.currentTimeMillis()
             intent.removeExtra(EXTRA_OPEN_QUEUE)
         }
+        val urlToEnqueue = intent?.getStringExtra(EXTRA_URL)
+            ?: (if (intent?.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT) else null)
+            ?: (if (intent?.action == Intent.ACTION_VIEW) intent.dataString else null)
+        if (!urlToEnqueue.isNullOrBlank()) {
+            vrkaApplication.downloads.enqueue(DownloadRequest(url = urlToEnqueue.trim()))
+            openQueueRequests.value = System.currentTimeMillis()
+            intent?.removeExtra(EXTRA_URL)
+        }
     }
 
     companion object {
         const val EXTRA_OPEN_QUEUE = "com.mvrk.vrka.OPEN_QUEUE"
+        const val EXTRA_URL = "com.mvrk.vrka.URL"
     }
 }
 

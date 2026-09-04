@@ -17,22 +17,31 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.core.view.WindowCompat
 
 val VrkaPurple = Color(0xFF8140DC)
+val VrkaPurpleLight = Color(0xFF9D65F0)
+val VrkaPurpleDark = Color(0xFF6428B8)
 val VrkaSuccess = Color(0xFF2BCB77)
 val VrkaWarning = Color(0xFFE7A93D)
 val VrkaError = Color(0xFFEF5A67)
 
+// Refined Glass & Surface Tokens
+val VrkaGlassSurface = Color(0xEB101014)
+val VrkaGlassBorder = Color(0x28FFFFFF)
+val VrkaSurfaceCard = Color(0xFF0D0D10)
+val VrkaCardBorder = Color(0x18FFFFFF)
+
 private val AmoledColors = darkColorScheme(
     primary = VrkaPurple,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF241236),
-    onPrimaryContainer = Color(0xFFE8D9FA),
+    primaryContainer = Color(0xFF26133C),
+    onPrimaryContainer = Color(0xFFE9DAFA),
     background = Color.Black,
-    onBackground = Color(0xFFFAF9FC),
-    surface = Color(0xFF090909),
-    onSurface = Color(0xFFFAF9FC),
-    surfaceVariant = Color(0xFF161616),
-    onSurfaceVariant = Color(0xFFC8C4CF),
-    outline = Color(0xFF363636),
+    onBackground = Color(0xFFF7F5F9),
+    surface = Color(0xFF0C0C0E),
+    onSurface = Color(0xFFF7F5F9),
+    surfaceVariant = Color(0xFF141418),
+    onSurfaceVariant = Color(0xFFB0ACB8),
+    outline = Color(0xFF2C2C34),
+    outlineVariant = Color(0xFF1E1E24),
     error = VrkaError,
 )
 
@@ -48,6 +57,7 @@ private val StandardDarkColors = darkColorScheme(
     surfaceVariant = Color(0xFF29272F),
     onSurfaceVariant = Color(0xFFCBC5D1),
     outline = Color(0xFF4A4650),
+    outlineVariant = Color(0xFF302D36),
     error = VrkaError,
 )
 
@@ -63,40 +73,36 @@ private val LightColors = lightColorScheme(
     surfaceVariant = Color(0xFFE8E8EB),
     onSurfaceVariant = Color(0xFF4E4B54),
     outline = Color(0xFFC8C8CF),
+    outlineVariant = Color(0xFFE0E0E6),
     error = Color(0xFFB3261E),
 )
 
-private val SpaceMono = FontFamily(
+// Monospace font family for technical telemetry, branding, and VRKA identity
+val SpaceMono = FontFamily(
     Font(R.font.space_mono_regular, FontWeight.Normal),
     Font(R.font.space_mono_bold, FontWeight.Bold),
 )
+val VrkaMonoFamily = SpaceMono
+val VrkaSansFamily = FontFamily.Default
 
+// Disciplined Typography: High-clarity Sans-Serif hierarchy for structure, SpaceMono reserved for telemetry
 private val MaterialTypography = Typography()
 private val VrkaTypography = Typography(
-    displayLarge = MaterialTypography.displayLarge.copy(fontFamily = SpaceMono),
-    displayMedium = MaterialTypography.displayMedium.copy(fontFamily = SpaceMono),
-    displaySmall = MaterialTypography.displaySmall.copy(fontFamily = SpaceMono),
-    headlineLarge = MaterialTypography.headlineLarge.copy(
-        fontFamily = SpaceMono,
-        fontWeight = FontWeight.Bold,
-    ),
-    headlineMedium = MaterialTypography.headlineMedium.copy(
-        fontFamily = SpaceMono,
-        fontWeight = FontWeight.Bold,
-    ),
-    headlineSmall = MaterialTypography.headlineSmall.copy(
-        fontFamily = SpaceMono,
-        fontWeight = FontWeight.Bold,
-    ),
-    titleLarge = MaterialTypography.titleLarge.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
-    titleMedium = MaterialTypography.titleMedium.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
-    titleSmall = MaterialTypography.titleSmall.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
-    bodyLarge = MaterialTypography.bodyLarge.copy(fontFamily = SpaceMono),
-    bodyMedium = MaterialTypography.bodyMedium.copy(fontFamily = SpaceMono),
-    bodySmall = MaterialTypography.bodySmall.copy(fontFamily = SpaceMono),
-    labelLarge = MaterialTypography.labelLarge.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
-    labelMedium = MaterialTypography.labelMedium.copy(fontFamily = SpaceMono),
-    labelSmall = MaterialTypography.labelSmall.copy(fontFamily = SpaceMono),
+    displayLarge = MaterialTypography.displayLarge.copy(fontWeight = FontWeight.Bold),
+    displayMedium = MaterialTypography.displayMedium.copy(fontWeight = FontWeight.Bold),
+    displaySmall = MaterialTypography.displaySmall.copy(fontWeight = FontWeight.Bold),
+    headlineLarge = MaterialTypography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+    headlineMedium = MaterialTypography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+    headlineSmall = MaterialTypography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+    titleLarge = MaterialTypography.titleLarge.copy(fontWeight = FontWeight.Bold),
+    titleMedium = MaterialTypography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+    titleSmall = MaterialTypography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+    bodyLarge = MaterialTypography.bodyLarge,
+    bodyMedium = MaterialTypography.bodyMedium,
+    bodySmall = MaterialTypography.bodySmall,
+    labelLarge = MaterialTypography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+    labelMedium = MaterialTypography.labelMedium.copy(fontWeight = FontWeight.Medium),
+    labelSmall = MaterialTypography.labelSmall,
 )
 
 @Composable

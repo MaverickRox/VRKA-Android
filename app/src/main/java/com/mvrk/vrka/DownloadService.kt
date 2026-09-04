@@ -26,6 +26,8 @@ class DownloadService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        val initialJob = manager.jobs.value.firstOrNull { it.state.isForegroundWork }
+        showForeground(initialJob)
         serviceScope.launch {
             manager.jobs.collectLatest { jobs ->
                 val active = jobs.firstOrNull { it.state.isForegroundWork }

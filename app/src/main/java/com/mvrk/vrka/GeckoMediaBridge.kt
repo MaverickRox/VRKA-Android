@@ -22,6 +22,7 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
         message: Any,
         sender: WebExtension.MessageSender
     ): GeckoResult<Any>? {
+        Log.d(TAG, "onMessage received from $nativeApp: $message")
         handlePayload(message)
         val response = JSONObject().put("status", "ok")
         return GeckoResult.fromValue(response)
@@ -61,21 +62,32 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
                 val url = candidateObj.optString("url").trim()
                 if (url.isBlank() || !url.startsWith("http")) return
 
-                // Deduplicate
-                synchronized(seenUrls) {
-                    if (url in seenUrls) return
-                    seenUrls.add(url)
-                    if (seenUrls.size > 250) {
-                        seenUrls.clear()
-                    }
-                }
-
                 val pageUrl = candidateObj.optString("pageUrl")
                 val title = candidateObj.optString("title")
                 val kind = candidateObj.optString("kind", "Video")
                 val resolution = candidateObj.optString("resolution")
                 val mimeType = candidateObj.optString("mimeType")
                 val source = candidateObj.optString("source", "network")
+                val nuisanceScore = candidateObj.optInt("nuisanceScore", 0)
+                val isNuisance = nuisanceScore > 0
+                val userStarted = if (candidateObj.has("userStarted")) {
+                    candidateObj.optBoolean("userStarted")
+                } else {
+                    !isNuisance
+                }
+                val primaryPlayer = if (candidateObj.has("primaryPlayer")) {
+                    candidateObj.optBoolean("primaryPlayer")
+                } else {
+                    !isNuisance
+                }
+                val playing = if (candidateObj.has("playing")) {
+                    candidateObj.optBoolean("playing")
+                } else if (!isNuisance) {
+                    true
+                } else null
+                val width = if (candidateObj.has("width")) candidateObj.optInt("width").takeIf { it > 0 } else null
+                val height = if (candidateObj.has("height")) candidateObj.optInt("height").takeIf { it > 0 } else null
+                val durationSeconds = if (candidateObj.has("duration")) candidateObj.optDouble("duration").takeIf { it > 0 } else null
 
                 val headersMap = mutableMapOf<String, String>()
                 val headersObj = candidateObj.optJSONObject("headers")
@@ -100,11 +112,43 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
                     mimeType = mimeType,
                     headers = headersMap,
                     source = source,
+                    userStarted = userStarted,
+                    primaryPlayer = primaryPlayer,
+                    playing = playing,
+                    width = width,
+                    height = height,
+                    durationSeconds = durationSeconds,
+                    nuisanceScore = nuisanceScore,
                 )
 
-                Log.i(TAG, "Discovered media candidate: ${candidate.kind} - ${candidate.displayTitle} (${candidate.url})")
+                Log.i(TAG, "Discovered media candidate: ${candidate.kind} - ${candidate.displayTitle} (userStarted=$userStarted, primary=$primaryPlayer, url=${candidate.url})")
 
-                _candidates.value = (_candidates.value + candidate).takeLast(50)
+                synchronized(seenUrls) {
+                    val currentList = _candidates.value
+                    val existingIndex = currentList.indexOfFirst { it.url == url }
+                    val updatedCandidate = if (existingIndex >= 0) {
+                        val existing = currentList[existingIndex]
+                        candidate.copy(
+                            id = UUID.randomUUID().toString(),
+                            userStarted = userStarted || existing.userStarted,
+                            primaryPlayer = primaryPlayer || existing.primaryPlayer,
+                            playing = playing ?: existing.playing,
+                            width = width ?: existing.width,
+                            height = height ?: existing.height,
+                            durationSeconds = durationSeconds ?: existing.durationSeconds,
+                            nuisanceScore = maxOf(nuisanceScore, existing.nuisanceScore),
+                            headers = existing.headers + headersMap,
+                        )
+                    } else {
+                        candidate
+                    }
+
+                    _candidates.value = if (existingIndex >= 0) {
+                        currentList.toMutableList().apply { set(existingIndex, updatedCandidate) }
+                    } else {
+                        (currentList + updatedCandidate).takeLast(50)
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error handling media detector payload: ${e.message}", e)
@@ -133,4 +177,37 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
     companion object {
         private const val TAG = "VRKA-MediaBridge"
     }
+}
+
+data class MediaStreamCandidate(
+    val id: String,
+    val url: String,
+    val pageUrl: String = "",
+    val title: String = "",
+    val kind: String = "Video", // HLS, DASH, Video, Audio
+    val resolution: String = "", // e.g. "1920x1080", "1080p"
+    val mimeType: String = "",
+    val headers: Map<String, String> = emptyMap(),
+    val source: String = "network", // network, dom, playlist
+    val userStarted: Boolean = false,
+    val primaryPlayer: Boolean = false,
+    val playing: Boolean? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val durationSeconds: Double? = null,
+    val nuisanceScore: Int = 0,
+    val timestamp: Long = System.currentTimeMillis(),
+) {
+    val displayTitle: String
+        get() = when {
+            title.isNotBlank() -> title
+            resolution.isNotBlank() -> "$kind ($resolution)"
+            else -> "$kind Stream"
+        }
+
+    val displaySubtitle: String
+        get() = when {
+            url.length > 55 -> url.take(28) + "..." + url.takeLast(24)
+            else -> url
+        }
 }

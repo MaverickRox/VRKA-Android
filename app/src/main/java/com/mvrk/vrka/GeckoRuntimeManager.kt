@@ -9,9 +9,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.ContentBlocking
+import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
+import org.mozilla.geckoview.WebExtension
+import org.mozilla.geckoview.WebExtensionController
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class GeckoRuntimeManager private constructor(private val context: Context) {
 
@@ -26,6 +36,12 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
 
     private val _mediaDetectorActive = MutableStateFlow(false)
     val mediaDetectorActive: StateFlow<Boolean> = _mediaDetectorActive.asStateFlow()
+
+    @Volatile
+    var mediaDetector: WebExtension? = null
+        private set
+
+    private val initMutex = Mutex()
 
     val runtime: GeckoRuntime by lazy {
         val settings = GeckoRuntimeSettings.Builder()
@@ -42,56 +58,110 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
             .build()
 
         val instance = GeckoRuntime.create(context.applicationContext, settings)
-        initializeExtensions(instance)
+        setupPromptDelegate(instance)
         _isReady.value = true
         instance
     }
 
-    private fun initializeExtensions(runtimeInstance: GeckoRuntime) {
-        scope.launch(Dispatchers.Main) {
-            val controller = runtimeInstance.webExtensionController
+    private fun setupPromptDelegate(runtimeInstance: GeckoRuntime) {
+        runtimeInstance.webExtensionController.promptDelegate = object : WebExtensionController.PromptDelegate {
+            override fun onInstallPromptRequest(
+                extension: WebExtension,
+                permissions: Array<String>,
+                origins: Array<String>,
+                dataCollectionPermissions: Array<String>
+            ): GeckoResult<WebExtension.PermissionPromptResponse>? {
+                Log.i(TAG, "onInstallPromptRequest for built-in extension: ${extension.id}")
+                return GeckoResult.fromValue(
+                    WebExtension.PermissionPromptResponse(
+                        /* isPermissionsGranted = */ true,
+                        /* isPrivateModeGranted = */ true,
+                        /* isTechnicalAndInteractionDataGranted = */ true
+                    )
+                )
+            }
 
-            // 1. Install & Register Media Detector WebExtension
-            controller.ensureBuiltIn(
-                "resource://android/assets/extensions/media-detector/",
-                "media-detector@vrka.mvrk.com"
-            ).accept(
-                { extension ->
-                    if (extension != null) {
-                        Log.i(TAG, "Media Detector extension registered successfully: ${extension.id}")
-                        extension.setMessageDelegate(mediaBridge, "browser")
-                        _mediaDetectorActive.value = true
-                    } else {
-                        Log.w(TAG, "Media Detector extension returned null")
-                    }
-                },
-                { error ->
-                    Log.e(TAG, "Failed to register Media Detector extension: ${error?.message}", error)
-                }
-            )
+            override fun onUpdatePrompt(
+                extension: WebExtension,
+                permissions: Array<String>,
+                origins: Array<String>,
+                dataCollectionPermissions: Array<String>
+            ): GeckoResult<AllowOrDeny>? {
+                return GeckoResult.fromValue(AllowOrDeny.ALLOW)
+            }
 
-            // 2. Install & Register uBlock Origin WebExtension
-            controller.ensureBuiltIn(
-                "resource://android/assets/extensions/ublock/",
-                "uBlock0@raymondhill.net"
-            ).accept(
-                { extension ->
-                    if (extension != null) {
-                        Log.i(TAG, "uBlock Origin registered successfully: ${extension.id}")
-                        _uBlockActive.value = true
-                    } else {
-                        Log.w(TAG, "uBlock Origin extension returned null")
+            override fun onOptionalPrompt(
+                extension: WebExtension,
+                permissions: Array<String>,
+                origins: Array<String>,
+                dataCollectionPermissions: Array<String>
+            ): GeckoResult<AllowOrDeny>? {
+                return GeckoResult.fromValue(AllowOrDeny.ALLOW)
+            }
+        }
+    }
+
+    /**
+     * Deterministic readiness gate for fallback extensions (uBlock Origin & Media Detector).
+     * Ensures extensions are installed, granted required permissions, and explicitly allowed
+     * in private browsing before navigation occurs.
+     */
+    suspend fun ensureExtensionsReady(timeoutMs: Long = 15000L): Boolean {
+        if (_uBlockActive.value && _mediaDetectorActive.value) {
+            return true
+        }
+        return initMutex.withLock {
+            if (_uBlockActive.value && _mediaDetectorActive.value) {
+                return@withLock true
+            }
+            withContext(Dispatchers.Main) {
+                runCatching {
+                    withTimeout(timeoutMs) {
+                        val controller = runtime.webExtensionController
+
+                        // 1. Install & Register Media Detector WebExtension
+                        if (!_mediaDetectorActive.value) {
+                            Log.i(TAG, "Installing Media Detector extension...")
+                            val detector = controller.ensureBuiltIn(
+                                "resource://android/assets/extensions/media-detector/",
+                                MEDIA_DETECTOR_ID
+                            ).awaitResult() ?: throw IllegalStateException("Media Detector returned null")
+
+                            val privateDetector = controller.setAllowedInPrivateBrowsing(detector, true).awaitResult()
+                            val effectiveDetector = privateDetector ?: detector
+                            detector.setMessageDelegate(mediaBridge, "browser")
+                            effectiveDetector.setMessageDelegate(mediaBridge, "browser")
+                            mediaDetector = effectiveDetector
+                            Log.i(TAG, "Media Detector active and allowed in private browsing: ${effectiveDetector.id}")
+                            _mediaDetectorActive.value = true
+                        }
+
+                        // 2. Install & Register uBlock Origin WebExtension
+                        if (!_uBlockActive.value) {
+                            Log.i(TAG, "Installing uBlock Origin extension...")
+                            val ublock = controller.ensureBuiltIn(
+                                "resource://android/assets/extensions/ublock/",
+                                UBLOCK_ID
+                            ).awaitResult() ?: throw IllegalStateException("uBlock Origin returned null")
+
+                            val privateUblock = controller.setAllowedInPrivateBrowsing(ublock, true).awaitResult()
+                            Log.i(TAG, "uBlock Origin active and allowed in private browsing: ${privateUblock?.id ?: ublock.id}")
+                            _uBlockActive.value = true
+                        }
+                        true
                     }
-                },
-                { error ->
-                    Log.e(TAG, "Failed to register uBlock Origin: ${error?.message}", error)
+                }.getOrElse { error ->
+                    Log.e(TAG, "Failed to ensure extensions ready within ${timeoutMs}ms: ${error.message}", error)
+                    false
                 }
-            )
+            }
         }
     }
 
     companion object {
         private const val TAG = "VRKA-GeckoRuntime"
+        const val UBLOCK_ID = "uBlock0@raymondhill.net"
+        const val MEDIA_DETECTOR_ID = "media-detector@vrka.mvrk.com"
 
         @Volatile
         private var INSTANCE: GeckoRuntimeManager? = null
@@ -103,3 +173,21 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
         }
     }
 }
+
+private suspend fun <T> GeckoResult<T>.awaitResult(): T? =
+    kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+        accept(
+            { value ->
+                if (continuation.isActive) {
+                    continuation.resume(value)
+                }
+            },
+            { error ->
+                if (continuation.isActive) {
+                    continuation.resumeWithException(
+                        error ?: RuntimeException("GeckoResult completed exceptionally with null error")
+                    )
+                }
+            }
+        )
+    }

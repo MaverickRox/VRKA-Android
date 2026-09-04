@@ -5,6 +5,23 @@
 
 const seenCandidates = new Map();
 const requestHeadersMap = new Map();
+const urlHeadersMap = new Map();
+let lastObservedUserAgent = "";
+
+function isAdOrNuisanceUrl(url) {
+    if (!url) return 0;
+    const lower = url.toLowerCase();
+    if (lower.match(/\b(doubleclick|googlesyndication|adnxs|adroll|popcash|exoclick|trafficjunky|adsterra|serving-sys|creativecdn|adsystem|banner|promo)\b/)) {
+        return 20;
+    }
+    if (lower.match(/\b\d{5,}\b.*_(\d{3,4})p(?:\.m3u8)?$/)) {
+        return 10;
+    }
+    return 0;
+}
+
+let activeDomPlayer = null;
+let lastDomPlayerTime = 0;
 
 function sendCandidateToNative(candidate) {
     if (!candidate || !candidate.url) return;
@@ -47,7 +64,14 @@ function sendCandidateToNative(candidate) {
                 resolution: candidate.resolution || "",
                 mimeType: candidate.mimeType || "",
                 headers: candidate.headers || {},
-                source: candidate.source || "network"
+                source: candidate.source || "network",
+                userStarted: Boolean(candidate.userStarted),
+                primaryPlayer: Boolean(candidate.primaryPlayer),
+                playing: candidate.playing !== undefined ? Boolean(candidate.playing) : null,
+                width: candidate.width || 0,
+                height: candidate.height || 0,
+                duration: candidate.duration || 0,
+                nuisanceScore: candidate.nuisanceScore || 0
             }
         }).catch(() => {});
     } catch (e) {
@@ -65,6 +89,9 @@ browser.webRequest.onBeforeSendHeaders.addListener(
                 const name = h.name.toLowerCase();
                 if (["user-agent", "referer", "origin", "range", "cookie"].includes(name)) {
                     headers[h.name] = h.value;
+                    if (name === "user-agent" && h.value) {
+                        lastObservedUserAgent = h.value;
+                    }
                 }
             }
         }
@@ -72,6 +99,17 @@ browser.webRequest.onBeforeSendHeaders.addListener(
         if (requestHeadersMap.size > 150) {
             const firstKey = requestHeadersMap.keys().next().value;
             requestHeadersMap.delete(firstKey);
+        }
+        
+        // Also cache by URL and Origin for correlation with DOM events
+        urlHeadersMap.set(details.url, headers);
+        try {
+            const parsed = new URL(details.url);
+            urlHeadersMap.set(parsed.origin, headers);
+        } catch (e) {}
+        if (urlHeadersMap.size > 200) {
+            const firstKey = urlHeadersMap.keys().next().value;
+            urlHeadersMap.delete(firstKey);
         }
     },
     { urls: ["<all_urls>"] },
@@ -136,15 +174,53 @@ browser.webRequest.onHeadersReceived.addListener(
         }
 
         if (detectedKind) {
+            const adNuisance = isAdOrNuisanceUrl(url);
+            let userStarted = false;
+            let primaryPlayer = false;
+            let playing = null;
+            let width = 0;
+            let height = 0;
+            let duration = 0;
+            let nuisanceScore = adNuisance;
+
+            if (adNuisance > 0) {
+                nuisanceScore = adNuisance;
+                primaryPlayer = false;
+                userStarted = false;
+            } else if (activeDomPlayer && (Date.now() - lastDomPlayerTime < 45000)) {
+                userStarted = activeDomPlayer.userStarted;
+                primaryPlayer = activeDomPlayer.primaryPlayer;
+                playing = activeDomPlayer.playing;
+                width = activeDomPlayer.width;
+                height = activeDomPlayer.height;
+                duration = activeDomPlayer.duration;
+                if (!resolution && activeDomPlayer.resolution) {
+                    resolution = activeDomPlayer.resolution;
+                }
+            } else {
+                // Desktop Build 017 fallback default (browser_fallback.py:568-581):
+                // In fallback browser session, non-ad media requests default to primary player
+                userStarted = true;
+                primaryPlayer = true;
+                playing = true;
+            }
+
             sendCandidateToNative({
                 url: url,
                 pageUrl: headers["Referer"] || "",
-                title: "",
+                title: activeDomPlayer ? activeDomPlayer.title : "",
                 kind: detectedKind,
                 resolution: resolution,
                 mimeType: contentType,
                 headers: headers,
-                source: "network"
+                source: "network",
+                userStarted: userStarted,
+                primaryPlayer: primaryPlayer,
+                playing: playing,
+                width: width,
+                height: height,
+                duration: duration,
+                nuisanceScore: nuisanceScore
             });
         }
     },
@@ -164,6 +240,25 @@ async function parseHlsPlaylist(playlistUrl, headers) {
         if (!resp.ok) return;
         const text = await resp.text();
         if (!text.includes("#EXTM3U")) return;
+
+        const adNuisance = isAdOrNuisanceUrl(playlistUrl);
+        const isMasterPrimary = adNuisance === 0;
+
+        // First emit the master playlist itself as a top-ranked candidate
+        sendCandidateToNative({
+            url: playlistUrl,
+            pageUrl: headers["Referer"] || playlistUrl,
+            title: "Master Playlist",
+            kind: "HLS",
+            resolution: "",
+            mimeType: "application/vnd.apple.mpegurl",
+            headers: headers,
+            source: "network",
+            userStarted: adNuisance === 0,
+            primaryPlayer: isMasterPrimary,
+            playing: true,
+            nuisanceScore: adNuisance
+        });
 
         const lines = text.split("\n");
         let currentResolution = "";
@@ -186,7 +281,11 @@ async function parseHlsPlaylist(playlistUrl, headers) {
                     resolution: currentResolution,
                     mimeType: "application/vnd.apple.mpegurl",
                     headers: headers,
-                    source: "playlist"
+                    source: "playlist",
+                    userStarted: adNuisance === 0,
+                    primaryPlayer: false,
+                    playing: true,
+                    nuisanceScore: adNuisance
                 });
                 currentResolution = "";
             }
@@ -196,16 +295,57 @@ async function parseHlsPlaylist(playlistUrl, headers) {
 
 // 4. Handle messages from Content Scripts
 browser.runtime.onMessage.addListener((msg, sender) => {
+    if (msg && msg.type === "DOM_PLAYER_ACTIVE") {
+        activeDomPlayer = {
+            pageUrl: (sender.tab ? sender.tab.url : msg.pageUrl) || "",
+            title: msg.title || "",
+            kind: msg.kind || "Video",
+            resolution: msg.resolution || "",
+            userStarted: Boolean(msg.userStarted),
+            primaryPlayer: Boolean(msg.primaryPlayer),
+            playing: msg.playing !== undefined ? Boolean(msg.playing) : null,
+            width: msg.width || 0,
+            height: msg.height || 0,
+            duration: msg.duration || 0,
+            nuisanceScore: msg.nuisanceScore || 0
+        };
+        lastDomPlayerTime = Date.now();
+        return;
+    }
+
     if (msg && msg.type === "DOM_MEDIA_DETECTED") {
+        let headers = urlHeadersMap.get(msg.url);
+        if (!headers) {
+            try {
+                const parsed = new URL(msg.url);
+                headers = urlHeadersMap.get(parsed.origin);
+            } catch (e) {}
+        }
+        headers = headers ? Object.assign({}, headers) : {};
+        if (!headers["User-Agent"] && lastObservedUserAgent) {
+            headers["User-Agent"] = lastObservedUserAgent;
+        }
+        const effectivePageUrl = sender.tab ? sender.tab.url : msg.pageUrl;
+        if (!headers["Referer"] && effectivePageUrl) {
+            headers["Referer"] = effectivePageUrl;
+        }
+
         sendCandidateToNative({
             url: msg.url,
-            pageUrl: sender.tab ? sender.tab.url : msg.pageUrl,
+            pageUrl: effectivePageUrl,
             title: msg.title || (sender.tab ? sender.tab.title : ""),
             kind: msg.kind || "Video",
             resolution: msg.resolution || "",
             mimeType: msg.mimeType || "",
-            headers: {},
-            source: "dom"
+            headers: headers,
+            source: "dom",
+            userStarted: Boolean(msg.userStarted),
+            primaryPlayer: Boolean(msg.primaryPlayer),
+            playing: msg.playing !== undefined ? Boolean(msg.playing) : null,
+            width: msg.width || 0,
+            height: msg.height || 0,
+            duration: msg.duration || 0,
+            nuisanceScore: msg.nuisanceScore || 0
         });
     }
 });

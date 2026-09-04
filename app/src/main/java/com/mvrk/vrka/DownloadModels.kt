@@ -17,7 +17,7 @@ enum class JobState {
         get() = this == DONE || this == FAILED || this == CANCELLED
 
     val isForegroundWork: Boolean
-        get() = this == PREPARING || this == DOWNLOADING || this == POSTPROCESSING
+        get() = this == QUEUED || this == PREPARING || this == DOWNLOADING || this == POSTPROCESSING || this == BROWSER_FALLBACK
 
     val label: String
         get() = when (this) {
@@ -105,23 +105,6 @@ data class DownloadJob(
     val outputUris: List<String> = emptyList(),
     val error: String = "",
     val attempt: Int = 1,
-)
-
-@Immutable
-data class BrowserCandidate(
-    val url: String,
-    val kind: String,
-    val score: Int,
-    val source: String,
-    val headers: Map<String, String> = emptyMap(),
-)
-
-data class BrowserHandoff(
-    val candidate: BrowserCandidate,
-    val cookies: String,
-    val userAgent: String,
-    val referer: String,
-    val title: String = "",
 )
 
 @Immutable

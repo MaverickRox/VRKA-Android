@@ -5,11 +5,35 @@ import java.io.File
 
 internal object DownloadRequestFactory {
     private const val outputMarker = "__VRKA_OUTPUT__"
+    private var nativeLibraryDir: String? = null
+
+    fun initNativeLibraryDir(dir: String?) {
+        nativeLibraryDir = dir
+    }
+
+    fun getQuickJsPath(): String? {
+        val f = nativeLibraryDir?.let { File(it, "libqjs.so") }
+        return if (f != null && f.exists()) f.absolutePath else null
+    }
+
+    private fun addJsRuntime(request: YoutubeDLRequest) {
+        val qjsPath = getQuickJsPath()
+        if (qjsPath != null) {
+            request.addOption("--js-runtimes", "quickjs:$qjsPath")
+        }
+        request.addOption("--remote-components", "ejs:github")
+    }
 
     fun info(request: DownloadRequest): YoutubeDLRequest =
         YoutubeDLRequest(request.resolvedMediaUrl ?: request.url).apply {
             addOption("--no-warnings")
+            addOption("--legacy-server-connect")
             if (!request.isPlaylist) addOption("--no-playlist")
+            addJsRuntime(this)
+            val source = request.resolvedMediaUrl ?: request.url
+            if (com.mvrk.vrka.engine.isYtdlpNativeTarget(source)) {
+                addOption("--extractor-args", "youtube:player_client=android,web,web_creator")
+            }
             addSessionContext(request)
         }
 
@@ -25,6 +49,9 @@ internal object DownloadRequestFactory {
             addOption("--progress")
             addOption("--no-mtime")
             addOption("--no-overwrites")
+            addOption("--legacy-server-connect")
+            addOption("--concurrent-fragments", "4")
+            addOption("--print", "before_dl:__VRKA_TITLE__%(title)s")
             addOption("--print", "after_move:$outputMarker%(filepath)s")
             val stagingTemplate = if (options.isPlaylist) {
                 "%(playlist_index|0)03d-%(title).96B.%(ext)s"
@@ -50,7 +77,12 @@ internal object DownloadRequestFactory {
                 )
                 if (options.embedThumbnail) addOption("--embed-thumbnail")
             } else {
-                addOption("-f", "bestvideo+bestaudio/best[height>0]")
+                val format = if (options.resolvedMediaUrl != null) {
+                    "bestvideo+bestaudio/best"
+                } else {
+                    "bestvideo+bestaudio/best[height>0]"
+                }
+                addOption("-f", format)
                 val resolutionSort = options.quality.height?.let { "res:$it" }
                 when {
                     options.prefer60Fps && resolutionSort != null ->
@@ -58,7 +90,6 @@ internal object DownloadRequestFactory {
                     options.prefer60Fps -> addOption("-S", "res,fps")
                     resolutionSort != null -> addOption("-S", resolutionSort)
                 }
-                
                 addOption("--merge-output-format", "mp4")
             }
 
@@ -83,9 +114,14 @@ internal object DownloadRequestFactory {
                 addOption("--force-keyframes-at-cuts")
             }
 
-            addOption("--remote-components", "ejs:github")
+            addJsRuntime(this)
+            val isYouTube = com.mvrk.vrka.engine.isYtdlpNativeTarget(source)
             if (recoveryAttempt) {
                 addOption("--extractor-args", "generic:impersonate")
+            } else if (isYouTube) {
+                addOption("--extractor-args", "youtube:player_client=android,web,web_creator")
+            }
+            if (recoveryAttempt || options.resolvedMediaUrl != null) {
                 if (options.resolvedHeaders.keys.none { it.equals("User-Agent", true) }) {
                     addOption("--user-agent", DESKTOP_USER_AGENT)
                 }
@@ -155,6 +191,7 @@ internal object DownloadRequestFactory {
         }
         return result
     }
+
     private fun trimSection(request: DownloadRequest): String? {
         val start = request.trimStart.trim()
         val end = request.trimEnd.trim()
@@ -162,7 +199,21 @@ internal object DownloadRequestFactory {
         return "*${start.ifEmpty { "0" }}-${end.ifEmpty { "inf" }}"
     }
 
-    private const val DESKTOP_USER_AGENT =
+    fun buildVideoFormat(height: Int?, prefer60Fps: Boolean): String {
+        val heightFilter = if (height != null && height > 0) "[height<=$height]" else ""
+        val tiers = mutableListOf<String>()
+        if (prefer60Fps) {
+            tiers.add("bestvideo$heightFilter[fps>=60]+bestaudio")
+        }
+        tiers.add("bestvideo$heightFilter+bestaudio")
+        if (heightFilter.isNotEmpty()) {
+            tiers.add("best$heightFilter")
+        }
+        tiers.add("best")
+        return tiers.joinToString("/")
+    }
+
+    internal const val DESKTOP_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/138.0 Mobile Safari/537.36"
 }
