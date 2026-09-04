@@ -91,9 +91,8 @@ internal fun HomeScreen(
                 Text(
                     "VRKA",
                     style = MaterialTheme.typography.headlineLarge.copy(
-                        fontFamily = VrkaMonoFamily,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp,
                     ),
                     color = VrkaTokens.TextPrimary,
                 )
@@ -148,9 +147,11 @@ internal fun HomeScreen(
                     decorationBox = { innerTextField ->
                         if (url.isEmpty()) {
                             Text(
-                                "Enter or paste media URL...",
+                                "Enter media URL...",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = VrkaTokens.TextTertiary,
+                                maxLines = 1,
+                                softWrap = false,
                             )
                         }
                         innerTextField()

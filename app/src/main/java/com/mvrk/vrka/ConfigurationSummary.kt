@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Composable
 internal fun ConfigurationSummary(
@@ -57,9 +58,11 @@ internal fun ConfigurationSummary(
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text(
                 "DOWNLOAD PLAN",
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                ),
                 color = VrkaTokens.AccentLight,
-                fontWeight = FontWeight.Bold,
             )
             Text(
                 primary,

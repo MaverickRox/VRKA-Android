@@ -85,29 +85,18 @@ internal fun JobsScreen(
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.padding(horizontal = 36.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.padding(horizontal = 40.dp),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(CircleShape)
-                            .background(VrkaTokens.AccentContainer)
-                            .border(1.dp, VrkaTokens.BorderActive, CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        androidx.compose.material3.Icon(
-                            painter = androidx.compose.ui.res.painterResource(
-                                if (onClear == null) R.drawable.ic_queue else R.drawable.ic_history,
-                            ),
-                            contentDescription = null,
-                            tint = VrkaTokens.AccentLight,
-                            modifier = Modifier.size(28.dp),
-                        )
-                    }
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(R.drawable.vrka_logo_512),
+                        contentDescription = "VRKA",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                        modifier = Modifier.size(68.dp),
+                    )
                     Text(
                         text = if (onClear == null) "Queue is empty" else "No download history",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = VrkaTokens.TextPrimary,
                     )
@@ -115,10 +104,11 @@ internal fun JobsScreen(
                         text = if (onClear == null)
                             "Media you enqueue will appear here while downloading."
                         else
-                            "Completed and failed downloads will be recorded here.",
+                            "Completed and archived downloads will be listed here.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = VrkaTokens.TextSecondary,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 20.sp,
                     )
                 }
             }
@@ -190,9 +180,9 @@ private fun JobCard(
 
         Text(
             text = requestSummary(job.request),
-            style = MaterialTheme.typography.labelMedium.copy(fontFamily = VrkaMonoFamily),
+            style = MaterialTheme.typography.bodySmall,
             color = VrkaTokens.AccentLight,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(top = 4.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

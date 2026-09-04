@@ -44,10 +44,6 @@ internal fun SettingsScreen(
     val updateManager = remember { ComponentUpdateManager.getInstance(context) }
     val componentMap by updateManager.components.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) {
-        updateManager.refreshInstalledVersions()
-    }
-
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
@@ -157,19 +153,27 @@ internal fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        if (comp.latestVersion != null && comp.latestVersion != comp.installedVersion) {
-                            VrkaStatusBadge("v${comp.latestVersion}", VrkaTokens.AccentLight, isMonospace = true)
-                            VrkaOutlinedButton(
-                                text = if (comp.isUpdating) "Updating..." else "Update",
-                                onClick = { updateManager.applyUpdate(comp.id) },
-                                enabled = !comp.isUpdating,
-                            )
-                        } else {
-                            VrkaOutlinedButton(
-                                text = if (comp.isChecking) "Checking..." else "Check",
-                                onClick = { updateManager.checkUpdate(comp.id) },
-                                enabled = !comp.isChecking && !comp.isUpdating,
-                            )
+                        when {
+                            comp.isUpdating -> {
+                                VrkaStatusBadge("Updating", VrkaTokens.Warning)
+                            }
+                            comp.isChecking -> {
+                                VrkaStatusBadge("Checking", VrkaTokens.AccentLight)
+                            }
+                            comp.latestVersion != null && comp.latestVersion != comp.installedVersion -> {
+                                VrkaStatusBadge("v${comp.latestVersion}", VrkaTokens.AccentLight, isMonospace = true)
+                                VrkaOutlinedButton(
+                                    text = "Update",
+                                    onClick = { updateManager.applyUpdate(comp.id) },
+                                    height = 32.dp,
+                                )
+                            }
+                            comp.error != null -> {
+                                VrkaStatusBadge("Error", VrkaTokens.Error)
+                            }
+                            else -> {
+                                VrkaStatusBadge("Ready", VrkaTokens.Success)
+                            }
                         }
                     }
                 }
@@ -286,7 +290,6 @@ internal fun SettingsScreen(
                     Text(
                         text = "VRKA v4.0",
                         style = MaterialTheme.typography.titleLarge.copy(
-                            fontFamily = VrkaMonoFamily,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp,
                         ),
@@ -295,9 +298,7 @@ internal fun SettingsScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "By MVRK",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = VrkaMonoFamily,
-                        ),
+                        style = MaterialTheme.typography.bodyMedium,
                         color = VrkaTokens.TextSecondary,
                     )
                 }
@@ -310,8 +311,6 @@ internal fun SettingsScreen(
                 )
             }
         }
-
-        Spacer(Modifier.height(16.dp))
     }
 }
 

@@ -531,11 +531,16 @@ fun VrkaFloatingNavBar(
     val haptic = LocalHapticFeedback.current
     var barWidth by remember { mutableStateOf(0) }
     val destinations = remember { VrkaDestination.entries }
-    val slotCount = destinations.size
     val selectedIndex = destinations.indexOf(selectedDestination).coerceAtLeast(0)
 
-    val slotWidthPx = if (barWidth > 0 && slotCount > 0) barWidth.toFloat() / slotCount else 0f
-    val targetOffsetPx = selectedIndex * slotWidthPx
+    val activeWeight = 1.8f
+    val inactiveWeight = 1.0f
+    val totalWeight = activeWeight + (destinations.size - 1) * inactiveWeight
+
+    val unitWidthPx = if (barWidth > 0) barWidth.toFloat() / totalWeight else 0f
+    val targetOffsetPx = if (unitWidthPx > 0f) {
+        selectedIndex * unitWidthPx + with(density) { 2.dp.toPx() }
+    } else 0f
 
     val animatedOffsetPx by animateFloatAsState(
         targetValue = targetOffsetPx,
@@ -543,34 +548,38 @@ fun VrkaFloatingNavBar(
         label = "navPuckOffset",
     )
 
+    val puckWidthDp = if (unitWidthPx > 0f) {
+        with(density) { (activeWeight * unitWidthPx - with(density) { 4.dp.toPx() }).toDp() }
+    } else 0.dp
+
     Surface(
-        shape = RoundedCornerShape(31.dp),
+        shape = RoundedCornerShape(30.dp),
         color = VrkaTokens.SurfaceFloatingNav,
         border = BorderStroke(1.dp, VrkaTokens.BorderNav),
         modifier = modifier
             .fillMaxWidth()
-            .height(62.dp)
-            .padding(horizontal = 24.dp)
-            .shadow(16.dp, RoundedCornerShape(31.dp)),
+            .height(58.dp)
+            .padding(horizontal = 20.dp)
+            .shadow(16.dp, RoundedCornerShape(30.dp)),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(4.dp)
+                .padding(horizontal = 4.dp, vertical = 4.dp)
                 .onSizeChanged { barWidth = it.width },
         ) {
-            // Continuous sliding indicator puck
-            if (slotWidthPx > 0f) {
+            // Continuous sliding indicator puck (Vibrant electric violet pill)
+            if (unitWidthPx > 0f) {
                 Box(
                     modifier = Modifier
-                        .width(with(density) { (slotWidthPx - with(density) { 8.dp.toPx() }).toDp() })
+                        .width(puckWidthDp)
                         .fillMaxHeight()
                         .graphicsLayer {
                             translationX = animatedOffsetPx
                         }
-                        .clip(RoundedCornerShape(27.dp))
-                        .background(VrkaTokens.AccentContainer.copy(alpha = 0.85f))
-                        .border(1.dp, VrkaTokens.BorderActive, RoundedCornerShape(27.dp)),
+                        .clip(RoundedCornerShape(25.dp))
+                        .background(VrkaTokens.Accent)
+                        .border(1.dp, Color(0x35FFFFFF), RoundedCornerShape(25.dp)),
                 )
             }
 
@@ -580,17 +589,22 @@ fun VrkaFloatingNavBar(
             ) {
                 destinations.forEachIndexed { index, item ->
                     val isSelected = index == selectedIndex
-                    val textColor by animateColorAsState(
-                        targetValue = if (isSelected) VrkaTokens.AccentLight else VrkaTokens.TextSecondary,
-                        animationSpec = tween(150),
-                        label = "navItemColor",
+                    val animatedWeight by animateFloatAsState(
+                        targetValue = if (isSelected) activeWeight else inactiveWeight,
+                        animationSpec = VrkaTokens.SettleSpring,
+                        label = "navTabWeight_$index",
+                    )
+                    val iconColor by animateColorAsState(
+                        targetValue = if (isSelected) Color.White else VrkaTokens.TextTertiary,
+                        animationSpec = tween(140),
+                        label = "navIconColor",
                     )
 
                     Box(
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(animatedWeight.coerceAtLeast(0.1f))
                             .fillMaxHeight()
-                            .clip(RoundedCornerShape(27.dp))
+                            .clip(RoundedCornerShape(25.dp))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -602,26 +616,37 @@ fun VrkaFloatingNavBar(
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 4.dp),
                         ) {
                             androidx.compose.material3.Icon(
                                 painter = androidx.compose.ui.res.painterResource(item.iconRes),
                                 contentDescription = item.label,
-                                tint = textColor,
-                                modifier = Modifier.size(19.dp),
+                                tint = iconColor,
+                                modifier = Modifier.size(if (isSelected) 18.dp else 20.dp),
                             )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = item.label,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = textColor,
-                                maxLines = 1,
-                                softWrap = false,
-                            )
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = isSelected,
+                                enter = androidx.compose.animation.fadeIn(tween(140)) +
+                                    androidx.compose.animation.expandHorizontally(tween(140)),
+                                exit = androidx.compose.animation.fadeOut(tween(90)) +
+                                    androidx.compose.animation.shrinkHorizontally(tween(90)),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = item.label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
