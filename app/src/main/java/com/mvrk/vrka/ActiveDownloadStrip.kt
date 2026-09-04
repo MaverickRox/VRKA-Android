@@ -44,33 +44,33 @@ internal fun ActiveDownloadStrip(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
-        color = VrkaTokens.SurfaceNav,
-        border = BorderStroke(1.dp, VrkaTokens.BorderNav),
+        color = VrkaGlassSurface,
+        border = BorderStroke(1.dp, VrkaGlassBorder),
         modifier = modifier
             .fillMaxWidth()
-            .shadow(16.dp, RoundedCornerShape(20.dp), spotColor = VrkaTokens.Accent.copy(alpha = 0.2f)),
+            .shadow(12.dp, RoundedCornerShape(20.dp)),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = VrkaTokens.AccentContainer,
+                    color = VrkaPurple.copy(alpha = 0.18f),
                     modifier = Modifier.size(34.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             painter = painterResource(R.drawable.ic_download),
                             contentDescription = null,
-                            tint = VrkaTokens.AccentLight,
-                            modifier = Modifier.size(16.dp),
+                            tint = VrkaPurpleLight,
+                            modifier = Modifier.size(17.dp),
                         )
                     }
                 }
@@ -80,7 +80,6 @@ internal fun ActiveDownloadStrip(
                         text = job.title.ifBlank { "Active download" },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = VrkaTokens.TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -92,19 +91,19 @@ internal fun ActiveDownloadStrip(
                         Text(
                             text = jobStatusLabel(job),
                             style = MaterialTheme.typography.labelSmall,
-                            color = VrkaTokens.AccentLight,
+                            color = VrkaPurpleLight,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
                             text = "•",
                             style = MaterialTheme.typography.labelSmall,
-                            color = VrkaTokens.TextTertiary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         )
                         Text(
                             text = if (job.speed.isNotBlank()) "${job.progress.toInt()}%  (${job.speed})" else "${job.progress.toInt()}%",
                             fontFamily = VrkaMonoFamily,
                             fontSize = 11.sp,
-                            color = VrkaTokens.TextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                         )
                     }
@@ -115,8 +114,8 @@ internal fun ActiveDownloadStrip(
                 LinearProgressIndicator(
                     progress = { animatedProgress },
                     strokeCap = StrokeCap.Round,
-                    trackColor = VrkaTokens.SurfaceInset,
-                    color = VrkaTokens.Accent,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    color = VrkaPurple,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
@@ -127,4 +126,5 @@ internal fun ActiveDownloadStrip(
         }
     }
 }
+
 

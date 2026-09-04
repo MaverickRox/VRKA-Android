@@ -85,24 +85,33 @@ val SpaceMono = FontFamily(
 val VrkaMonoFamily = SpaceMono
 val VrkaSansFamily = FontFamily.Default
 
-// Disciplined Typography: High-clarity Sans-Serif hierarchy for structure, SpaceMono reserved for telemetry
+// Disciplined Typography: SpaceMono is VRKA's core identity and retained for all typography styles
 private val MaterialTypography = Typography()
 private val VrkaTypography = Typography(
-    displayLarge = MaterialTypography.displayLarge.copy(fontWeight = FontWeight.Bold),
-    displayMedium = MaterialTypography.displayMedium.copy(fontWeight = FontWeight.Bold),
-    displaySmall = MaterialTypography.displaySmall.copy(fontWeight = FontWeight.Bold),
-    headlineLarge = MaterialTypography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-    headlineMedium = MaterialTypography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-    headlineSmall = MaterialTypography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-    titleLarge = MaterialTypography.titleLarge.copy(fontWeight = FontWeight.Bold),
-    titleMedium = MaterialTypography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-    titleSmall = MaterialTypography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-    bodyLarge = MaterialTypography.bodyLarge,
-    bodyMedium = MaterialTypography.bodyMedium,
-    bodySmall = MaterialTypography.bodySmall,
-    labelLarge = MaterialTypography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-    labelMedium = MaterialTypography.labelMedium.copy(fontWeight = FontWeight.Medium),
-    labelSmall = MaterialTypography.labelSmall,
+    displayLarge = MaterialTypography.displayLarge.copy(fontFamily = SpaceMono),
+    displayMedium = MaterialTypography.displayMedium.copy(fontFamily = SpaceMono),
+    displaySmall = MaterialTypography.displaySmall.copy(fontFamily = SpaceMono),
+    headlineLarge = MaterialTypography.headlineLarge.copy(
+        fontFamily = SpaceMono,
+        fontWeight = FontWeight.Bold,
+    ),
+    headlineMedium = MaterialTypography.headlineMedium.copy(
+        fontFamily = SpaceMono,
+        fontWeight = FontWeight.Bold,
+    ),
+    headlineSmall = MaterialTypography.headlineSmall.copy(
+        fontFamily = SpaceMono,
+        fontWeight = FontWeight.Bold,
+    ),
+    titleLarge = MaterialTypography.titleLarge.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
+    titleMedium = MaterialTypography.titleMedium.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
+    titleSmall = MaterialTypography.titleSmall.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
+    bodyLarge = MaterialTypography.bodyLarge.copy(fontFamily = SpaceMono),
+    bodyMedium = MaterialTypography.bodyMedium.copy(fontFamily = SpaceMono),
+    bodySmall = MaterialTypography.bodySmall.copy(fontFamily = SpaceMono),
+    labelLarge = MaterialTypography.labelLarge.copy(fontFamily = SpaceMono, fontWeight = FontWeight.Bold),
+    labelMedium = MaterialTypography.labelMedium.copy(fontFamily = SpaceMono),
+    labelSmall = MaterialTypography.labelSmall.copy(fontFamily = SpaceMono),
 )
 
 @Composable
