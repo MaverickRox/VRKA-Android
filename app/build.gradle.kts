@@ -31,7 +31,7 @@ extensions.configure<ApplicationExtension> {
             version = release(36)
         }
         versionCode = 40000
-        versionName = "4.0"
+        versionName = "4.0.0"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -91,7 +91,7 @@ extensions.configure<ApplicationExtension> {
         }
         release {
             isMinifyEnabled = true
-            signingConfig = signingConfigs.findByName("release")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

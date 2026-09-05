@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -87,24 +89,17 @@ internal fun HomeScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
-                Text(
-                    "VRKA",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp,
-                    ),
-                    color = VrkaTokens.TextPrimary,
-                )
-                Text(
-                    "Precision media engine",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = VrkaTokens.TextSecondary,
-                )
-            }
+            Text(
+                "VRKA",
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp,
+                ),
+                color = VrkaTokens.Accent,
+            )
         }
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(20.dp))
 
         // Hero URL Input Capsule
         Box(
@@ -112,7 +107,7 @@ internal fun HomeScreen(
                 .fillMaxWidth()
                 .height(54.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(VrkaTokens.SurfaceInset)
+                .background(VrkaTokens.SurfaceCard)
                 .border(
                     1.dp,
                     if (validation.isNotBlank()) VrkaTokens.Error else VrkaTokens.BorderSubtle,
@@ -216,10 +211,11 @@ internal fun HomeScreen(
             )
         }
 
-        // Unified Format & Quality Surface
-        VrkaCard(
-            modifier = Modifier.padding(top = 16.dp),
-            contentPadding = 16.dp,
+        Spacer(Modifier.height(18.dp))
+
+        // Format & Quality Controls (Cohesive Integrated Surface)
+        VrkaSectionContainer(
+            shape = RoundedCornerShape(16.dp),
         ) {
             // Mode Segmented Control
             VrkaSegmentedControl(
@@ -227,17 +223,22 @@ internal fun HomeScreen(
                 selectedItem = mode,
                 onItemSelected = { mode = it },
                 label = { it.label },
+                isMonospace = true,
+                modifier = Modifier.padding(top = 8.dp),
             )
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
 
             if (mode == MediaMode.VIDEO) {
                 Text(
-                    "Video Resolution",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = VrkaTokens.TextSecondary,
-                    modifier = Modifier.padding(bottom = 8.dp),
+                    "VIDEO RESOLUTION",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = VrkaMonoFamily,
+                        letterSpacing = 1.1.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                    color = VrkaTokens.TextTertiary,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
                 )
                 ChoiceRow {
                     VideoQuality.entries.forEach { item ->
@@ -254,17 +255,20 @@ internal fun HomeScreen(
                             selected = quality == item,
                             onClick = { quality = item },
                             label = chipLabel,
-                            isMonospace = item != VideoQuality.BEST,
+                            isMonospace = true,
                         )
                     }
                 }
             } else {
                 Text(
-                    "Audio Format",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = VrkaTokens.TextSecondary,
-                    modifier = Modifier.padding(bottom = 8.dp),
+                    "AUDIO FORMAT",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = VrkaMonoFamily,
+                        letterSpacing = 1.1.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                    color = VrkaTokens.TextTertiary,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
                 )
                 ChoiceRow {
                     AudioFormat.entries.forEach { item ->
@@ -272,18 +276,22 @@ internal fun HomeScreen(
                             selected = audioFormat == item,
                             onClick = { audioFormat = item },
                             label = item.label.substringBefore(" ("),
+                            isMonospace = true,
                         )
                     }
                 }
 
                 if (audioFormat == AudioFormat.MP3) {
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(12.dp))
                     Text(
-                        "MP3 Bitrate",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = VrkaTokens.TextSecondary,
-                        modifier = Modifier.padding(bottom = 8.dp),
+                        "MP3 BITRATE",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = VrkaMonoFamily,
+                            letterSpacing = 1.1.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = VrkaTokens.TextTertiary,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
                     )
                     ChoiceRow {
                         listOf(320, 256, 192, 128).forEach { item ->
@@ -303,35 +311,49 @@ internal fun HomeScreen(
                         AudioFormat.WAV -> "Uncompressed source stream with large file sizes."
                         AudioFormat.FLAC -> "Lossless container preservation."
                     },
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                     color = VrkaTokens.TextTertiary,
-                    modifier = Modifier.padding(top = 10.dp),
+                    modifier = Modifier.padding(top = 10.dp, bottom = 6.dp),
                 )
             }
+            Spacer(Modifier.height(6.dp))
         }
 
-        // Advanced Options Collapsible Card
-        VrkaCard(
-            modifier = Modifier.padding(top = 12.dp),
-            contentPadding = 16.dp,
+        Spacer(Modifier.height(16.dp))
+
+        // Advanced Options Collapsible Section
+        VrkaSectionContainer(
+            shape = RoundedCornerShape(16.dp),
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { advanced = !advanced },
+                    .clickable { advanced = !advanced }
+                    .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    if (advanced) "Hide Advanced Options" else "Advanced Options",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = VrkaTokens.TextPrimary,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_settings),
+                        contentDescription = null,
+                        tint = VrkaTokens.TextSecondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (advanced) "Hide Advanced Options" else "Advanced Options",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = VrkaMonoFamily,
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                        color = VrkaTokens.TextPrimary,
+                    )
+                }
                 Text(
                     if (advanced) "▲" else "▼",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
                     color = VrkaTokens.AccentLight,
                 )
             }
@@ -349,7 +371,7 @@ internal fun HomeScreen(
                     animationSpec = androidx.compose.animation.core.tween(140),
                 ),
             ) {
-                Column(modifier = Modifier.padding(top = 12.dp)) {
+                Column(modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)) {
                     VrkaDivider()
                     Spacer(Modifier.height(8.dp))
                     if (mode == MediaMode.VIDEO) {
@@ -446,6 +468,8 @@ internal fun HomeScreen(
             }
         }
 
+        Spacer(Modifier.height(16.dp))
+
         ConfigurationSummary(
             mode = mode,
             quality = quality,
@@ -461,7 +485,7 @@ internal fun HomeScreen(
             sponsorBlock = sponsorBlock,
         )
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(20.dp))
 
         // Hero Action Button
         VrkaPrimaryButton(
@@ -518,7 +542,7 @@ internal fun HomeScreen(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.navigationBarsPadding().height(110.dp))
     }
 }
 
@@ -543,15 +567,25 @@ private fun ChoiceRow(content: @Composable () -> Unit) {
 @Composable
 private fun OptionToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f).padding(top = 12.dp),
+            modifier = Modifier.weight(1f).padding(end = 12.dp),
         )
-        Checkbox(checked = checked, onCheckedChange = onChange)
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                checkedColor = VrkaTokens.Accent,
+                checkmarkColor = Color.White,
+            ),
+        )
     }
 }
 

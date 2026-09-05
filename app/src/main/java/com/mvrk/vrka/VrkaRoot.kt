@@ -36,6 +36,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
+import com.mvrk.vrka.ui.backdrop.backdrops.layerBackdrop
+import com.mvrk.vrka.ui.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -50,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -96,140 +101,204 @@ fun VrkaRoot(
 
     val activeJob = jobs.firstOrNull { !it.state.isTerminal }
 
+    androidx.compose.runtime.SideEffect {
+        android.util.Log.d("VrkaNavPerf", "VrkaRoot destination committed: ${destination.name}")
+    }
+
     VrkaTheme(themeMode = settings.themeMode, amoled = settings.amoled) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
-            contentColor = MaterialTheme.colorScheme.onBackground,
-        ) {
-            Box(
+        val backgroundColor = MaterialTheme.colorScheme.background
+        val screenBackdrop = rememberLayerBackdrop(
+            onDraw = remember(backgroundColor) {
+                {
+                    drawRect(backgroundColor)
+                    drawContent()
+                }
+            },
+        )
+        LaunchedEffect(destination) {
+            screenBackdrop.forceInvalidate()
+        }
+        CompositionLocalProvider(LocalAppBackdrop provides screenBackdrop) {
+            Surface(
                 modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.onBackground,
             ) {
-            // Screen content with ultra-fast fade destination transitions (100ms)
-            AnimatedContent(
-                targetState = destination,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(110)) togetherWith
-                        fadeOut(animationSpec = tween(90))
-                },
-                label = "destination_transition",
-                modifier = Modifier.fillMaxSize(),
-            ) { targetDest ->
-                when (targetDest) {
-                    VrkaDestination.DOWNLOAD -> HomeScreen(
-                        settings = settings,
-                        runtime = runtime,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .padding(bottom = 96.dp),
-                        onEnqueue = { request ->
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    // Memoized job lists: Prevents allocating new ArrayLists on destination changes
+                    val activeJobs = remember(jobs) { jobs.filterNot { it.state.isTerminal } }
+                    val historyJobs = remember(jobs) { jobs.filter { it.state.isTerminal } }
+
+                    val handleEnqueue = remember(scope, snackbar) {
+                        { request: DownloadRequest ->
                             runCatching { enqueue(request) }.onFailure { error ->
                                 pendingRequest = null
                                 val message = error.message ?: "Could not add download"
                                 scope.launch { snackbar.showSnackbar(message) }
                             }
-                        },
-                    )
-                    VrkaDestination.QUEUE -> JobsScreen(
-                        jobs = jobs.filterNot { it.state.isTerminal },
-                        emptyMessage = "Your active queue is empty.",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .padding(bottom = 96.dp),
-                        onCancel = manager::cancel,
-                        onRetry = manager::retry,
-                        onOpen = manager::openOutput,
-                        onShare = manager::shareOutput,
-                        onDelete = manager::deleteJob,
-                        onShowFallback = manager::showFallbackView,
-                    )
-                    VrkaDestination.HISTORY -> JobsScreen(
-                        jobs = jobs.filter { it.state.isTerminal },
-                        emptyMessage = "Completed and failed downloads appear here.",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .padding(bottom = 96.dp),
-                        onCancel = manager::cancel,
-                        onRetry = manager::retry,
-                        onOpen = manager::openOutput,
-                        onShare = manager::shareOutput,
-                        onDelete = manager::deleteJob,
-                        onClear = manager::clearFinished,
-                    )
-                    VrkaDestination.SETTINGS -> SettingsScreen(
-                        settings = settings,
-                        runtime = runtime,
-                        repository = manager.settingsRepository,
-                        onUpdateRuntime = manager::updateRuntime,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .padding(bottom = 96.dp),
-                    )
-                }
-            }
-
-            // Snackbar Host
-            SnackbarHost(
-                hostState = snackbar,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 100.dp),
-            )
-
-            // Floating Bottom Section: Active Download Capsule + Floating Glass Pill Navigation Bar
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(bottom = 14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                // Floating Active Download Strip
-                AnimatedVisibility(
-                    visible = activeJob != null && destination != VrkaDestination.QUEUE,
-                    enter = slideInVertically(
-                        initialOffsetY = { it },
-                        animationSpec = tween(220, easing = FastOutSlowInEasing),
-                    ) + fadeIn(animationSpec = tween(180)),
-                    exit = slideOutVertically(
-                        targetOffsetY = { it },
-                        animationSpec = tween(180, easing = FastOutSlowInEasing),
-                    ) + fadeOut(animationSpec = tween(140)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 6.dp),
-                ) {
-                    if (activeJob != null) {
-                        ActiveDownloadStrip(
-                            job = activeJob,
-                            onClick = { destination = VrkaDestination.QUEUE },
-                        )
+                            Unit
+                        }
                     }
+
+                    val scrollBackdropConnection = remember(screenBackdrop) {
+                        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+                            override fun onPreScroll(
+                                available: androidx.compose.ui.geometry.Offset,
+                                source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
+                            ): androidx.compose.ui.geometry.Offset {
+                                screenBackdrop.invalidate()
+                                return androidx.compose.ui.geometry.Offset.Zero
+                            }
+
+                            override fun onPostScroll(
+                                consumed: androidx.compose.ui.geometry.Offset,
+                                available: androidx.compose.ui.geometry.Offset,
+                                source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
+                            ): androidx.compose.ui.geometry.Offset {
+                                screenBackdrop.invalidate()
+                                return androidx.compose.ui.geometry.Offset.Zero
+                            }
+
+                            override suspend fun onPreFling(
+                                available: androidx.compose.ui.unit.Velocity,
+                            ): androidx.compose.ui.unit.Velocity {
+                                screenBackdrop.forceInvalidate()
+                                return androidx.compose.ui.unit.Velocity.Zero
+                            }
+
+                            override suspend fun onPostFling(
+                                consumed: androidx.compose.ui.unit.Velocity,
+                                available: androidx.compose.ui.unit.Velocity,
+                            ): androidx.compose.ui.unit.Velocity {
+                                screenBackdrop.forceInvalidate()
+                                return androidx.compose.ui.unit.Velocity.Zero
+                            }
+                        }
+                    }
+
+                    // Clean single-destination composition: Zero background screen measurement or overdraw
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .nestedScroll(scrollBackdropConnection)
+                            .layerBackdrop(screenBackdrop),
+                    ) {
+                        when (destination) {
+                            VrkaDestination.DOWNLOAD -> {
+                                HomeScreen(
+                                    settings = settings,
+                                    runtime = runtime,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .statusBarsPadding(),
+                                    onEnqueue = handleEnqueue,
+                                )
+                            }
+                            VrkaDestination.QUEUE -> {
+                                JobsScreen(
+                                    jobs = activeJobs,
+                                    emptyMessage = "Your active queue is empty.",
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .statusBarsPadding(),
+                                    onCancel = manager::cancel,
+                                    onRetry = manager::retry,
+                                    onOpen = manager::openOutput,
+                                    onShare = manager::shareOutput,
+                                    onDelete = manager::deleteJob,
+                                    onShowFallback = manager::showFallbackView,
+                                )
+                            }
+                            VrkaDestination.HISTORY -> {
+                                JobsScreen(
+                                    jobs = historyJobs,
+                                    emptyMessage = "Completed and failed downloads appear here.",
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .statusBarsPadding(),
+                                    onCancel = manager::cancel,
+                                    onRetry = manager::retry,
+                                    onOpen = manager::openOutput,
+                                    onShare = manager::shareOutput,
+                                    onDelete = manager::deleteJob,
+                                    onClear = manager::clearFinished,
+                                )
+                            }
+                            VrkaDestination.SETTINGS -> {
+                                SettingsScreen(
+                                    settings = settings,
+                                    runtime = runtime,
+                                    repository = manager.settingsRepository,
+                                    onUpdateRuntime = manager::updateRuntime,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .statusBarsPadding(),
+                                )
+                            }
+                        }
+                    }
+
+                // Snackbar Host
+                SnackbarHost(
+                    hostState = snackbar,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 104.dp),
+                )
+
+                // Floating Bottom Section: Active Download Capsule + Floating Glass Pill Navigation Bar
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(bottom = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // Floating Active Download Strip
+                    AnimatedVisibility(
+                        visible = activeJob != null && destination != VrkaDestination.QUEUE,
+                        enter = slideInVertically(
+                            initialOffsetY = { it },
+                            animationSpec = tween(220, easing = FastOutSlowInEasing),
+                        ) + fadeIn(animationSpec = tween(180)),
+                        exit = slideOutVertically(
+                            targetOffsetY = { it },
+                            animationSpec = tween(180, easing = FastOutSlowInEasing),
+                        ) + fadeOut(animationSpec = tween(140)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 6.dp),
+                    ) {
+                        if (activeJob != null) {
+                            ActiveDownloadStrip(
+                                job = activeJob,
+                                onClick = { destination = VrkaDestination.QUEUE },
+                            )
+                        }
+                    }
+
+                    // Floating Glass Pill Navigation Bar
+                    VrkaFloatingNavBar(
+                        selectedDestination = destination,
+                        onDestinationSelected = { destination = it },
+                    )
                 }
 
-                // Floating Glass Pill Navigation Bar
-                VrkaFloatingNavBar(
-                    selectedDestination = destination,
-                    onDestinationSelected = { destination = it },
-                )
-            }
-
-            val activeFallback by manager.activeFallback.collectAsStateWithLifecycle()
-            if (activeFallback != null && activeFallback!!.isVisible) {
-                FallbackInteractionOverlay(
-                    fallbackState = activeFallback!!,
-                    onDismiss = manager::dismissFallbackView,
-                    onCancel = { manager.cancel(activeFallback!!.jobId) },
-                )
+                val activeFallback by manager.activeFallback.collectAsStateWithLifecycle()
+                if (activeFallback != null && activeFallback!!.isVisible) {
+                    FallbackInteractionOverlay(
+                        fallbackState = activeFallback!!,
+                        onDismiss = manager::dismissFallbackView,
+                        onCancel = { manager.cancel(activeFallback!!.jobId) },
+                    )
+                }
             }
         }
     }
-}
+    }
 
     LaunchedEffect(openQueueToken) {
         if (openQueueToken > 0L) destination = VrkaDestination.QUEUE

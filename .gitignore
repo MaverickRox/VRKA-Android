@@ -11,4 +11,10 @@ signing.properties
 .artifacts/
 .kotlin/
 .source-stage/
-
+/*.png
+/*.class
+*.hprof
+captures/
+dump.xml
+scratch/
+scratch_gv/

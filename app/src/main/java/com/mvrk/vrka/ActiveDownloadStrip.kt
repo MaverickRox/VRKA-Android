@@ -30,6 +30,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+
 @Composable
 internal fun ActiveDownloadStrip(
     job: DownloadJob,
@@ -41,14 +46,30 @@ internal fun ActiveDownloadStrip(
         label = "strip progress",
     )
 
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
-        color = VrkaTokens.SurfaceElevated,
-        border = BorderStroke(1.dp, VrkaTokens.BorderActive.copy(alpha = 0.5f)),
+    val colors = LocalVrkaColors.current
+    val stripGlassTint = when {
+        colors.isLight -> Color(0xEEFFFFFF)
+        colors.background == Color.Black -> Color(0xF2000000)
+        else -> Color(0xDC14141E)
+    }
+    val stripBorder = if (colors.isLight) Color(0x356F30D5) else VrkaTokens.BorderActive.copy(alpha = 0.5f)
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(12.dp, RoundedCornerShape(20.dp)),
+            .shadow(if (colors.isLight) 8.dp else 12.dp, RoundedCornerShape(20.dp))
+            .vrkaGlass(
+                shape = RoundedCornerShape(20.dp),
+                blurRadius = 16.dp,
+                tintColor = stripGlassTint,
+                highlightAlpha = if (colors.isLight) 0.40f else 0.28f,
+                borderColor = stripBorder,
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
     ) {
         Column(
             modifier = Modifier

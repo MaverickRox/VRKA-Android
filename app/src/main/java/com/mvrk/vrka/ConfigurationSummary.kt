@@ -2,7 +2,9 @@ package com.mvrk.vrka
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,11 +33,11 @@ internal fun ConfigurationSummary(
 ) {
     val primary = when (mode) {
         MediaMode.VIDEO ->
-            "Video  ·  ${quality.label}  ·  60 FPS ${if (prefer60Fps) "on" else "off"}"
+            "Video · ${quality.label} · 60 FPS ${if (prefer60Fps) "on" else "off"}"
         MediaMode.AUDIO -> when (audioFormat) {
-            AudioFormat.MP3 -> "MP3  ·  $bitrate kbps"
-            AudioFormat.WAV -> "WAV  ·  source-dependent"
-            AudioFormat.FLAC -> "FLAC  ·  source-dependent"
+            AudioFormat.MP3 -> "MP3 · $bitrate kbps"
+            AudioFormat.WAV -> "WAV · source-dependent"
+            AudioFormat.FLAC -> "FLAC · source-dependent"
         }
     }
     val extras = buildList {
@@ -49,40 +51,44 @@ internal fun ConfigurationSummary(
         if (trimStart.isNotBlank() || trimEnd.isNotBlank()) add("Trim enabled")
         if (sponsorBlock) add("SponsorBlock")
     }
-    VrkaInsetSurface(
-        cornerRadius = VrkaTokens.RadiusCard,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 16.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp),
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text(
-                "DOWNLOAD PLAN",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                ),
-                color = VrkaTokens.AccentLight,
-            )
-            Text(
-                primary,
-                style = MaterialTheme.typography.titleSmall,
-                color = VrkaTokens.TextPrimary,
+        Text(
+            "DOWNLOAD READOUT",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = VrkaMonoFamily,
                 fontWeight = FontWeight.Bold,
-                maxLines = 2,
+                letterSpacing = 1.2.sp,
+            ),
+            color = VrkaTokens.TextTertiary,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            primary,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontFamily = VrkaMonoFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+            ),
+            color = VrkaTokens.TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (extras.isNotEmpty()) {
+            Text(
+                extras.joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = VrkaMonoFamily,
+                    fontSize = 12.sp,
+                ),
+                color = VrkaTokens.TextSecondary,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 3.dp),
+                modifier = Modifier.padding(top = 2.dp),
             )
-            if (extras.isNotEmpty()) {
-                Text(
-                    extras.joinToString("  ·  "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = VrkaTokens.TextSecondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
-            }
         }
     }
 }
