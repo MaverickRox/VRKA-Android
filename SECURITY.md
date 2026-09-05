@@ -11,11 +11,11 @@
 
 ## Reporting a Vulnerability
 
-We take the security and privacy of VRKA Android seriously. If you discover a potential vulnerability, please report it responsibly using GitHub Private Vulnerability Reporting:
+We take the security and privacy of VRKA Android seriously. If you discover a potential security issue or vulnerability, please report it responsibly:
 
-1. Navigate to the **Security** tab of this repository: [https://github.com/MaverickRox/VRKA-Android/security/advisories/new](https://github.com/MaverickRox/VRKA-Android/security/advisories/new)
-2. Click **Report a vulnerability**.
-3. Provide a clear explanation of the issue, steps to reproduce, and any relevant logs (with personal data redacted).
+1. Navigate to the repository security page: [https://github.com/MaverickRox/VRKA-Android/security](https://github.com/MaverickRox/VRKA-Android/security)
+2. Submit a report or contact the repository maintainer with details to reproduce the issue.
+3. Provide a clear explanation, steps to reproduce, and any relevant logs (with sensitive data redacted).
 
 Please allow up to 48 hours for initial triage before public disclosure.
 
@@ -23,9 +23,9 @@ Please allow up to 48 hours for initial triage before public disclosure.
 
 ## Release Integrity & Cryptographic Signing Lineage
 
-All official release binaries of VRKA Android are signed using the canonical v1.0 certificate authority. The build system strictly requires external signing credentials for release artifacts and prevents silent fallbacks to debug keys.
+All official release binaries of VRKA Android are signed using the canonical v1.0 signing certificate. The build system strictly requires external signing credentials for release artifacts and prevents silent fallbacks to debug keys.
 
-### Certificate Fingerprints
+### Certificate Fingerprint
 
 Verify the signing certificate of downloaded release APKs using `apksigner`:
 
@@ -35,8 +35,6 @@ apksigner verify --verbose --print-certs VRKA-Android-v4.0.0.apk
 
 The signing certificate must match:
 - **SHA-256 Fingerprint**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`
-- **SHA-1 Fingerprint**: `bb4c93ebc5e2d1eb7d00f8bfad1357da8e5ec9c1`
-- **Subject / Issuer**: `EMAILADDRESS=maverickrox@example.com, CN=MaverickRox, OU=Development, O=VRKA, L=City, ST=State, C=US`
 
 ### Checksum Verification
 
@@ -57,6 +55,6 @@ Or in PowerShell:
 ## Security Architecture Highlights
 
 - **External Key Isolation**: Production keystores and credentials are never stored in source control. Builds fail fast if release credentials are not provided via environment or local properties.
-- **Content Filtering**: Embedded browser fallback sessions load with integrated uBlock Origin protection to block malicious ads, trackers, and unwanted redirect scripts.
+- **Content Filtering**: Embedded browser fallback sessions load with integrated uBlock Origin filtering to suppress unwanted advertising and tracking scripts.
 - **Isolated Storage**: Downloads are confined to user-designated public media storage or app-scoped sandboxes using Android Storage Access Framework (SAF).
-- **Session Privacy**: Browser fallback sessions run with isolated cookie stores and pass captured stream URLs directly to the local downloader without external telemetry.
+- **Local Stream Discovery**: Browser fallback sessions operate with isolated local cookies and hand off captured stream URLs directly to the local downloader without connecting to any external analytics service.
