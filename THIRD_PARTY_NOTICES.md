@@ -30,3 +30,10 @@ VRKA Android incorporates open-source libraries, engines, and extensions in full
 - **Project**: FFmpeg (`io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1`)
 - **License**: GNU Lesser General Public License v2.1+ (LGPL-2.1+)
 - **Source**: https://ffmpeg.org/
+
+### 6. Space Mono Font
+- **Project**: Space Mono
+- **Author**: Colophon Foundry
+- **License**: SIL Open Font License 1.1 (OFL-1.1)
+- **Source**: https://github.com/googlefonts/spacemono
+

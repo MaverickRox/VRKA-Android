@@ -1,6 +1,7 @@
-# Security review
+# Security Review
 
-This review covers the VRKA Android 1.0.0 release source.
+> [!NOTE]
+> **Historical Baseline Document**: This review documents the original security audit performed for the VRKA Android 1.0.0 release. It is preserved verbatim for audit trail integrity and historical baseline reference. It does not certify later releases. For current security policies and release signing verification, refer to [SECURITY.md](SECURITY.md) and [README.md](README.md).
 
 ## Input and files
 
