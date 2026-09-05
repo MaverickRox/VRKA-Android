@@ -29,7 +29,7 @@
 
 ---
 
-## Origin & Brand Authority
+## Origin
 
 > [!NOTE]
 > **Official Mobile Port**: VRKA Android is the dedicated native mobile port of the desktop media downloader [**VRKA**](https://github.com/MaverickRox/VRKA) by [MaverickRox](https://github.com/MaverickRox).
@@ -75,9 +75,9 @@ Designed for local, on-device processing with no application analytics service, 
       <sub>Component versions & theme toggle</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/about-dark.png" width="220" alt="About Card with VRKA Wolf Logo" /><br />
-      <b>Official Wolf Branding</b><br />
-      <sub>Subsystems, version & GitHub link</sub>
+      <img src="docs/screenshots/browser-subsystems-dark.png" width="220" alt="Browser Subsystems (GeckoView, uBlock Origin, Puemos)" /><br />
+      <b>Browser Subsystems</b><br />
+      <sub>Browser engine, ad filtering, and media detection</sub>
     </td>
     <td align="center" width="33%">
       <img src="docs/screenshots/download-light.png" width="220" alt="Download Screen (Light Mode)" /><br />
@@ -130,7 +130,7 @@ Designed for local, on-device processing with no application analytics service, 
 
 ### Architectural Highlights
 
-1. **UI Layer**: Built strictly with Jetpack Compose and custom tokens (`VrkaTokens`). Features refined Liquid Glass navigation with consistent spacing, critically damped spring transitions, and adaptive dark/light appearance.
+1. **UI Layer**: Built strictly with Jetpack Compose and custom tokens (`VrkaTokens`). Features refined Liquid Glass navigation with consistent spacing, floating capsule geometry, and adaptive dark/light appearance.
 2. **Download Pipeline**: Enqueues jobs through a sequential FIFO coordinator. Direct extraction invokes `yt-dlp` directly. If extraction fails, `FailureClassifier` assesses whether the failure is recoverable via browser fallback.
 3. **Browser Fallback**: When activated, Mozilla GeckoView boots on-demand in an isolated sandbox. `uBlock Origin` filters unwanted network requests while `Puemos` detects and ranks media streams, extracting necessary cookies and headers for handoff back to the downloader.
 4. **Component Management**: Handles background updates for external binaries with rate-limit protection, hash validation, and fallback protection.
@@ -240,7 +240,7 @@ To ensure Android system update continuity (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`
 ## Third-Party Notices & Attribution
 
 VRKA Android integrates the following open-source software:
-- **yt-dlp**: Unlicense / Public Domain ([yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp))
+- **yt-dlp**: The Unlicense ([yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp))
 - **Mozilla GeckoView**: Mozilla Public License 2.0 ([GeckoView](https://wiki.mozilla.org/Mobile/GeckoView))
 - **uBlock Origin**: GNU General Public License v3.0 ([gorhill/uBlock](https://github.com/gorhill/uBlock))
 - **Puemos HLS/DASH Detector**: Integrated WebExtension stream sniffing engine
