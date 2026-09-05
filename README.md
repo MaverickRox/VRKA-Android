@@ -103,13 +103,44 @@ $env:JAVA_HOME = "F:\Android\Android Studio\jbr"
 ```
 
 ### Assembling Release APK
+
+Production release builds require explicit signing credentials supplied externally. Private signing keys and credentials are never stored in Git.
+
+If release credentials are not configured, `./gradlew assembleRelease` fails immediately with an informative error rather than silently falling back to a debug key.
+
+To configure release signing locally, create an untracked `signing.properties` file (either in `~/.vrka-android-signing/signing.properties` or pointed to by the `VRKA_SIGNING_PROPERTIES` environment variable):
+
+```properties
+storeFile=/absolute/path/to/vrka-release.p12
+storePassword=YOUR_KEYSTORE_PASSWORD
+keyAlias=YOUR_KEY_ALIAS
+keyPassword=YOUR_KEY_PASSWORD
+```
+
+Then assemble the release APK:
 ```powershell
+$env:VRKA_SIGNING_PROPERTIES = "C:\Users\username\.vrka-android-signing\signing.properties"
 .\gradlew.bat assembleRelease --offline
 ```
+
 The compiled APK will be located at:
 ```
-app/build/outputs/apk/release/app-release.apk
+app/build/outputs/apk/release/VRKA-Android-v4.0.0.apk
 ```
+
+### Release Signing & Continuity (Maintainer Guide)
+
+1. **External Key Storage**: The official release signing key is stored outside Git and must never be committed.
+2. **Explicit Credentials Required**: Release builds strictly enforce valid credentials and will never silently fall back to debug signing.
+3. **Certificate Lineage**: All official releases maintain cryptographic signing continuity with the original v1.0 release:
+   - Signer SHA-256 Fingerprint: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`
+4. **Pre-Release Verification Protocol**:
+   - Build release APK: `.\gradlew.bat assembleRelease`
+   - Verify signatures: `apksigner verify --verbose --print-certs <apk-path>`
+   - Confirm certificate SHA-256 matches the v1.0 fingerprint
+   - Test in-place upgrade on physical hardware: `adb install -r <apk-path>`
+   - Generate SHA-256 checksum into `SHA256SUMS`
+5. **Security Rules**: Never commit keystore files, passwords, or echo credentials into logs or issue trackers.
 
 ---
 

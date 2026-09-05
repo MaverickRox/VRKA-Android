@@ -8,8 +8,18 @@ plugins {
 }
 
 val signingPropertiesFile = providers.environmentVariable("VRKA_SIGNING_PROPERTIES")
+    .map { file(it) }
+    .orElse(providers.provider {
+        val localFile = rootProject.file("signing.properties")
+        val userHome = System.getProperty("user.home")
+        val userHomeFile = if (userHome != null) file("$userHome/.vrka-android-signing/signing.properties") else null
+        when {
+            localFile.isFile -> localFile
+            userHomeFile?.isFile == true -> userHomeFile
+            else -> null
+        }
+    })
     .orNull
-    ?.let(::file)
 val signingProperties = signingPropertiesFile?.takeIf { it.isFile }?.inputStream()?.use { input ->
     Properties().apply { load(input) }
 }
@@ -74,7 +84,13 @@ extensions.configure<ApplicationExtension> {
     if (signingProperties != null) {
         signingConfigs {
             create("release") {
-                storeFile = file(signingProperties.getProperty("storeFile"))
+                val storeFilePath = signingProperties.getProperty("storeFile")
+                val storeCandidate = file(storeFilePath)
+                storeFile = if (storeCandidate.isAbsolute) {
+                    storeCandidate
+                } else {
+                    signingPropertiesFile?.parentFile?.resolve(storeFilePath) ?: storeCandidate
+                }
                 storePassword = signingProperties.getProperty("storePassword")
                 keyAlias = signingProperties.getProperty("keyAlias")
                 keyPassword = signingProperties.getProperty("keyPassword")
@@ -91,7 +107,7 @@ extensions.configure<ApplicationExtension> {
         }
         release {
             isMinifyEnabled = true
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -99,6 +115,32 @@ extensions.configure<ApplicationExtension> {
             )
         }
     }
+}
+
+abstract class VerifyReleaseSigningTask : DefaultTask() {
+    @get:Input
+    abstract val hasCredentials: Property<Boolean>
+
+    @TaskAction
+    fun verify() {
+        if (!hasCredentials.get()) {
+            throw GradleException(
+                "Release signing credentials are missing. Release builds require explicit signing credentials.\n" +
+                "Please configure VRKA_SIGNING_PROPERTIES environment variable pointing to your signing.properties file,\n" +
+                "or place signing.properties in ~/.vrka-android-signing/signing.properties or the project root.\n" +
+                "The file must specify storeFile, storePassword, keyAlias, and keyPassword."
+            )
+        }
+    }
+}
+
+val hasReleaseSigning = signingProperties != null
+val verifyReleaseSigning = tasks.register<VerifyReleaseSigningTask>("verifyReleaseSigning") {
+    hasCredentials.set(hasReleaseSigning)
+}
+
+tasks.matching { it.name in listOf("validateSigningRelease", "packageRelease") }.configureEach {
+    dependsOn(verifyReleaseSigning)
 }
 
 dependencies {
