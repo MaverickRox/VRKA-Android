@@ -43,7 +43,7 @@
 
 **VRKA Android** brings the robust media extraction and passive browser fallback architecture of VRKA Desktop to mobile devices. Built natively with **Jetpack Compose**, **Kotlin Coroutines**, and **Android 16** readiness, it delivers direct media processing powered by `yt-dlp` and `FFmpeg`, combined with an isolated Mozilla **GeckoView** browser fallback engine with integrated **uBlock Origin** content filtering and **Puemos** HLS/DASH packet inspection.
 
-All operations execute locally on-device with zero telemetry, zero user tracking, and an AMOLED-optimized Liquid Glass interface.
+Designed for local, on-device processing with no application analytics service, featuring an AMOLED-optimized Liquid Glass interface.
 
 ---
 
@@ -95,10 +95,10 @@ All operations execute locally on-device with zero telemetry, zero user tracking
 - **Direct Extraction & Download**: Powered by `yt-dlp` and `FFmpeg` (`arm64-v8a`), supporting video/audio streams, resolution selection (Best, 4K, 1440p, 1080p, 720p, etc.), 60 FPS preference, subtitle embedding, and audio extraction (MP3, WAV, FLAC).
 - **Background Orchestration**: Resilient foreground `DownloadService` with atomic `JobStore` persistence, notification progress tracking, pause/resume, and sequential queue execution to prevent thermal throttling.
 - **Passive Browser Fallback**: An embedded Mozilla `GeckoView` session automatically activates when direct extraction encounters anti-bot challenges or client-side player scripts.
-- **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension prevents intrusive ads, trackers, and popup scripts from interfering during fallback observation.
+- **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation.
 - **Passive Stream Discovery**: The integrated `Puemos` WebExtension intercepts network traffic to observe and rank media manifests (`.m3u8` playlists, `.mpd` DASH manifests, direct segments).
 - **In-App Component Updates**: Manage runtime components (`yt-dlp`) directly in Settings, with Stable and Nightly release channels, rate-limit safeguards, and binary validation.
-- **Liquid Glass Design System**: Concentric floating capsule navigation bar with hardware-accelerated `RenderEffect` backdrop blur across AMOLED Black and Light modes.
+- **Liquid Glass Design System**: Refined floating capsule navigation with hardware-accelerated `RenderEffect` backdrop blur across AMOLED Black and Light modes.
 
 ---
 
@@ -130,7 +130,7 @@ All operations execute locally on-device with zero telemetry, zero user tracking
 
 ### Architectural Highlights
 
-1. **UI Layer**: Built strictly with Jetpack Compose and custom tokens (`VrkaTokens`). Features a mathematically concentric floating navigation capsule ($H_{outer}=66\,\text{dp}$, $R_{outer}=33\,\text{dp}$, $C=4.5\,\text{dp}$, $H_{inner}=57\,\text{dp}$, $R_{inner}=28.5\,\text{dp}$) with critically damped spring physics.
+1. **UI Layer**: Built strictly with Jetpack Compose and custom tokens (`VrkaTokens`). Features refined Liquid Glass navigation with consistent spacing, critically damped spring transitions, and adaptive dark/light appearance.
 2. **Download Pipeline**: Enqueues jobs through a sequential FIFO coordinator. Direct extraction invokes `yt-dlp` directly. If extraction fails, `FailureClassifier` assesses whether the failure is recoverable via browser fallback.
 3. **Browser Fallback**: When activated, Mozilla GeckoView boots on-demand in an isolated sandbox. `uBlock Origin` filters unwanted network requests while `Puemos` detects and ranks media streams, extracting necessary cookies and headers for handoff back to the downloader.
 4. **Component Management**: Handles background updates for external binaries with rate-limit protection, hash validation, and fallback protection.
