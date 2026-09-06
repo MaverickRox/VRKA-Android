@@ -32,7 +32,7 @@
 ## Origin
 
 > [!NOTE]
-> **Official Mobile Port**: VRKA Android is the dedicated native mobile port of the desktop media downloader [**VRKA**](https://github.com/MaverickRox/VRKA) by [MaverickRox](https://github.com/MaverickRox).
+> **Mobile Port**: VRKA Android is the native Android port of the desktop media downloader [**VRKA**](https://github.com/MaverickRox/VRKA) by [MaverickRox](https://github.com/MaverickRox).
 >
 > - **Desktop Source Repository**: [https://github.com/MaverickRox/VRKA](https://github.com/MaverickRox/VRKA)
 > - **Android Port Repository**: [https://github.com/MaverickRox/VRKA-Android](https://github.com/MaverickRox/VRKA-Android)
@@ -43,7 +43,7 @@
 
 **VRKA Android** brings the robust media extraction and passive browser fallback architecture of VRKA Desktop to mobile devices. Built natively with **Jetpack Compose**, **Kotlin Coroutines**, and **Android 16** readiness, it delivers direct media processing powered by `yt-dlp` and `FFmpeg`, combined with an isolated Mozilla **GeckoView** browser fallback engine with integrated **uBlock Origin** content filtering and **Puemos** HLS/DASH packet inspection.
 
-Designed for local, on-device processing with no application analytics service, featuring an AMOLED-optimized Liquid Glass interface.
+Designed for local, on-device processing with zero telemetry or remote analytics services, featuring an AMOLED-optimized Liquid Glass interface.
 
 ---
 
@@ -77,7 +77,7 @@ Designed for local, on-device processing with no application analytics service, 
     <td align="center" width="33%">
       <img src="docs/screenshots/browser-subsystems-dark.png" width="220" alt="Browser Subsystems (GeckoView, uBlock Origin, Puemos)" /><br />
       <b>Browser Subsystems</b><br />
-      <sub>Browser engine, ad filtering, and media detection</sub>
+      <sub>Isolated browser runtime, ad filtering & stream detection status</sub>
     </td>
     <td align="center" width="33%">
       <img src="docs/screenshots/download-light.png" width="220" alt="Download Screen (Light Mode)" /><br />
@@ -92,7 +92,7 @@ Designed for local, on-device processing with no application analytics service, 
 
 ## Features
 
-- **Direct Extraction & Download**: Powered by `yt-dlp` and `FFmpeg` (`arm64-v8a`), supporting video/audio streams, resolution selection (Best, 4K, 1440p, 1080p, 720p, etc.), 60 FPS preference, subtitle embedding, and audio extraction (MP3, WAV, FLAC).
+- **Direct Extraction & Download**: Powered by `yt-dlp` and `FFmpeg` (`arm64-v8a`), supporting video/audio stream extraction where provided by the source, resolution selection (Best, 4K, 1440p, 1080p, 720p, etc.), 60 FPS preference, subtitle embedding, and audio extraction (MP3, WAV, FLAC).
 - **Background Orchestration**: Resilient foreground `DownloadService` with atomic `JobStore` persistence, notification progress tracking, pause/resume, and sequential queue execution to prevent thermal throttling.
 - **Passive Browser Fallback**: An embedded Mozilla `GeckoView` session automatically activates when direct extraction encounters anti-bot challenges or client-side player scripts.
 - **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation.
@@ -131,7 +131,7 @@ Designed for local, on-device processing with no application analytics service, 
 
 ### Architectural Highlights
 
-1. **UI Layer**: Built strictly with Jetpack Compose and custom tokens (`VrkaTokens`). Features refined Liquid Glass navigation with consistent spacing, floating capsule geometry, and adaptive dark/light appearance.
+1. **UI Layer**: Built strictly with Jetpack Compose and custom tokens (`VrkaTokens`). Features refined Liquid Glass floating navigation with adaptive backdrop blur across AMOLED Dark and Light modes.
 2. **Download Pipeline**: Enqueues jobs through a sequential FIFO coordinator. Direct extraction invokes `yt-dlp` directly. If extraction fails, `FailureClassifier` assesses whether the failure is recoverable via browser fallback.
 3. **Browser Fallback**: When activated, Mozilla GeckoView boots on-demand in an isolated sandbox. `uBlock Origin` filters unwanted network requests while `Puemos` detects and ranks media streams, extracting necessary cookies and headers for handoff back to the downloader.
 4. **Component Management**: Handles background updates for external binaries with rate-limit protection, hash validation, and fallback protection.
