@@ -13,8 +13,8 @@ signing.properties
 .source-stage/
 /*.png
 /*.class
-*.hprof
 captures/
 dump.xml
 scratch/
 scratch_gv/
+*.apk

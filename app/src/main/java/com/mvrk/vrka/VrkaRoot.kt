@@ -72,6 +72,7 @@ fun VrkaRoot(
     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
+    val diagnostics by manager.diagnostics.collectAsStateWithLifecycle()
     var destination by remember { mutableStateOf(VrkaDestination.DOWNLOAD) }
     var pendingRequest by remember { mutableStateOf<DownloadRequest?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -232,6 +233,8 @@ fun VrkaRoot(
                                     runtime = runtime,
                                     repository = manager.settingsRepository,
                                     onUpdateRuntime = manager::updateRuntime,
+                                    diagnostics = diagnostics,
+                                    onClearDiagnostics = manager::clearDiagnostics,
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),

@@ -30,10 +30,6 @@ internal object DownloadRequestFactory {
             addOption("--legacy-server-connect")
             if (!request.isPlaylist) addOption("--no-playlist")
             addJsRuntime(this)
-            val source = request.resolvedMediaUrl ?: request.url
-            if (com.mvrk.vrka.engine.isYtdlpNativeTarget(source)) {
-                addOption("--extractor-args", "youtube:player_client=android,web,web_creator")
-            }
             addSessionContext(request)
         }
 
@@ -80,15 +76,11 @@ internal object DownloadRequestFactory {
                 val format = if (options.resolvedMediaUrl != null) {
                     "bestvideo+bestaudio/best"
                 } else {
-                    "bestvideo+bestaudio/best[height>0]"
+                    buildVideoFormat(options.quality.height, options.prefer60Fps)
                 }
                 addOption("-f", format)
-                val resolutionSort = options.quality.height?.let { "res:$it" }
-                when {
-                    options.prefer60Fps && resolutionSort != null ->
-                        addOption("-S", "$resolutionSort,fps")
-                    options.prefer60Fps -> addOption("-S", "res,fps")
-                    resolutionSort != null -> addOption("-S", resolutionSort)
+                if (options.prefer60Fps) {
+                    addOption("-S", "res,fps")
                 }
                 addOption("--merge-output-format", "mp4")
             }
@@ -115,11 +107,8 @@ internal object DownloadRequestFactory {
             }
 
             addJsRuntime(this)
-            val isYouTube = com.mvrk.vrka.engine.isYtdlpNativeTarget(source)
             if (recoveryAttempt) {
                 addOption("--extractor-args", "generic:impersonate")
-            } else if (isYouTube) {
-                addOption("--extractor-args", "youtube:player_client=android,web,web_creator")
             }
             if (recoveryAttempt || options.resolvedMediaUrl != null) {
                 if (options.resolvedHeaders.keys.none { it.equals("User-Agent", true) }) {

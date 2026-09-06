@@ -62,6 +62,15 @@ class VrkaDownloadManager(
     private val _runtime = MutableStateFlow(RuntimeStatus())
     val runtime: StateFlow<RuntimeStatus> = _runtime.asStateFlow()
 
+    val diagnosticStore = DiagnosticStore(context, scope)
+    val diagnostics: StateFlow<List<DiagnosticEntry>> = diagnosticStore.entries
+
+    fun clearDiagnostics() {
+        scope.launch(Dispatchers.IO) {
+            diagnosticStore.clear()
+        }
+    }
+
     fun dismissFallbackView() {
         _activeFallback.value = _activeFallback.value?.copy(isVisible = false)
     }
@@ -206,6 +215,7 @@ class VrkaDownloadManager(
 
     private suspend fun process(jobId: String) {
         if (isCancelled(jobId)) return
+        var currentStage = "Direct Extraction"
         update(jobId, state = JobState.PREPARING, detail = "Starting runtime", persist = true)
         DownloadService.start(context)
         try {
@@ -251,6 +261,7 @@ class VrkaDownloadManager(
                 !isCancelled(jobId) &&
                 shouldRetryDirect(failure)
             ) {
+                currentStage = "Direct Recovery"
                 cleanupStaging(job.id)
                 update(
                     job.id,
@@ -289,6 +300,7 @@ class VrkaDownloadManager(
 
                 if (isRecoverable) {
                     // === AUTOMATIC BROWSER FALLBACK (Desktop Build 017 port) ===
+                    currentStage = "Browser Fallback"
                     update(
                         jobId,
                         state = JobState.BROWSER_FALLBACK,
@@ -335,6 +347,7 @@ class VrkaDownloadManager(
 
                                 // Resume download with the same task (native replay)
                                 job = current(jobId) ?: return
+                                currentStage = "Native Replay"
                                 Log.i("VRKA", "Resuming downloadOnce (native replay) for job $jobId with resolved media: ${bundle.mediaUrl}")
                                 failure = runCatching { downloadOnce(job) }.exceptionOrNull()
                                 if (failure != null) {
@@ -345,6 +358,7 @@ class VrkaDownloadManager(
                                         isBrowserDerivedCandidate = true,
                                     )
                                     if (eligible && !isCancelled(jobId)) {
+                                        currentStage = "Gecko Transport"
                                         Log.i("VRKA", "Native replay failed with $replayReason; activating GeckoWebExecutor fallback transport for job $jobId")
                                         failure = runCatching {
                                             downloadViaGeckoTransport(job, bundle, stagingDirectory(job.id))
@@ -379,12 +393,35 @@ class VrkaDownloadManager(
         } catch (error: Throwable) {
             Log.e("VRKA", "Download processing for $jobId failed: ${error.message}", error)
             if (!isCancelled(jobId)) {
+                val failureMsg = safeError(error)
                 update(
                     jobId,
                     state = JobState.FAILED,
                     detail = "Download failed",
-                    error = safeError(error),
+                    error = failureMsg,
                     persist = true,
+                )
+                val currentJob = current(jobId)
+                val stage = if (currentJob?.detail?.contains("Publishing", ignoreCase = true) == true) {
+                    "Publishing"
+                } else {
+                    currentStage
+                }
+                val categoryName = classifyDownloadError(error.message.orEmpty()).name
+                val tailOutput = (error as? DownloadExecutionException)?.outputTail?.takeLast(30)?.joinToString("\n")
+                    ?: error.message.orEmpty().take(2000)
+                diagnosticStore.record(
+                    DiagnosticEntry(
+                        jobId = jobId,
+                        title = currentJob?.title?.ifBlank { currentJob.request.url }.orEmpty(),
+                        stage = stage,
+                        failureCategory = categoryName,
+                        summary = failureMsg,
+                        detail = tailOutput,
+                        url = currentJob?.request?.url.orEmpty(),
+                        quality = currentJob?.request?.quality?.label.orEmpty(),
+                        acquisitionMethod = if (currentJob?.request?.resolvedMediaUrl != null) "Browser Fallback" else "Native yt-dlp",
+                    )
                 )
             }
             cleanupStaging(jobId)
