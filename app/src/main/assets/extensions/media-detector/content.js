@@ -1,7 +1,6 @@
 /**
  * VRKA Media Detector Content Script
  * DOM Media & Stream Observer with User Interaction & Dimension Analysis
- * Ported from Desktop VRKA Build 017 observation heuristics
  */
 
 (function() {

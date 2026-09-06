@@ -70,7 +70,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     private val activeCheckJobs = ConcurrentHashMap<String, Job>()
     private val activeUpdateJobs = ConcurrentHashMap<String, Job>()
 
-    // Local check-request gate and caching (Part X)
+    // Local check-request gate and caching
     private data class ReleaseCacheEntry(val tag: String, val timestamp: Long)
     private val releaseCache = ConcurrentHashMap<String, ReleaseCacheEntry>()
     private val lastCheckAllTimestamp = AtomicLong(0L)
@@ -188,7 +188,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                     val current = _components.value[id] ?: return@withTimeout
                     val isNewer = isNewerVersion(candidate = latest, installed = current.installedVersion)
 
-                    // Channel switch check for yt-dlp (Part IX):
+                    // Channel switch check for yt-dlp:
                     // Stable -> Nightly or Nightly -> Stable channel switches allow explicit replacement
                     val isChannelSwitch = if (id == ID_YTDLP) {
                         val isInstalledNightly = current.installedVersion.contains("nightly", ignoreCase = true)
@@ -288,7 +288,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 withTimeout(UPDATE_TIMEOUT_MS) {
                     when (id) {
                         ID_YTDLP -> {
-                            // 1. Ensure lazy initialization of yt-dlp singleton (Bug #1)
+                            // Ensure lazy initialization of yt-dlp singleton
                             val initSuccess = ensureYtdlpInitialized()
                             if (!initSuccess) {
                                 val failureReason = "yt-dlp runtime initialization failed"
@@ -322,7 +322,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                                 YoutubeDL.UpdateChannel.STABLE
                             }
 
-                            // Perform update
                             val updateResult = runCatching {
                                 YoutubeDL.getInstance().updateYoutubeDL(context, targetChannel)
                             }

@@ -69,16 +69,8 @@ sealed class GeckoTransportException(message: String, cause: Throwable? = null) 
 }
 
 /**
- * Focused transport component that executes network requests through [GeckoWebExecutor]
- * using an existing production [GeckoRuntime].
- *
- * Responsibilities:
- * - Accept a browser-derived URL/request specification.
- * - Construct [WebRequest] preserving allowed headers without leaking sensitive secrets.
- * - Execute through [GeckoWebExecutor] with bounded timeouts.
- * - Expose response metadata and stream [WebResponse.body].
- * - Support bounded streaming writes to destinations with cancellation and progress reporting.
- * - Propagate meaningful, typed exceptions without weakening TLS security.
+ * Executes network requests through [GeckoWebExecutor] using an existing production [GeckoRuntime].
+ * Supports bounded streaming writes to destinations with cancellation and progress reporting.
  */
 class GeckoWebExecutorTransport(
     private val runtime: GeckoRuntime,

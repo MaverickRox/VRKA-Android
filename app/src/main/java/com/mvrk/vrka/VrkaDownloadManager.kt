@@ -251,9 +251,7 @@ class VrkaDownloadManager(
             val execFailure = failure as? DownloadExecutionException
             val initialTransferStarted = execFailure?.transferStarted == true || job.progress > 0f
 
-            // Direct recovery retry (impersonation attempt)
-            // Ported from Desktop Build 017 lines 6050-6077:
-            // Only retry if category in (CLOUDFLARE, HTTP) and transfer has not started
+            // Direct recovery retry: only retry if category in (CLOUDFLARE, HTTP) and transfer has not started
             if (
                 failure != null &&
                 job.request.resolvedMediaUrl == null &&
@@ -279,7 +277,7 @@ class VrkaDownloadManager(
                 }
             }
 
-            // === FAILURE CLASSIFICATION & BROWSER-FALLBACK ELIGIBILITY (Desktop Build 017 port) ===
+            // Failure classification and browser-fallback eligibility
             if (failure != null && job.request.resolvedMediaUrl == null && !isCancelled(jobId)) {
                 val errorMessage = failure.message.orEmpty()
                 val latestExecFailure = failure as? DownloadExecutionException
@@ -299,7 +297,7 @@ class VrkaDownloadManager(
                 Log.i("VRKA", "Failure classified: category=$category, recoverable=$isRecoverable, transferStarted=$transferStarted, nativeTarget=${isYtdlpNativeTarget(job.request.url)}")
 
                 if (isRecoverable) {
-                    // === AUTOMATIC BROWSER FALLBACK (Desktop Build 017 port) ===
+                    // Automatic browser fallback
                     currentStage = "Browser Fallback"
                     update(
                         jobId,
@@ -322,7 +320,7 @@ class VrkaDownloadManager(
                         when (result) {
                             is FallbackResult.Success -> {
                                 val bundle = result.bundle
-                                // Auto-dismiss fallback view immediately; transfer proceeds in queue (matches Desktop episode.commit())
+                                // Dismiss fallback view; transfer proceeds in queue
                                 engine.dismiss()
                                 activeFallbackEngines.remove(jobId)
                                 _activeFallback.value = null

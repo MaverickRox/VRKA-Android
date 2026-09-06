@@ -1,9 +1,6 @@
 /**
  * Deterministic candidate ranking engine.
  *
- * Ported faithfully from Desktop VRKA Build 017 vrka_core/candidates.py
- * CandidateRanker (lines 582-682).
- *
  * Uses 17 weighted scoring criteria with confidence margins, stabilization
  * windows, and ambiguity detection. Pure domain logic with no Android
  * framework dependency.
@@ -15,16 +12,12 @@ package com.mvrk.vrka.engine
  *
  * The scoring formula per candidate C at timestamp t:
  *   Score(C) = Σ Wᵢ · 𝟙ᵢ
- *
- * Ported from Desktop CandidateRanker (candidates.py:582-682).
  */
 class EngineCandidateRanker(
     private val config: RankingConfig = RankingConfig(),
 ) {
     /**
      * Score one candidate at the given timestamp.
-     *
-     * Ported from Desktop CandidateRanker.score() (candidates.py:586-631).
      */
     fun score(candidate: MediaCandidate, now: Double): RankedCandidate {
         var totalScore = 0.0
@@ -139,7 +132,6 @@ class EngineCandidateRanker(
      * Evaluate all candidates and produce a ranking decision.
      *
      * Implements confidence margins, stabilization windows, and ambiguity detection.
-     * Ported from Desktop CandidateRanker.decide() (candidates.py:633-682).
      */
     fun decide(
         candidates: Iterable<MediaCandidate>,

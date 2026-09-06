@@ -1,17 +1,11 @@
 /**
  * Download failure classification and browser-fallback eligibility.
- *
- * Ported faithfully from Desktop VRKA Build 017 vrka_downloader.py
- * classify_download_error() (lines 3869-3920) and
- * direct_failure_is_browser_recoverable() (lines 3836-3868).
- *
  * Pure domain logic with no Android framework dependency.
  */
 package com.mvrk.vrka.engine
 
 /**
- * Failure categories from Desktop error taxonomy.
- * Ported from Desktop classify_download_error() (vrka_downloader.py:3869-3920).
+ * Failure categories for download error taxonomy.
  */
 enum class FailureCategory(val value: String) {
     /** Cloudflare / bot challenge / turnstile / captcha */
@@ -43,8 +37,7 @@ enum class FailureCategory(val value: String) {
 }
 
 /**
- * Categories that are NEVER eligible for browser fallback recovery.
- * Ported from Desktop TERMINAL_DIRECT_CATEGORIES.
+ * Categories that are never eligible for browser fallback recovery.
  */
 val TERMINAL_DIRECT_CATEGORIES = setOf(
     FailureCategory.DRM,
@@ -53,7 +46,6 @@ val TERMINAL_DIRECT_CATEGORIES = setOf(
 
 /**
  * Categories eligible for browser fallback recovery.
- * Ported from Desktop BROWSER_RECOVERABLE_DIRECT_CATEGORIES.
  */
 val BROWSER_RECOVERABLE_DIRECT_CATEGORIES = setOf(
     FailureCategory.CLOUDFLARE,
@@ -64,14 +56,12 @@ val BROWSER_RECOVERABLE_DIRECT_CATEGORIES = setOf(
 
 /**
  * Universal markers indicating yt-dlp resolved the media and began real transfer.
- * Ported from Desktop _TRANSFER_STARTED_MARKERS (vrka_downloader.py:3816).
  */
 val TRANSFER_STARTED_MARKERS = listOf("__vrka_title__", "[download] destination:")
 
 /**
  * Generic extractor fetch markers indicating yt-dlp visited and parsed an actual page
  * (e.g. JS-driven page with no extractable formats) rather than bare invalid input.
- * Ported from Desktop _GENERIC_EXTRACTOR_FETCH_MARKERS (vrka_downloader.py:3794-3798).
  */
 val GENERIC_EXTRACTOR_FETCH_MARKERS = listOf(
     "falling back on generic information extractor",
@@ -81,8 +71,6 @@ val GENERIC_EXTRACTOR_FETCH_MARKERS = listOf(
 
 /**
  * Classifies a download error message into a [FailureCategory].
- *
- * Ported faithfully from Desktop classify_download_error() (vrka_downloader.py:3869-3916).
  * Pattern matching order matters: more specific patterns are checked first.
  */
 fun classifyDownloadError(errorMessage: String): FailureCategory {
@@ -149,8 +137,7 @@ fun classifyDownloadError(errorMessage: String): FailureCategory {
 }
 
 /**
- * Format friendly user guidance for classified errors.
- * Ported from Desktop format_download_error() (vrka_downloader.py:3918-3940).
+ * Formats friendly user guidance for classified errors.
  */
 fun formatDownloadError(errorMessage: String): Pair<FailureCategory, String> {
     val category = classifyDownloadError(errorMessage)
@@ -179,7 +166,6 @@ fun formatDownloadError(errorMessage: String): Pair<FailureCategory, String> {
 
 /**
  * True when the direct run already resolved the media and began a real transfer before failing.
- * Ported from Desktop _transfer_failure_after_resolution() (vrka_downloader.py:3819-3833).
  */
 fun isTransferFailureAfterResolution(
     executionOutput: String = "",
@@ -201,7 +187,6 @@ fun isTransferFailureAfterResolution(
 
 /**
  * True when an Unsupported-URL failure still fetched a real page.
- * Ported from Desktop _unsupported_failure_fetched_a_page() (vrka_downloader.py:3801-3814).
  */
 fun unsupportedFailureFetchedPage(output: String): Boolean {
     val lower = output.lowercase()
@@ -210,8 +195,7 @@ fun unsupportedFailureFetchedPage(output: String): Boolean {
 
 /**
  * True when a URL targets a dedicated yt-dlp native extractor (e.g. YouTube).
- * Direct controls (YouTube/X/Instagram) stay on the direct path and recover
- * with their own retry rules (vrka_downloader.py:3829-3830).
+ * Direct controls stay on the direct path and recover with their own retry rules.
  */
 fun isYtdlpNativeTarget(url: String): Boolean {
     if (url.isBlank()) return false
@@ -226,9 +210,6 @@ fun isYtdlpNativeTarget(url: String): Boolean {
 
 /**
  * Determines if a classified failure is eligible for browser fallback recovery.
- *
- * Ported faithfully from Desktop direct_failure_is_browser_recoverable()
- * (vrka_downloader.py:3836-3868).
  */
 fun isFailureBrowserRecoverable(
     category: FailureCategory,
@@ -250,8 +231,8 @@ fun isFailureBrowserRecoverable(
 
     // YouTube / yt-dlp-native targets:
     // Direct controls stay on the direct path and recover with their own retry rules.
-    // Per Phase 7 / Desktop Build 017: when direct yt-dlp cannot safely acquire media due to
-    // authentication/bot-check walls (COOKIES) or HTTP access restrictions, fallback is allowed.
+    // When direct yt-dlp cannot safely acquire media due to authentication/bot-check walls
+    // (COOKIES) or HTTP access restrictions, fallback is allowed.
     if (isYtdlpNativeTarget(targetUrl)) {
         return category in listOf(FailureCategory.COOKIES, FailureCategory.CLOUDFLARE, FailureCategory.HTTP)
     }
@@ -300,8 +281,7 @@ fun classifyAndCheckRecoverable(
 }
 
 /**
- * Granular diagnostic failure codes for internal tracing and logging.
- * Matches section 12 of the ADS STE-100 specification.
+ * Diagnostic failure codes for internal tracing and logging.
  */
 enum class DiagnosticFailure(val code: String) {
     DIRECT_EXTRACTION_FAILED("DIRECT_EXTRACTION_FAILED"),
@@ -379,10 +359,8 @@ fun classifyNativeReplayFailure(errorMessage: String): NativeReplayFailureReason
 }
 
 /**
- * Fallback predicate to determine whether a native replay failure is eligible
- * for GeckoWebExecutor browser-network transport.
- *
- * Enforces ADS STE-100 constraint:
+ * Determines whether a native replay failure is eligible for GeckoWebExecutor
+ * browser-network transport:
  * 1. Must be a browser-derived candidate.
  * 2. Must be a recoverable network/TLS/auth failure (not DRM, not client error 404).
  */

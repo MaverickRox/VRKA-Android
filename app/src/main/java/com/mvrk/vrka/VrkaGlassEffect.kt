@@ -28,10 +28,10 @@ import com.mvrk.vrka.ui.backdrop.isRenderEffectSupported
 val LocalAppBackdrop = compositionLocalOf<Backdrop?> { null }
 
 /**
- * Applies authentic backdrop-sampled liquid glass with blur, specular rim highlight,
+ * Applies backdrop-sampled blur, specular rim highlight,
  * and translucent surface tinting to the target component.
  *
- * Gracefully falls back to translucent tinted surface on devices below Android 12 (API 31)
+ * Falls back to translucent tinted surface on devices below Android 12 (API 31)
  * or when no [LocalAppBackdrop] is present.
  */
 @Composable

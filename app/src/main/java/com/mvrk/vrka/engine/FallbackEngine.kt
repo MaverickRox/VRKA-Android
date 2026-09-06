@@ -1,16 +1,8 @@
 /**
  * Automatic browser fallback orchestrator.
  *
- * Ported faithfully from Desktop VRKA Build 017 vrka_core/browser_fallback.py
- * ProtectedBrowserFallback (lines 268-614) and vrka_core/watchdog.py
- * AutomaticFallbackExecutor (lines 305-351).
- *
- * Lifecycle: created per fallback-eligible task, runs the bounded observation
- * loop, performs deterministic candidate ranking, and produces a HandoffBundle
- * for the downloader to resume the SAME logical task.
- *
- * This is an INTERNAL engine with NO user-facing UI. GeckoView is invoked
- * programmatically and never exposed as a browser destination.
+ * Runs the bounded observation loop, performs deterministic candidate ranking,
+ * and produces a [HandoffBundle] for the downloader to resume the same logical task.
  */
 package com.mvrk.vrka.engine
 
@@ -31,7 +23,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Configuration for the fallback observation loop.
- * Ported from Desktop ProtectedBrowserFallback constructor defaults (browser_fallback.py:278-290, vrka_downloader.py:5640-5655).
  */
 data class FallbackConfig(
     /** Maximum total seconds to wait for user interaction and media discovery (120s design maximum). */
@@ -220,8 +211,6 @@ class FallbackEngine(
             }
 
             // Stabilization window finished — take the best available candidate
-            // Desktop Build 017 lines 553–555 parity:
-            // if not chosen_id and decision.ranked: chosen_id = decision.ranked[0].candidate_id
             if (decision.ranked.isNotEmpty()) {
                 val bestId = decision.ranked[0].candidateId
                 Log.i(TAG, "Stabilization window completed (${"%.1f".format(stabilizationElapsed)}s); selecting top ranked candidate $bestId (score ${decision.ranked[0].score})")
@@ -243,8 +232,7 @@ class FallbackEngine(
      * Attempt handoff for ranked candidates with validation probe.
      *
      * Implements the multi-candidate retry loop (up to maxHandoffAttempts).
-     * Ported from Desktop _validate_media_candidate (browser_fallback.py:478-530):
-     * each candidate is probed with yt-dlp --simulate before committing.
+     * Each candidate is probed with yt-dlp --simulate before committing.
      * Failed/expired candidates fall through to the next ranked candidate.
      */
     private suspend fun attemptHandoff(
@@ -327,7 +315,6 @@ class FallbackEngine(
 
     /**
      * Validate a candidate via yt-dlp --simulate probe.
-     * Ported from Desktop _validate_media_candidate (browser_fallback.py:478-530).
      *
      * Returns true if the candidate URL is reachable and extractable,
      * false if the probe fails (expired token, geo-block, DRM, etc.).
@@ -370,7 +357,6 @@ class FallbackEngine(
 
     /**
      * Construct a HandoffBundle from a selected candidate.
-     * Ported from Desktop HandoffBundle creation (browser_fallback.py:584-605).
      */
     private fun buildHandoffBundle(candidate: MediaCandidate): HandoffBundle {
         val candidateUa = candidate.requiredHeaders.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
@@ -398,8 +384,6 @@ class FallbackEngine(
 
     /**
      * Build the set of headers required for transfer.
-     * Ported from Desktop header sanitization (browser_fallback.py:588-591).
-     * Desktop filters to: accept, accept-language, origin, referer, user-agent
      */
     private fun buildTransferHeaders(
         candidate: MediaCandidate,
@@ -527,8 +511,6 @@ class FallbackEngine(
                 requiredHeaders = bridgeCandidate.headers,
             )
             if (candidate != null) {
-                // Desktop Build 017 browser_fallback.py:581 parity:
-                // candidate.request_count = max(candidate.request_count, int(item.get("request_count") or 2))
                 candidate.requestCount = maxOf(candidate.requestCount, 2)
             }
         }
