@@ -1,7 +1,7 @@
 # Known Limitations
 
 > [!NOTE]
-> **Historical Baseline Document**: This document records the known limitations identified during the original VRKA Android 1.0.0 release audit. It is preserved for historical traceability and baseline reference. For current v4.0.0 architecture and security policies, see [README.md](README.md) and [SECURITY.md](SECURITY.md).
+> **Historical Baseline Document**: This document records the known limitations identified during the original VRKA Android 1.0.0 release audit. It is preserved for historical traceability and baseline reference. For current v4.0.1 architecture and security policies, see [README.md](README.md) and [SECURITY.md](SECURITY.md).
 
 ## Platform
 

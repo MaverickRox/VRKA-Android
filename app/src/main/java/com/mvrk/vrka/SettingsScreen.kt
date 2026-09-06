@@ -76,7 +76,6 @@ internal fun SettingsScreen(
             color = VrkaTokens.TextPrimary,
         )
 
-        // 1. STORAGE
         SettingsHeading("Storage")
         VrkaSectionContainer {
             VrkaSettingRow(
@@ -106,7 +105,6 @@ internal fun SettingsScreen(
             }
         }
 
-        // 2. APPEARANCE
         SettingsHeading("Appearance")
         VrkaSectionContainer {
             Text(
@@ -143,7 +141,6 @@ internal fun SettingsScreen(
             }
         }
 
-        // 3. COMPONENTS & UPDATES
         SettingsHeading("Components & Updates")
         Text(
             "Independently managed runtime and filter components.",
@@ -279,7 +276,6 @@ internal fun SettingsScreen(
             }
         }
 
-        // 4. BROWSER SUBSYSTEMS
         SettingsHeading("Browser Subsystems")
         VrkaSectionContainer {
             VrkaSettingRow(
@@ -308,7 +304,6 @@ internal fun SettingsScreen(
             }
         }
 
-        // 5. CONCURRENCY
         SettingsHeading("Concurrency")
         VrkaSectionContainer {
             Text(
@@ -322,7 +317,6 @@ internal fun SettingsScreen(
             )
         }
 
-        // 6. DIAGNOSTICS
         SettingsHeading("Diagnostics")
         val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
         var expandedDiagnosticId by remember { mutableStateOf<String?>(null) }
@@ -504,7 +498,6 @@ internal fun SettingsScreen(
             }
         }
 
-        // 7. ABOUT
         SettingsHeading("About")
         val uriHandler = LocalUriHandler.current
         VrkaSectionContainer(

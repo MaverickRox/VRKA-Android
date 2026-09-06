@@ -113,7 +113,6 @@ val LightVrkaColors = VrkaColors(
 
 val LocalVrkaColors = staticCompositionLocalOf { AmoledVrkaColors }
 
-// Refined Glass & Surface Tokens
 val VrkaGlassSurface = Color(0xEB000000)
 val VrkaGlassBorder = Color(0x28FFFFFF)
 val VrkaSurfaceCard = Color(0xFF000000)
@@ -167,15 +166,13 @@ private val LightColors = lightColorScheme(
     error = Color(0xFFDC2626),
 )
 
-// Monospace font family for technical telemetry, branding, and VRKA identity
 val SpaceMono = FontFamily(
     Font(R.font.space_mono_regular, FontWeight.Normal),
     Font(R.font.space_mono_bold, FontWeight.Bold),
 )
 val VrkaMonoFamily = SpaceMono
-val VrkaSansFamily = SpaceMono // Strictly SpaceMono globally across VRKA
+val VrkaSansFamily = SpaceMono
 
-// 100% Monospace Typography: SpaceMono is the primary application typeface across all UI text.
 private val defaultTypography = Typography()
 val VrkaTypography = Typography(
     displayLarge = defaultTypography.displayLarge.copy(fontFamily = VrkaMonoFamily),

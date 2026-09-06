@@ -72,10 +72,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// =========================================================================
-// VRKA DESIGN TOKENS
-// =========================================================================
-
 object VrkaTokens {
     // Surfaces
     val BackgroundAmoled: Color @Composable @ReadOnlyComposable get() = LocalVrkaColors.current.background
@@ -111,13 +107,8 @@ object VrkaTokens {
     val RadiusCard = 18.dp
     val RadiusPill = 28.dp
 
-    // Spring physics (tuned for 120Hz display: fast settle, zero overshoot wobble)
     val SettleSpring: AnimationSpec<Float> = spring(dampingRatio = 0.8f, stiffness = 380f)
 }
-
-// =========================================================================
-// REUSABLE CARD & INSET SURFACES
-// =========================================================================
 
 @Composable
 fun VrkaCard(
@@ -158,10 +149,6 @@ fun VrkaInsetSurface(
     }
 }
 
-// =========================================================================
-// SECTION CONTAINER
-// =========================================================================
-
 @Composable
 fun VrkaSection(
     title: String,
@@ -190,10 +177,6 @@ fun VrkaSection(
         VrkaCard(content = content)
     }
 }
-
-// =========================================================================
-// SLIDING SEGMENTED CONTROL
-// =========================================================================
 
 @Composable
 fun <T> VrkaSegmentedControl(
@@ -294,10 +277,6 @@ fun <T> VrkaSegmentedControl(
     }
 }
 
-// =========================================================================
-// STATUS BADGE
-// =========================================================================
-
 @Composable
 fun VrkaStatusBadge(
     label: String,
@@ -325,10 +304,6 @@ fun VrkaStatusBadge(
         )
     }
 }
-
-// =========================================================================
-// SETTINGS ROW COMPONENT (Unified table-style row with clean dividers)
-// =========================================================================
 
 @Composable
 fun VrkaSettingRow(
@@ -376,10 +351,6 @@ fun VrkaDivider() {
         thickness = 1.dp,
     )
 }
-
-// =========================================================================
-// VRKA CHIP & BUTTON PRIMITIVES
-// =========================================================================
 
 @Composable
 fun VrkaChip(
@@ -534,10 +505,6 @@ fun VrkaTextButton(
     }
 }
 
-// =========================================================================
-// FLOATING NAVIGATION PILL
-// =========================================================================
-
 enum class VrkaDestination(val label: String, @param:androidx.annotation.DrawableRes val iconRes: Int) {
     DOWNLOAD("Download", R.drawable.ic_download),
     QUEUE("Queue", R.drawable.ic_queue),
@@ -631,21 +598,14 @@ fun VrkaSectionContainer(
     }
 }
 
-// =========================================================================
-// CLOSED-FORM NAVBAR GEOMETRY MODEL (ADS STE-100)
-// =========================================================================
-
-// Closed-Form Concentric Geometry Model (ADS STE-100)
 val NAV_BAR_HEIGHT = 66.dp
-val NAV_BAR_CORNER_RADIUS = 33.dp // NAV_BAR_HEIGHT / 2 (exact semicircular ends)
-val NAV_BAR_HORIZONTAL_MARGIN = 8.dp // Symmetrical outer margin (leftScreenMargin == rightScreenMargin)
+val NAV_BAR_CORNER_RADIUS = 33.dp
+val NAV_BAR_HORIZONTAL_MARGIN = 8.dp
 
-// Single Source of Concentric Geometry (ADS STE-100)
 val NAV_CONCENTRIC_INSET = 4.5.dp
-val NAV_INDICATOR_HEIGHT = NAV_BAR_HEIGHT - (NAV_CONCENTRIC_INSET * 2) // 57.dp
-val NAV_INDICATOR_CORNER_RADIUS = NAV_INDICATOR_HEIGHT / 2 // 28.5.dp (exact concentric radius: R_outer - C = 33dp - 4.5dp = 28.5dp)
+val NAV_INDICATOR_HEIGHT = NAV_BAR_HEIGHT - (NAV_CONCENTRIC_INSET * 2)
+val NAV_INDICATOR_CORNER_RADIUS = NAV_INDICATOR_HEIGHT / 2
 
-// Centralized Navigation Color Tokens (ADS STE-100)
 val NAV_ACTIVE_COLOR = VRKA_PURPLE
 val NAV_UNSELECTED_DARK = Color(0xFFA5A1B2)
 val NAV_UNSELECTED_LIGHT = Color(0xFF6B6678)
@@ -663,7 +623,6 @@ fun VrkaFloatingNavBar(
     val destinations = remember { VrkaDestination.entries }
     val selectedIndex = destinations.indexOf(selectedDestination).coerceAtLeast(0)
 
-    // Precomputed text measurement using Compose TextMeasurer (ADS STE-100)
     val textMeasurer = rememberTextMeasurer()
     val navLabelStyle = MaterialTheme.typography.labelSmall.copy(
         fontFamily = VrkaMonoFamily,
@@ -690,53 +649,50 @@ fun VrkaFloatingNavBar(
         )
     }
 
-    // Subtle neutral specular glass rim (crisp white highlight in dark mode, refined dark optical rim with depth cue in light mode)
     val capsuleBorderBrush = remember(colors.isLight) {
         if (colors.isLight) {
             Brush.verticalGradient(
                 listOf(
-                    Color(0x42000000), // Refined upper optical rim
-                    Color(0x1C000000), // Subtle mid edge
-                    Color(0x32000000), // Restrained lower-edge depth cue
+                    Color(0x42000000),
+                    Color(0x1C000000),
+                    Color(0x32000000),
                 ),
             )
         } else {
             Brush.verticalGradient(
                 listOf(
-                    Color(0x45FFFFFF), // Crisp top specular highlight rim
-                    Color(0x12FFFFFF), // Neutral transparency in mid section
-                    Color(0x24FFFFFF), // Faint bottom edge reflection
+                    Color(0x45FFFFFF),
+                    Color(0x12FFFFFF),
+                    Color(0x24FFFFFF),
                 ),
             )
         }
     }
 
-    // Inner capsule subtle specular highlight rim (transparent glass edge, zero purple fill)
     val puckBorderBrush = remember(colors.isLight) {
         if (colors.isLight) {
             Brush.verticalGradient(
                 listOf(
-                    Color(0x35000000), // Subtle refined top specular rim in light mode
-                    Color(0x12000000), // Soft neutral edge
+                    Color(0x35000000),
+                    Color(0x12000000),
                     Color.Transparent,
                 ),
             )
         } else {
             Brush.verticalGradient(
                 listOf(
-                    Color.White.copy(alpha = 0.35f), // Crisp white top specular rim
-                    Color(0x15FFFFFF), // Subtle neutral transparency
+                    Color.White.copy(alpha = 0.35f),
+                    Color(0x15FFFFFF),
                     Color.Transparent,
                 ),
             )
         }
     }
 
-    // Glow Tier 1: Very mild symmetrical purple optical halo following the exact outer capsule geometry
     val ambientHaloPaint = remember(colors.isLight, density) {
-        val haloAlpha = if (colors.isLight) 0x22 else 0x28 // ~13% alpha in light mode, ~16% in dark mode
+        val haloAlpha = if (colors.isLight) 0x22 else 0x28
         android.graphics.Paint().apply {
-            color = android.graphics.Color.argb(haloAlpha, 0x6F, 0x30, 0xD5) // Very mild canonical VRKA_PURPLE
+            color = android.graphics.Color.argb(haloAlpha, 0x6F, 0x30, 0xD5)
             isAntiAlias = true
             style = android.graphics.Paint.Style.STROKE
             strokeWidth = with(density) { 2.dp.toPx() }
@@ -760,13 +716,8 @@ fun VrkaFloatingNavBar(
         val indicatorWidthDp = with(density) { indicatorWidthPx.toDp() }
         val barCornerRadiusPx = with(density) { NAV_BAR_CORNER_RADIUS.toPx() }
 
-        // Exact closed-form concentric offset for destination i:
-        // offset(i) = i * slotWidth + concentricInset
-        // leftGap = concentricInset, rightGap = concentricInset across all slots
         val targetOffsetPx = (selectedIndex * slotWidthPx) + concentricInsetPx
 
-        // Single persistent indicator Animatable: cancels in-flight animation immediately on new tap
-        // Critically damped spring: zero backlog, settles in ~110ms
         val indicatorOffset = remember { Animatable(targetOffsetPx) }
 
         LaunchedEffect(targetOffsetPx) {
@@ -779,7 +730,6 @@ fun VrkaFloatingNavBar(
             )
         }
 
-        // 1. Static symmetrical ambient halo along outer capsule perimeter (hardware cached, zero redraw on tab switch)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -798,7 +748,6 @@ fun VrkaFloatingNavBar(
                 },
         )
 
-        // 2. Universal Frosted Glass Capsule (Theme Parity: Hardware Backdrop Blur in both Dark and Light Modes)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -832,7 +781,6 @@ fun VrkaFloatingNavBar(
                     shape = RoundedCornerShape(NAV_BAR_CORNER_RADIUS),
                 ),
         ) {
-            // 3. Sliding transparent active indicator (translation on graphicsLayer: 0 remeasurement)
             if (indicatorWidthPx > 0f) {
                 Box(
                     modifier = Modifier

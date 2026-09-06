@@ -243,7 +243,6 @@ fun VrkaRoot(
                         }
                     }
 
-                // Snackbar Host
                 SnackbarHost(
                     hostState = snackbar,
                     modifier = Modifier
@@ -251,7 +250,6 @@ fun VrkaRoot(
                         .padding(bottom = 104.dp),
                 )
 
-                // Floating Bottom Section: Active Download Capsule + Floating Glass Pill Navigation Bar
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -260,7 +258,6 @@ fun VrkaRoot(
                         .padding(bottom = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // Floating Active Download Strip
                     AnimatedVisibility(
                         visible = activeJob != null && destination != VrkaDestination.QUEUE,
                         enter = slideInVertically(
@@ -283,7 +280,6 @@ fun VrkaRoot(
                         }
                     }
 
-                    // Floating Glass Pill Navigation Bar
                     VrkaFloatingNavBar(
                         selectedDestination = destination,
                         onDestinationSelected = { destination = it },
@@ -322,7 +318,6 @@ private fun FallbackInteractionOverlay(
         color = MaterialTheme.colorScheme.background,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Header Bar
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 4.dp,
@@ -404,7 +399,6 @@ private fun FallbackInteractionOverlay(
                 }
             }
 
-            // Web Content (GeckoView)
             Box(
                 modifier = Modifier
                     .weight(1f)

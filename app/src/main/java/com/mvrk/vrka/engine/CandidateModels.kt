@@ -1,16 +1,11 @@
 /**
  * Core candidate domain models for the VRKA download engine.
- *
- * Ported faithfully from Desktop VRKA Build 017 vrka_core/candidates.py.
- * This module has no Android framework, UI, or filesystem dependency.
- * The candidate model, lifecycle, and ranking config remain deterministic
- * and easy to exercise with hostile synthetic fixtures.
+ * Pure domain logic with no Android framework, UI, or filesystem dependency.
  */
 package com.mvrk.vrka.engine
 
 /**
  * Classification of the media delivery mechanism.
- * Ported from Desktop CandidateKind (candidates.py:21-25).
  */
 enum class CandidateKind(val value: String) {
     DIRECT("direct"),
@@ -26,7 +21,6 @@ enum class CandidateKind(val value: String) {
 
 /**
  * Per-candidate lifecycle states.
- * Ported from Desktop CandidateLifecycle (candidates.py:28-39).
  */
 enum class CandidateLifecycle(val value: String) {
     OBSERVED("observed"),
@@ -44,7 +38,6 @@ enum class CandidateLifecycle(val value: String) {
 
 /**
  * Evidence trail entry for candidate observation.
- * Ported from Desktop CandidateEvidence (candidates.py:310-313).
  */
 data class CandidateEvidence(
     val timestamp: Double,
@@ -54,10 +47,7 @@ data class CandidateEvidence(
 
 /**
  * A single media candidate observed during browser fallback.
- *
- * Ported faithfully from Desktop MediaCandidate (candidates.py:317-372).
- * Contains 30+ fields tracking the full observation, playback, and
- * lifecycle state of a candidate stream.
+ * Tracks observation, playback, and lifecycle state of a candidate stream.
  */
 data class MediaCandidate(
     val candidateId: String,
@@ -98,7 +88,6 @@ data class MediaCandidate(
 ) {
     /**
      * Return metadata safe for presentation, diagnostics, and History.
-     * Ported from Desktop MediaCandidate.safe_dict() (candidates.py:354-372).
      */
     fun safeDict(): Map<String, Any?> {
         val host = try {
@@ -125,9 +114,6 @@ data class MediaCandidate(
 
 /**
  * Weighted scoring configuration for the CandidateRanker.
- *
- * Ported faithfully from Desktop RankingConfig (candidates.py:536-563).
- * Every weight and threshold matches the Desktop values exactly.
  */
 data class RankingConfig(
     val userSelected: Double = 1000.0,
@@ -160,7 +146,6 @@ data class RankingConfig(
 
 /**
  * One scored candidate in a ranking pass.
- * Ported from Desktop RankedCandidate (candidates.py:566-570).
  */
 data class RankedCandidate(
     val candidateId: String,
@@ -170,7 +155,6 @@ data class RankedCandidate(
 
 /**
  * The output of a CandidateRanker.decide() evaluation.
- * Ported from Desktop RankingDecision (candidates.py:573-579).
  */
 data class RankingDecision(
     val selectedCandidateId: String?,
@@ -181,10 +165,7 @@ data class RankingDecision(
 )
 
 /**
- * Immutable, ephemeral downloader context transferred from the browser session.
- *
- * Ported from Desktop HandoffBundle (candidates.py:686-723).
- * Secret fields (media_url, cookies, headers) stay in the backend process.
+ * Immutable downloader context transferred from the browser session.
  */
 data class HandoffBundle(
     val taskId: String,

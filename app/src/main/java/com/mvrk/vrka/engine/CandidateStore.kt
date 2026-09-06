@@ -1,11 +1,9 @@
 /**
  * Bounded semantic candidate store with player source lineage.
  *
- * Ported faithfully from Desktop VRKA Build 017 vrka_core/candidates.py CandidateStore (lines 375-534).
- * This is the core of the candidate management pipeline: it ingests raw network
- * observations, deduplicates by canonical URL identity, collapses HLS/DASH segments
- * into their parent manifests, tracks player source lineage, and manages per-candidate
- * lifecycle states.
+ * Ingests raw network observations, deduplicates by canonical URL identity,
+ * collapses HLS/DASH segments into parent manifests, tracks player source lineage,
+ * and manages per-candidate lifecycle states.
  *
  * Pure domain logic with no Android framework or UI dependency.
  */
@@ -16,10 +14,8 @@ import java.security.MessageDigest
 /**
  * Bounded semantic candidate store with player source lineage.
  *
- * Ported from Desktop CandidateStore (candidates.py:375-534).
- *
  * @param maxCandidates Maximum number of candidates before pruning (4..256).
- * @param maxEvidencePerCandidate Maximum evidence entries per candidate.
+ * @param maxEvidence Maximum evidence entries per candidate.
  * @param maxAgeSeconds Maximum age before a candidate is pruned.
  */
 class CandidateStore(
@@ -40,13 +36,11 @@ class CandidateStore(
 
     /**
      * True when the store contains any candidate that followed a user interaction.
-     * Ported from Desktop _store_has_user_started_candidate (browser_fallback.py:500-506).
      */
     fun hasUserStartedCandidate(): Boolean = items.values.any { it.userStarted }
 
     /**
      * True when every stored candidate carries the generic live-widget URL signature.
-     * Ported from Desktop _store_only_widget_shaped (browser_fallback.py:508-520).
      */
     fun storeOnlyWidgetShaped(): Boolean {
         val candidates = items.values
@@ -57,8 +51,6 @@ class CandidateStore(
     /**
      * Ingest one network observation. Returns the created or updated candidate,
      * or null if the URL is not a media URL or is filtered.
-     *
-     * Ported from Desktop CandidateStore.observe() (candidates.py:394-471).
      */
     fun observe(
         url: String,
@@ -175,7 +167,6 @@ class CandidateStore(
 
     /**
      * Collapse a segment observation into its parent manifest.
-     * Ported from Desktop CandidateStore._observe_segment() (candidates.py:473-490).
      */
     private fun observeSegment(
         manifestUrl: String,
@@ -192,7 +183,6 @@ class CandidateStore(
         if (candidate == null && playerId.isNotEmpty()) {
             candidate = items[playerCurrent[playerId] ?: ""]
         }
-        // Port Desktop _segment_parent_url: match segment stem / directory against observed manifests
         if (candidate == null && segmentUrl.isNotEmpty()) {
             candidate = findParentManifestForSegment(segmentUrl)
         }
@@ -210,7 +200,6 @@ class CandidateStore(
 
     /**
      * Correlate a sequence-numbered or codec-shaped segment to an observed parent manifest.
-     * Ported from Desktop _manifest_stems and _segment_parent_url (vrka_downloader.py:1853-1905).
      */
     fun findParentManifestForSegment(segmentUrl: String): MediaCandidate? {
         val segmentPath = try { java.net.URI(segmentUrl).path ?: "" } catch (_: Exception) { return null }
@@ -258,7 +247,6 @@ class CandidateStore(
 
     /**
      * Mark a candidate as explicitly selected by the user.
-     * Ported from Desktop CandidateStore.select() (candidates.py:497-502).
      */
     fun select(candidateId: String): MediaCandidate {
         val candidate = items[candidateId]
@@ -271,7 +259,6 @@ class CandidateStore(
 
     /**
      * Record the outcome of a handoff attempt.
-     * Ported from Desktop CandidateStore.mark_handoff() (candidates.py:504-509).
      */
     fun markHandoff(candidateId: String, success: Boolean) {
         val candidate = items[candidateId]
@@ -286,7 +273,6 @@ class CandidateStore(
 
     /**
      * Remove stale and excess candidates.
-     * Ported from Desktop CandidateStore.prune() (candidates.py:511-533).
      */
     fun prune(now: Double? = null) {
         val current = now ?: (System.nanoTime() / 1_000_000_000.0)

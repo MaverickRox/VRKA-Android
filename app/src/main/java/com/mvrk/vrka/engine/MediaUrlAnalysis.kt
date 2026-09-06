@@ -1,7 +1,5 @@
 /**
  * URL analysis utilities for media candidate classification.
- *
- * Ported faithfully from Desktop VRKA Build 017 vrka_core/candidates.py.
  * Functions: mediaKind(), isSegment(), isMasterManifest(), canonicalMediaIdentity().
  * Pure functions with no Android framework dependency.
  */
@@ -12,20 +10,17 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
 
-// --- Volatile query parameter names stripped for canonical identity ---
-// Ported from Desktop VOLATILE_QUERY_NAMES (candidates.py:202-206)
+// Volatile query parameter names stripped for canonical identity
 private val VOLATILE_QUERY_NAMES = setOf(
     "auth", "authorization", "expires", "exp", "hdnts", "hmac", "jwt",
     "key", "policy", "signature", "sig", "token", "x-amz-credential",
     "x-amz-date", "x-amz-expires", "x-amz-security-token", "x-amz-signature",
 )
 
-// --- Segment suffixes ---
-// Ported from Desktop SEGMENT_SUFFIXES (candidates.py:207)
+// Segment suffixes
 private val SEGMENT_SUFFIXES = listOf(".ts", ".m4s", ".m4a", ".cmfv", ".cmfa", ".aac")
 
-// --- Segment detection regexes ---
-// Ported from Desktop candidates.py:208-228
+// Segment detection regexes
 private val SEGMENT_PATH_RE = Regex(
     """(?:^|[/_.-])(?:seg(?:ment)?|chunk|frag(?:ment)?|part)[-_]?\d+""",
     RegexOption.IGNORE_CASE,
@@ -43,22 +38,18 @@ private val SEGMENT_SEQUENCE_RE = Regex(
     RegexOption.IGNORE_CASE,
 )
 
-// --- Generic master playlist stems ---
-// Ported from Desktop _GENERIC_MASTER_STEMS (candidates.py:269)
+// Generic master playlist stems
 private val GENERIC_MASTER_STEMS = setOf("master", "playlist", "manifest", "index")
 
-// --- Numeric stream id and widget suffix regexes for live/ad widget filtering ---
-// Ported from Desktop _NUMERIC_STREAM_ID_RE and _WIDGET_RENDITION_SUFFIX_RE (browser_fallback.py:30-31)
+// Numeric stream id and widget suffix regexes for live/ad widget filtering
 private val NUMERIC_STREAM_ID_RE = Regex("""\b\d{5,}\b""")
 private val WIDGET_RENDITION_SUFFIX_RE = Regex("""_(\d{3,4})p(?:\.m3u8)?$""", RegexOption.IGNORE_CASE)
 
 /**
  * True when a candidate URL has the generic sidebar live-widget signature.
  *
- * Ported from Desktop looks_like_live_widget_url() (browser_fallback.py:34-48).
  * Sidebar/live-cam/ad HLS streams are addressed by a numeric stream id in the URL path
- * and a rendition suffix such as `_240p.m3u8` (the requested episode's master/manifest
- * on the same pages has neither).
+ * and a rendition suffix such as `_240p.m3u8`.
  */
 fun looksLikeLiveWidgetUrl(url: String): Boolean {
     val path = try {
@@ -71,8 +62,6 @@ fun looksLikeLiveWidgetUrl(url: String): Boolean {
 
 /**
  * Classify a URL and optional content-type into a [CandidateKind].
- *
- * Ported from Desktop media_kind() (candidates.py:239-252).
  */
 fun mediaKind(url: String, contentType: String = ""): CandidateKind {
     val path = try {
@@ -100,9 +89,7 @@ fun mediaKind(url: String, contentType: String = ""): CandidateKind {
 
 /**
  * True when a URL represents a segment (child of a manifest), not a standalone transfer candidate.
- *
- * Ported from Desktop is_segment() (candidates.py:255-267).
- * Uses 5 regex patterns plus suffix matching.
+ * Uses suffix matching and regex heuristics.
  */
 fun isSegment(url: String, contentType: String = ""): Boolean {
     val path = try {
@@ -120,10 +107,7 @@ fun isSegment(url: String, contentType: String = ""): Boolean {
 
 /**
  * True when a manifest path is a generic master/rendition-selector name.
- *
- * Ported from Desktop is_master_manifest() (candidates.py:272-281).
- * Preferring the master lets the normal downloader choose the best available
- * quality instead of a fixed rendition.
+ * Preferring the master lets the downloader choose the best available quality instead of a fixed rendition.
  */
 fun isMasterManifest(url: String): Boolean {
     val path = try {
@@ -139,8 +123,6 @@ fun isMasterManifest(url: String): Boolean {
  *
  * Only well-known ephemeral authentication fields are removed. All other
  * query fields remain because they can distinguish genuinely different media.
- *
- * Ported from Desktop canonical_media_identity() (candidates.py:284-306).
  */
 fun canonicalMediaIdentity(url: String, kind: CandidateKind? = null): String {
     val chosenKind = kind ?: mediaKind(url)
@@ -177,7 +159,6 @@ fun canonicalMediaIdentity(url: String, kind: CandidateKind? = null): String {
 
 /**
  * Normalize a hostname (lowercase, strip trailing dots, handle IP addresses).
- * Ported from Desktop _normalized_host() (candidates.py:231-236).
  */
 internal fun normalizedHost(host: String?): String {
     val value = (host ?: "").trim().lowercase().trimEnd('.')

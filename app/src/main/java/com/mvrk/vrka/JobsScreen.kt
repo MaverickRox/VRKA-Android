@@ -181,7 +181,6 @@ private fun JobCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                // Concise inline status indicator (no bulky pill)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(5.dp),

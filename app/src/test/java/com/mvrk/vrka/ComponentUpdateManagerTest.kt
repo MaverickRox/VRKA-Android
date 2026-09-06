@@ -27,7 +27,7 @@ class ComponentUpdateManagerTest {
 
     @Test
     fun nightlyVersionNormalizationAndParity() {
-        // Formats specified in ADS STE-100 Part VIII
+        // Various release tag and banner formats
         val stableFormats = listOf(
             "v2026.08.19",
             "2026.08.19",

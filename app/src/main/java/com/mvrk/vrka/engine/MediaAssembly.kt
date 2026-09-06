@@ -4,7 +4,6 @@ import java.net.URI
 
 /**
  * HLS and media assembly helpers.
- * Ported faithfully from Desktop VRKA Build 017 vrka_core/media_assembly.py.
  */
 object MediaAssembly {
 
@@ -13,7 +12,6 @@ object MediaAssembly {
 
     /**
      * Resolves a relative segment or variant URL against its parent playlist URL.
-     * Ported from Desktop _resolve_segment_url (media_assembly.py:50-58).
      */
     fun resolveSegmentUrl(seg: String, playlistUrl: String): String {
         val trimmed = seg.trim()
@@ -31,7 +29,6 @@ object MediaAssembly {
 
     /**
      * Determines whether a given URL or MIME type indicates an HLS playlist.
-     * Ported from Desktop classify (media_assembly.py:30-48).
      */
     fun isHlsPlaylist(url: String, contentType: String = ""): Boolean {
         val loweredType = contentType.lowercase()
@@ -88,7 +85,6 @@ object MediaAssembly {
     /**
      * Parses an HLS variant playlist to extract ordered segment URLs.
      * Includes any #EXT-X-MAP initialization segment heading the list (for fMP4).
-     * Ported from Desktop _assemble_from_playlist (media_assembly.py:109-147).
      */
     fun parseVariantSegments(variantContent: String, variantUrl: String): List<String> {
         val segments = mutableListOf<String>()

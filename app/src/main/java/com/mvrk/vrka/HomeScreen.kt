@@ -101,7 +101,6 @@ internal fun HomeScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // Hero URL Input Capsule
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -213,11 +212,9 @@ internal fun HomeScreen(
 
         Spacer(Modifier.height(18.dp))
 
-        // Format & Quality Controls (Cohesive Integrated Surface)
         VrkaSectionContainer(
             shape = RoundedCornerShape(16.dp),
         ) {
-            // Mode Segmented Control
             VrkaSegmentedControl(
                 items = MediaMode.entries,
                 selectedItem = mode,
@@ -321,7 +318,6 @@ internal fun HomeScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Advanced Options Collapsible Section
         VrkaSectionContainer(
             shape = RoundedCornerShape(16.dp),
         ) {
@@ -487,7 +483,6 @@ internal fun HomeScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // Hero Action Button
         VrkaPrimaryButton(
             text = "Add to Queue",
             iconRes = R.drawable.ic_download,

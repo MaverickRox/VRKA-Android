@@ -1,18 +1,11 @@
 /**
  * Explicit download state machine with 18 states and transition guards.
- *
- * Ported faithfully from Desktop VRKA Build 017 vrka_core/candidates.py
- * DownloadState (lines 42-61), DownloadStateMachine (lines 177-199),
- * and _TRANSITIONS (lines 70-174).
- *
  * Pure domain logic with no Android framework dependency.
  */
 package com.mvrk.vrka.engine
 
 /**
  * Complete download state enumeration with 18 states.
- *
- * Ported from Desktop DownloadState (candidates.py:42-61).
  */
 enum class EngineDownloadState(val value: String) {
     QUEUED("queued"),
@@ -88,10 +81,7 @@ val TERMINAL_ENGINE_STATES = setOf(
 )
 
 /**
- * Explicit transition table.
- *
- * Ported from Desktop _TRANSITIONS (candidates.py:70-174).
- * Cancellation and failure can happen from every non-terminal state.
+ * Base transition table. Cancellation and failure can happen from every non-terminal state.
  */
 private val BASE_TRANSITIONS: Map<EngineDownloadState, Set<EngineDownloadState>> = mapOf(
     EngineDownloadState.QUEUED to setOf(
@@ -195,8 +185,6 @@ private val BASE_TRANSITIONS: Map<EngineDownloadState, Set<EngineDownloadState>>
 /**
  * Computed transition table with FAILED and CANCELLED reachable from every
  * non-terminal state, preventing executor exceptions from stranding the worker.
- *
- * Ported from Desktop _TRANSITIONS augmentation (candidates.py:166-174).
  */
 val ENGINE_TRANSITIONS: Map<EngineDownloadState, Set<EngineDownloadState>> =
     BASE_TRANSITIONS.mapValues { (state, targets) ->
@@ -209,8 +197,6 @@ val ENGINE_TRANSITIONS: Map<EngineDownloadState, Set<EngineDownloadState>> =
 
 /**
  * Explicit transition guard attached to exactly one logical task ID.
- *
- * Ported from Desktop DownloadStateMachine (candidates.py:177-199).
  */
 class EngineStateMachine(
     val taskId: String,
