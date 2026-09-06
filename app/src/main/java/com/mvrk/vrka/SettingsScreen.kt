@@ -39,6 +39,8 @@ internal fun SettingsScreen(
     runtime: RuntimeStatus,
     repository: SettingsRepository,
     onUpdateRuntime: (UpdatePreference) -> Unit,
+    diagnostics: List<DiagnosticEntry> = emptyList(),
+    onClearDiagnostics: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -320,7 +322,189 @@ internal fun SettingsScreen(
             )
         }
 
-        // 6. ABOUT
+        // 6. DIAGNOSTICS
+        SettingsHeading("Diagnostics")
+        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+        var expandedDiagnosticId by remember { mutableStateOf<String?>(null) }
+
+        VrkaSectionContainer {
+            if (diagnostics.isEmpty()) {
+                Text(
+                    "No diagnostic entries recorded. Diagnostic logs are captured locally when a download encounters an error.",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = VrkaMonoFamily,
+                        lineHeight = 18.sp,
+                    ),
+                    color = VrkaTokens.TextSecondary,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${diagnostics.size} recorded ${if (diagnostics.size == 1) "failure" else "failures"}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                        color = VrkaTokens.TextSecondary,
+                    )
+                    VrkaOutlinedButton(
+                        text = "Clear All",
+                        onClick = onClearDiagnostics,
+                        height = 30.dp,
+                    )
+                }
+
+                diagnostics.forEachIndexed { index, entry ->
+                    if (index > 0) VrkaDivider()
+                    val isExpanded = expandedDiagnosticId == entry.id
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val timeStr = java.text.SimpleDateFormat(
+                                "yyyy-MM-dd HH:mm:ss",
+                                java.util.Locale.US,
+                            ).format(java.util.Date(entry.timestamp))
+                            Text(
+                                text = timeStr,
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                                color = VrkaTokens.TextTertiary,
+                            )
+                            VrkaStatusBadge(entry.failureCategory, VrkaTokens.Error, isMonospace = true)
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = entry.title.ifBlank { entry.url },
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                            fontWeight = FontWeight.SemiBold,
+                            color = VrkaTokens.TextPrimary,
+                            maxLines = 2,
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Stage: ${entry.stage}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                                color = VrkaTokens.AccentLight,
+                            )
+                            if (entry.quality.isNotBlank()) {
+                                Text(
+                                    text = "• Quality: ${entry.quality}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                                    color = VrkaTokens.TextSecondary,
+                                )
+                            }
+                        }
+
+                        if (entry.summary.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = entry.summary,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                                color = VrkaTokens.Warning,
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            VrkaOutlinedButton(
+                                text = if (isExpanded) "Hide Details" else "View Details",
+                                onClick = {
+                                    expandedDiagnosticId = if (isExpanded) null else entry.id
+                                },
+                                height = 30.dp,
+                            )
+
+                            VrkaOutlinedButton(
+                                text = "Copy Details",
+                                onClick = {
+                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(entry.toFormattedString()))
+                                    Toast.makeText(
+                                        context,
+                                        "Diagnostic details copied to clipboard",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                },
+                                height = 30.dp,
+                            )
+                        }
+
+                        if (isExpanded) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF141218),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                ) {
+                                    Text(
+                                        text = "URL: ${entry.url}",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = VrkaMonoFamily,
+                                            fontSize = 11.sp,
+                                        ),
+                                        color = VrkaTokens.TextSecondary,
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Method: ${entry.acquisitionMethod}",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = VrkaMonoFamily,
+                                            fontSize = 11.sp,
+                                        ),
+                                        color = VrkaTokens.TextSecondary,
+                                    )
+                                    if (entry.detail.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "Log Tail:",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                                            color = VrkaTokens.TextTertiary,
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = entry.detail,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontFamily = VrkaMonoFamily,
+                                                fontSize = 11.sp,
+                                                lineHeight = 15.sp,
+                                            ),
+                                            color = VrkaTokens.TextPrimary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 7. ABOUT
         SettingsHeading("About")
         val uriHandler = LocalUriHandler.current
         VrkaSectionContainer(
@@ -338,7 +522,7 @@ internal fun SettingsScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "VRKA v4.0",
+                        text = "VRKA v4.0.1",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontFamily = VrkaMonoFamily,
                             fontWeight = FontWeight.Bold,

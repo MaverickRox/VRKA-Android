@@ -78,10 +78,10 @@ class DownloadRequestFactoryTest {
         )
 
         assertEquals(
-            "bestvideo+bestaudio/best[height>0]",
+            "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
             request.getOption("-f"),
         )
-        assertEquals("res:1080", request.getOption("-S"))
+        assertFalse(request.hasOption("-S"))
         assertEquals("mp4", request.getOption("--merge-output-format"))
         assertEquals("sponsor,selfpromo", request.getOption("--sponsorblock-remove"))
         val command = request.buildCommand()
@@ -96,15 +96,14 @@ class DownloadRequestFactoryTest {
         val capped = built(DownloadRequest(url = URL, quality = VideoQuality.P2160))
 
         assertEquals(
-            "bestvideo+bestaudio/best[height>0]",
+            "bestvideo+bestaudio/best",
             best.getOption("-f"),
         )
         assertEquals(
-            "bestvideo+bestaudio/best[height>0]",
+            "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best",
             capped.getOption("-f"),
         )
         assertEquals("mp4", best.getOption("--merge-output-format"))
-        assertEquals("res:2160", capped.getOption("-S"))
     }
 
     @Test
@@ -121,7 +120,34 @@ class DownloadRequestFactoryTest {
         )
 
         assertEquals("res,fps", best.getOption("-S"))
-        assertEquals("res:1080,fps", capped.getOption("-S"))
+        assertEquals("bestvideo[fps>=60]+bestaudio/bestvideo+bestaudio/best", best.getOption("-f"))
+        assertEquals("res,fps", capped.getOption("-S"))
+        assertEquals("bestvideo[height<=1080][fps>=60]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best", capped.getOption("-f"))
+    }
+
+    @Test
+    fun youtubeRequestsDoNotForcePlayerClients() {
+        val ytUrl = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+        val infoReq = DownloadRequestFactory.info(DownloadRequest(url = ytUrl))
+        assertFalse(infoReq.hasOption("--extractor-args"))
+
+        val dlReq = built(DownloadRequest(url = ytUrl))
+        assertFalse(dlReq.hasOption("--extractor-args"))
+
+        val recoveryReq = DownloadRequestFactory.download(
+            DownloadJob(id = "test-job", request = DownloadRequest(url = ytUrl)),
+            staging,
+            recoveryAttempt = true,
+        )
+        assertEquals("generic:impersonate", recoveryReq.getOption("--extractor-args"))
+    }
+
+    @Test
+    fun buildVideoFormatHandlesAllTiersCorrectly() {
+        assertEquals("bestvideo+bestaudio/best", DownloadRequestFactory.buildVideoFormat(null, prefer60Fps = false))
+        assertEquals("bestvideo[fps>=60]+bestaudio/bestvideo+bestaudio/best", DownloadRequestFactory.buildVideoFormat(null, prefer60Fps = true))
+        assertEquals("bestvideo[height<=720]+bestaudio/best[height<=720]/best", DownloadRequestFactory.buildVideoFormat(720, prefer60Fps = false))
+        assertEquals("bestvideo[height<=1080][fps>=60]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best", DownloadRequestFactory.buildVideoFormat(1080, prefer60Fps = true))
     }
 
     @Test

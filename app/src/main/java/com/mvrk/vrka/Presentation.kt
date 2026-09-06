@@ -57,7 +57,7 @@ internal fun friendlyFailureDetail(job: DownloadJob): String {
             "The media was processed, but Android could not save the final file."
         "Browser session timed out" -> "Retry the browser session or close it safely."
         "Browser session closed" -> "No downloadable non-DRM media was handed off."
-        else -> "Try again. Technical details remain available in diagnostics."
+        else -> "Try again. Failure details saved to Diagnostics in Settings."
     }
 }
 
