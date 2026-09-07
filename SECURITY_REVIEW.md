@@ -276,3 +276,32 @@ This audit covers the security hardening pass implemented in VRKA Android 4.0.2 
 - **Test Matrix Expansion**:
   - `SecureComponentUpdaterTest`: 26 test cases verifying authentic signatures, tampered manifests, corrupted signatures, unpinned keys, wrong binary hashes, network errors, insecure HTTP, redirect policies, transactional staging, and rollback.
   - `JobStorePersistenceTest`: 6 test cases verifying queue roundtrip (10 jobs), recovery of in-flight jobs as failed with retry prompts, terminal state preservation, corrupted JSON tolerance, and max 250 job capping.
+
+---
+
+## VRKA Android 4.0.3 Corrective Hardening & Verification — 2026-09-07
+
+This audit covers the post-v4.0.2 corrective hardening pass addressing OpenPGP issuer-fingerprint verification, exact filesystem guarantees, and expanded behavioral security tests.
+
+### 1. OpenPGP Issuer-Fingerprint Subpacket Verification
+- Upstream `yt-dlp` detached signatures (`SHA2-256SUMS.sig`) include an Issuer Fingerprint subpacket (RFC 4880bis / RFC 9580) containing the full fingerprint of the signing key (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`).
+- `SecureComponentUpdater.verifyManifestSignature` now explicitly inspects `signature.hashedSubPackets?.issuerFingerprint ?: signature.unhashedSubPackets?.issuerFingerprint`. If present, it asserts that the subpacket fingerprint strictly matches the trusted key's derived fingerprint, preventing key-ID collisions or spoofed subkey references.
+- Verified both matching subpacket acceptance and forged subpacket cryptographic rejection in unit tests.
+
+### 2. Transactional Replacement & Filesystem Guarantees
+- Documented and implemented precise Android filesystem guarantees:
+  - Internal storage (`noBackupFilesDir`) uses ext4/f2fs where `StandardCopyOption.ATOMIC_MOVE` succeeds for intra-directory file replacement.
+  - Handled `AtomicMoveNotSupportedException` gracefully by falling back to `StandardCopyOption.REPLACE_EXISTING` accompanied by explicit `FileDescriptor.sync()` (`fsync`).
+  - Active binary is backed up before replacement and is never deleted until post-update execution verification succeeds.
+  - If post-update verification fails or an exception occurs, the backup is restored over the active binary and synced.
+  - Abstraction via `FileOperations` interface allows deterministic unit testing of atomicity fallback and rollback edge cases.
+
+### 3. Behavioral Test Suite Expansion
+- Replaced shallow/configuration-only tests with live behavioral tests using mock transport:
+  - Real 302 redirect from `github.com` to `objects.githubusercontent.com` streaming actual response data.
+  - Insecure HTTP downgrade detection (throwing `SecurityException`).
+  - Unapproved destination host rejection (throwing `SecurityException`).
+  - Redirect depth limit enforcement (> 5 hops throwing `IOException`).
+  - In-memory OpenPGP RSA keypair generation and signing to test untrusted key rejection, untrusted keyring rejection, and issuer fingerprint subpacket verification.
+  - Full transactional rollback verification on post-validation failure and fresh install failure.
+- Test suite expanded to 151 total passing unit tests (32 in `SecureComponentUpdaterTest`).

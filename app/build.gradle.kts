@@ -40,8 +40,8 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 40002
-        versionName = "4.0.2"
+        versionCode = 40003
+        versionName = "4.0.3"
 
         ndk {
             abiFilters += "arm64-v8a"

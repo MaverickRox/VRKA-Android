@@ -46,10 +46,56 @@ class SecureComponentUpdater(
     private val customKeySupplier: (() -> PGPPublicKey)? = null,
     private val customValidator: (() -> String?)? = null,
     private val onCommitSuccess: ((cleanTag: String, postVersion: String) -> Unit)? = null,
+    private val fileOperations: FileOperations = DefaultFileOperations(),
 ) {
 
     init {
         ensureBouncyCastleProvider()
+    }
+
+    /**
+     * Filesystem operations abstraction to enable comprehensive testing of filesystem edge cases,
+     * atomicity fallbacks, and transactional rollback behaviors.
+     */
+    interface FileOperations {
+        fun moveAtomic(source: File, target: File)
+        fun moveReplace(source: File, target: File)
+        fun copy(source: File, target: File)
+        fun sync(file: File)
+        fun delete(file: File): Boolean
+        fun exists(file: File): Boolean = file.exists()
+        fun length(file: File): Long = file.length()
+    }
+
+    open class DefaultFileOperations : FileOperations {
+        override fun moveAtomic(source: File, target: File) {
+            Files.move(source.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        }
+
+        override fun moveReplace(source: File, target: File) {
+            Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+
+        override fun copy(source: File, target: File) {
+            Files.copy(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+
+        override fun sync(file: File) {
+            runCatching {
+                if (file.exists()) {
+                    FileOutputStream(file, true).use { fos ->
+                        fos.fd.sync()
+                    }
+                }
+            }
+        }
+
+        override fun delete(file: File): Boolean {
+            return file.delete()
+        }
+
+        override fun exists(file: File): Boolean = file.exists()
+        override fun length(file: File): Long = file.length()
     }
 
     /**
@@ -64,6 +110,10 @@ class SecureComponentUpdater(
      * Default Android HttpURLConnection transport with strict redirect policy.
      */
     open class DefaultHttpTransport : HttpTransport {
+
+        open fun openConnection(url: URL): HttpURLConnection {
+            return url.openConnection() as HttpURLConnection
+        }
 
         override fun fetchBytes(url: String, maxRedirects: Int): ByteArray {
             val stream = openConnectionWithRedirects(url, maxRedirects)
@@ -95,7 +145,7 @@ class SecureComponentUpdater(
             return Hex.toHexString(digest.digest()).lowercase()
         }
 
-        private fun openConnectionWithRedirects(initialUrl: String, maxRedirects: Int): InputStream {
+        internal fun openConnectionWithRedirects(initialUrl: String, maxRedirects: Int): InputStream {
             var currentUrl = initialUrl
             var redirectsRemaining = maxRedirects
 
@@ -110,7 +160,7 @@ class SecureComponentUpdater(
                     throw SecurityException("Host '$host' is not in allowed download hosts: $currentUrl")
                 }
 
-                val conn = parsedUrl.openConnection() as HttpURLConnection
+                val conn = openConnection(parsedUrl)
                 conn.instanceFollowRedirects = false
                 conn.connectTimeout = CONNECT_TIMEOUT_MS
                 conn.readTimeout = READ_TIMEOUT_MS
@@ -223,38 +273,49 @@ class SecureComponentUpdater(
             val backupTmp = File(ytDir, "$ASSET_BINARY.backup.tmp")
             val targetFile = File(ytDir, ASSET_BINARY)
 
-            if (downloadTmp.exists()) downloadTmp.delete()
-            if (stagedTmp.exists()) stagedTmp.delete()
-            if (backupTmp.exists()) backupTmp.delete()
+            if (fileOperations.exists(downloadTmp)) fileOperations.delete(downloadTmp)
+            if (fileOperations.exists(stagedTmp)) fileOperations.delete(stagedTmp)
+            if (fileOperations.exists(backupTmp)) fileOperations.delete(backupTmp)
 
             try {
                 logI(TAG, "Downloading $ASSET_BINARY...")
                 val actualHash = transport.downloadToFile(binaryUrl, downloadTmp)
                 if (!actualHash.equals(expectedHash, ignoreCase = true)) {
-                    downloadTmp.delete()
+                    fileOperations.delete(downloadTmp)
                     throw SecurityException("SHA-256 mismatch for $ASSET_BINARY: expected $expectedHash, got $actualHash")
                 }
                 logI(TAG, "SHA-256 checksum verified successfully")
 
-                // Step 4: Transactional replacement with backup
-                if (!downloadTmp.renameTo(stagedTmp)) {
-                    Files.move(downloadTmp.toPath(), stagedTmp.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                }
-
-                val hasActive = targetFile.exists() && targetFile.length() > 0
-                if (hasActive) {
-                    // Backup active binary
-                    Files.copy(targetFile.toPath(), backupTmp.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                }
-
-                // Replace active binary
+                // Step 4: Transactional staging and replacement with backup
+                fileOperations.sync(downloadTmp)
                 try {
-                    Files.move(stagedTmp.toPath(), targetFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                    fileOperations.moveAtomic(downloadTmp, stagedTmp)
                 } catch (_: AtomicMoveNotSupportedException) {
-                    Files.move(stagedTmp.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    fileOperations.moveReplace(downloadTmp, stagedTmp)
                 } catch (_: Exception) {
-                    Files.move(stagedTmp.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    fileOperations.moveReplace(downloadTmp, stagedTmp)
                 }
+                fileOperations.sync(stagedTmp)
+
+                val hasActive = fileOperations.exists(targetFile) && fileOperations.length(targetFile) > 0
+                if (hasActive) {
+                    // Backup active binary before replacing
+                    fileOperations.copy(targetFile, backupTmp)
+                    fileOperations.sync(backupTmp)
+                }
+
+                // Replace active binary: attempt atomic rename first, fall back to safe replace with fsync
+                try {
+                    fileOperations.moveAtomic(stagedTmp, targetFile)
+                } catch (_: AtomicMoveNotSupportedException) {
+                    logI(TAG, "ATOMIC_MOVE not supported on filesystem; falling back to moveReplace")
+                    fileOperations.moveReplace(stagedTmp, targetFile)
+                } catch (e: Exception) {
+                    logI(TAG, "Atomic move failed (${e.message}); falling back to moveReplace")
+                    fileOperations.moveReplace(stagedTmp, targetFile)
+                }
+                fileOperations.sync(targetFile)
+                runCatching { targetFile.setExecutable(true, false) }
 
                 // Step 5: Post-update execution verification
                 logI(TAG, "Executing post-update verification...")
@@ -268,16 +329,18 @@ class SecureComponentUpdater(
 
                 if (postVersion.isNullOrBlank()) {
                     logE(TAG, "Post-update verification returned null/empty version; rolling back...")
-                    if (backupTmp.exists()) {
-                        Files.move(backupTmp.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    if (fileOperations.exists(backupTmp)) {
+                        fileOperations.moveReplace(backupTmp, targetFile)
+                        fileOperations.sync(targetFile)
+                        fileOperations.delete(backupTmp)
                     } else {
-                        targetFile.delete()
+                        fileOperations.delete(targetFile)
                     }
                     throw IllegalStateException("Installed binary failed post-update execution check; rolled back to previous component")
                 }
 
                 // Step 6: Success commit
-                if (backupTmp.exists()) backupTmp.delete()
+                if (fileOperations.exists(backupTmp)) fileOperations.delete(backupTmp)
                 if (onCommitSuccess != null) {
                     onCommitSuccess.invoke(cleanTag, postVersion)
                 } else if (context != null) {
@@ -290,12 +353,14 @@ class SecureComponentUpdater(
                 logI(TAG, "yt-dlp successfully updated and verified: v$postVersion")
                 postVersion
             } catch (e: Exception) {
-                // Ensure temporary files are cleaned up on failure
-                downloadTmp.delete()
-                stagedTmp.delete()
-                if (backupTmp.exists()) {
+                // Ensure temporary files are cleaned up and rollback executed on failure
+                fileOperations.delete(downloadTmp)
+                fileOperations.delete(stagedTmp)
+                if (fileOperations.exists(backupTmp)) {
                     runCatching {
-                        Files.move(backupTmp.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                        fileOperations.moveReplace(backupTmp, targetFile)
+                        fileOperations.sync(targetFile)
+                        fileOperations.delete(backupTmp)
                     }
                 }
                 throw e
@@ -428,6 +493,19 @@ class SecureComponentUpdater(
                 throw SecurityException(
                     "Signature key ID 0x${java.lang.Long.toHexString(signature.keyID)} does not match trusted key ID 0x${java.lang.Long.toHexString(publicKey.keyID)}"
                 )
+            }
+
+            // Verify Issuer Fingerprint subpacket if present (RFC 4880bis / RFC 9580)
+            val issuerFpSubpacket = signature.hashedSubPackets?.issuerFingerprint
+                ?: signature.unhashedSubPackets?.issuerFingerprint
+            if (issuerFpSubpacket != null) {
+                val subpacketFp = Hex.toHexString(issuerFpSubpacket.fingerprint).uppercase()
+                val trustedFp = Hex.toHexString(publicKey.fingerprint).uppercase()
+                if (subpacketFp != trustedFp) {
+                    throw SecurityException(
+                        "Signature issuer fingerprint ($subpacketFp) does not match trusted key fingerprint ($trustedFp)"
+                    )
+                }
             }
 
             val verifierProvider = JcaPGPContentVerifierBuilderProvider().setProvider("BC")
