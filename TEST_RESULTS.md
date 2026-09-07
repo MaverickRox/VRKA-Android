@@ -192,7 +192,7 @@ The final report does not convert an unrun physical test into a pass.
 | **AUT-15** | Automated | Untrusted Key & Keyring Cryptographic Rejection | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Generates in-memory RSA OpenPGP key; asserts rejection against pinned key ID and trust anchor. |
 | **AUT-16** | Automated | Fresh Install Failure Cleanup & Rollback | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Validates rollback restores active binary on verification failure and cleans up target on fresh install failure. |
 | **AUT-17** | Automated | Full Offline Test Suite (151 tests) | JUnit (Offline) | **PASS** | 151 unit tests passed with 0 failures in 12s via `gradlew testDebugUnitTest --offline`. |
-| **PHY-06** | Physical Device | In-Place Upgrade Compatibility (4.0.2 to 4.0.3) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`) succeeded with zero signature mismatch. |
+| **PHY-06** | Physical Device | In-Place Upgrade Compatibility (4.0.2 to 4.0.3) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch. |
 | **PHY-07** | Physical Device | Version Reporting in UI | Physical UI | **PASS** | Settings screen About card displays `VRKA v4.0.3` matching `versionName = "4.0.3"`. |
 | **PHY-08** | Physical Device | Browser Session Clearing & State Isolation | Physical UI | **PASS** | "Clear Session" action verified on device; active settings, queue, and preferences preserved. |
 | **PHY-09** | Physical Device | Download Engine & Diagnostic Attribution | Physical UI / Logcat | **PASS** | Download lifecycle and error categorization verified; diagnostics cleanly attributed and persisted. |
