@@ -4,6 +4,7 @@
 
 | Version | Supported |
 | :--- | :--- |
+| 4.0.3 | :white_check_mark: |
 | 4.0.2 | :white_check_mark: |
 | 4.0.1 | :white_check_mark: |
 | 4.0.0 | :white_check_mark: |
@@ -32,11 +33,12 @@ All official release binaries of VRKA Android are signed using the canonical v1.
 Verify the signing certificate of downloaded release APKs using `apksigner`:
 
 ```bash
-apksigner verify --verbose --print-certs VRKA-Android-v4.0.2.apk
+apksigner verify --verbose --print-certs VRKA-Android-v4.0.3.apk
 ```
 
 The signing certificate must match:
 - **SHA-256 Fingerprint**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`
+- **SHA-1 Fingerprint**: `7758980f74a503684bf1a187994e447823d19d7c`
 
 ### Checksum Verification
 
@@ -49,7 +51,7 @@ sha256sum -c SHA256SUMS
 Or in PowerShell:
 
 ```powershell
-(Get-FileHash .\VRKA-Android-v4.0.2.apk -Algorithm SHA256).Hash
+(Get-FileHash .\VRKA-Android-v4.0.3.apk -Algorithm SHA256).Hash
 ```
 
 ---

@@ -12,10 +12,16 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+import java.nio.file.AtomicMoveNotSupportedException
+import java.security.KeyPairGenerator
 import java.security.MessageDigest
+import java.util.Date
 
 class SecureComponentUpdaterTest {
 
@@ -60,6 +66,79 @@ class SecureComponentUpdaterTest {
 
     private fun loadRealKey() = FileInputStream(pubKeyFile).use {
         SecureComponentUpdater.loadAndVerifyPublicKey(it)
+    }
+
+    private fun generateTestPgpKeyPair(): Pair<org.bouncycastle.openpgp.PGPPublicKey, org.bouncycastle.openpgp.PGPSecretKey> {
+        val kpg = KeyPairGenerator.getInstance("RSA", "BC")
+        kpg.initialize(2048)
+        val kp = kpg.generateKeyPair()
+
+        val pbe = org.bouncycastle.openpgp.operator.jcajce.JcaPGPDigestCalculatorProviderBuilder()
+            .build()
+            .get(org.bouncycastle.bcpg.HashAlgorithmTags.SHA1)
+
+        val keyRingGen = org.bouncycastle.openpgp.PGPKeyRingGenerator(
+            org.bouncycastle.openpgp.PGPSignature.POSITIVE_CERTIFICATION,
+            org.bouncycastle.openpgp.operator.jcajce.JcaPGPKeyPair(
+                org.bouncycastle.openpgp.PGPPublicKey.RSA_GENERAL,
+                kp,
+                Date()
+            ),
+            "test@vrka.mvrk",
+            pbe,
+            null,
+            null,
+            org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder(
+                org.bouncycastle.openpgp.PGPPublicKey.RSA_GENERAL,
+                org.bouncycastle.bcpg.HashAlgorithmTags.SHA256
+            ).setProvider("BC"),
+            org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyEncryptorBuilder(
+                org.bouncycastle.openpgp.PGPEncryptedData.AES_256,
+                pbe
+            ).setProvider("BC").build("".toCharArray())
+        )
+
+        val secRing = keyRingGen.generateSecretKeyRing()
+        val secKey = secRing.secretKey
+        val pubKey = secKey.publicKey
+        return Pair(pubKey, secKey)
+    }
+
+    private fun signData(
+        data: ByteArray,
+        secKey: org.bouncycastle.openpgp.PGPSecretKey,
+        setValidIssuerFp: Boolean = false,
+        forgedIssuerFp: ByteArray? = null,
+    ): ByteArray {
+        val privKey = secKey.extractPrivateKey(
+            org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyDecryptorBuilder().setProvider("BC").build("".toCharArray())
+        )
+        val sigGen = org.bouncycastle.openpgp.PGPSignatureGenerator(
+            org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder(
+                secKey.publicKey.algorithm,
+                org.bouncycastle.bcpg.HashAlgorithmTags.SHA256
+            ).setProvider("BC")
+        )
+        sigGen.init(org.bouncycastle.openpgp.PGPSignature.BINARY_DOCUMENT, privKey)
+
+        if (setValidIssuerFp) {
+            val subGen = org.bouncycastle.openpgp.PGPSignatureSubpacketGenerator()
+            subGen.setIssuerFingerprint(false, secKey.publicKey)
+            sigGen.setHashedSubpackets(subGen.generate())
+        } else if (forgedIssuerFp != null) {
+            val subGen = org.bouncycastle.openpgp.PGPSignatureSubpacketGenerator()
+            val ifp = org.bouncycastle.bcpg.sig.IssuerFingerprint(false, 4, forgedIssuerFp)
+            subGen.addCustomSubpacket(ifp)
+            sigGen.setHashedSubpackets(subGen.generate())
+        }
+
+        sigGen.update(data)
+        val sig = sigGen.generate()
+        val out = ByteArrayOutputStream()
+        val armOut = org.bouncycastle.bcpg.ArmoredOutputStream(out)
+        sig.encode(armOut)
+        armOut.close()
+        return out.toByteArray()
     }
 
     // --- Mock Transport for Deterministic Tests ---
@@ -109,6 +188,30 @@ class SecureComponentUpdaterTest {
             key,
         )
         assertTrue("Authentic upstream detached signature must verify successfully", valid)
+    }
+
+    @Test
+    fun test02b_SignatureWithMatchingIssuerFingerprintSubpacketSucceeds() {
+        val (testPub, testSec) = generateTestPgpKeyPair()
+        val sig = signData(realManifestBytes, testSec, setValidIssuerFp = true)
+        val valid = SecureComponentUpdater.verifyManifestSignature(realManifestBytes, sig, testPub)
+        assertTrue("Signature with matching issuer fingerprint subpacket must verify", valid)
+    }
+
+    @Test
+    fun test02c_SignatureWithMismatchedIssuerFingerprintSubpacketThrows() {
+        val (testPub, testSec) = generateTestPgpKeyPair()
+        val forgedFp = ByteArray(20) { 0x33.toByte() }
+        val sig = signData(realManifestBytes, testSec, forgedIssuerFp = forgedFp)
+        try {
+            SecureComponentUpdater.verifyManifestSignature(realManifestBytes, sig, testPub)
+            fail("Signature with forged issuer fingerprint subpacket must throw SecurityException")
+        } catch (e: SecurityException) {
+            assertTrue(
+                "Exception must cite issuer fingerprint mismatch: ${e.message}",
+                e.message!!.contains("Signature issuer fingerprint"),
+            )
+        }
     }
 
     @Test
@@ -370,60 +473,170 @@ class SecureComponentUpdaterTest {
         assertFalse("Temp file must be cleaned up on download error", downloadTmp.exists())
     }
 
-    @Test
-    fun test16_AllowedDownloadAndRedirectHostPolicies() {
-        assertTrue(SecureComponentUpdater.ALLOWED_DOWNLOAD_HOSTS.contains("api.github.com"))
-        assertTrue(SecureComponentUpdater.ALLOWED_DOWNLOAD_HOSTS.contains("github.com"))
-        assertTrue(SecureComponentUpdater.ALLOWED_DOWNLOAD_HOSTS.contains("objects.githubusercontent.com"))
-        assertTrue(SecureComponentUpdater.ALLOWED_DOWNLOAD_HOSTS.contains("release-assets.githubusercontent.com"))
-        assertFalse(SecureComponentUpdater.ALLOWED_DOWNLOAD_HOSTS.contains("evil.com"))
-        assertFalse(SecureComponentUpdater.ALLOWED_DOWNLOAD_HOSTS.contains("raw.githubusercontent.com"))
+    private class FakeHttpURLConnection(
+        u: URL,
+        private val code: Int,
+        private val headers: Map<String, String> = emptyMap(),
+        private val responseBody: ByteArray = ByteArray(0),
+    ) : HttpURLConnection(u) {
+        override fun connect() {}
+        override fun disconnect() {}
+        override fun usingProxy(): Boolean = false
+        override fun getResponseCode(): Int = code
+        override fun getHeaderField(name: String): String? = headers[name]
+        override fun getInputStream(): java.io.InputStream = ByteArrayInputStream(responseBody)
+    }
 
-        assertTrue(SecureComponentUpdater.ALLOWED_REDIRECT_HOSTS.contains("objects.githubusercontent.com"))
-        assertTrue(SecureComponentUpdater.ALLOWED_REDIRECT_HOSTS.contains("release-assets.githubusercontent.com"))
-        assertFalse(SecureComponentUpdater.ALLOWED_REDIRECT_HOSTS.contains("api.github.com"))
-        assertFalse(SecureComponentUpdater.ALLOWED_REDIRECT_HOSTS.contains("thirdparty.cdn.com"))
+    private class MockRedirectTransport(
+        val handlers: (URL) -> FakeHttpURLConnection
+    ) : SecureComponentUpdater.DefaultHttpTransport() {
+        override fun openConnection(url: URL): HttpURLConnection = handlers(url)
     }
 
     @Test
-    fun test17_InsecureHttpUrlRejected() {
-        val transport = object : SecureComponentUpdater.DefaultHttpTransport() {
-            fun checkUrl(url: String) {
-                val parsed = java.net.URL(url)
-                if (parsed.protocol != "https") {
-                    throw SecurityException("Insecure HTTP protocol rejected: $url")
+    fun test16_RedirectToAllowedHostSucceeds() {
+        val visited = mutableListOf<String>()
+        val transport = MockRedirectTransport { url ->
+            visited.add(url.toString())
+            when (url.toString()) {
+                "https://github.com/yt-dlp/yt-dlp/releases/download/2025.02.19/SHA2-256SUMS" -> {
+                    FakeHttpURLConnection(
+                        url,
+                        302,
+                        mapOf("Location" to "https://objects.githubusercontent.com/github-production-release-asset-2e65be/12345?token=abc"),
+                    )
                 }
+                "https://objects.githubusercontent.com/github-production-release-asset-2e65be/12345?token=abc" -> {
+                    FakeHttpURLConnection(
+                        url,
+                        200,
+                        responseBody = "manifest-bytes".toByteArray(Charsets.UTF_8),
+                    )
+                }
+                else -> throw IOException("Unexpected URL: $url")
             }
         }
+
+        val bytes = transport.fetchBytes("https://github.com/yt-dlp/yt-dlp/releases/download/2025.02.19/SHA2-256SUMS")
+        assertEquals("manifest-bytes", bytes.toString(Charsets.UTF_8))
+        assertEquals(2, visited.size)
+        assertEquals("https://github.com/yt-dlp/yt-dlp/releases/download/2025.02.19/SHA2-256SUMS", visited[0])
+        assertEquals("https://objects.githubusercontent.com/github-production-release-asset-2e65be/12345?token=abc", visited[1])
+    }
+
+    @Test
+    fun test17_RedirectDowngradeToHttpThrowsSecurityException() {
+        val transport = MockRedirectTransport { url ->
+            FakeHttpURLConnection(
+                url,
+                302,
+                mapOf("Location" to "http://objects.githubusercontent.com/insecure-path"),
+            )
+        }
         try {
-            transport.checkUrl("http://github.com/yt-dlp/yt-dlp/releases")
-            fail("Insecure HTTP must throw SecurityException")
+            transport.fetchBytes("https://github.com/yt-dlp/yt-dlp/releases/download/2025.02.19/asset")
+            fail("Redirect downgrade to HTTP must throw SecurityException")
+        } catch (e: SecurityException) {
+            assertTrue(
+                "Exception must cite insecure HTTP downgrade: ${e.message}",
+                e.message!!.contains("Redirect downgraded to insecure HTTP"),
+            )
+        }
+    }
+
+    @Test
+    fun test18_RedirectToUntrustedHostThrowsSecurityException() {
+        val transport = MockRedirectTransport { url ->
+            FakeHttpURLConnection(
+                url,
+                302,
+                mapOf("Location" to "https://malicious-asset-host.com/fake-asset"),
+            )
+        }
+        try {
+            transport.fetchBytes("https://github.com/yt-dlp/yt-dlp/releases/download/2025.02.19/asset")
+            fail("Redirect to unapproved host must throw SecurityException")
+        } catch (e: SecurityException) {
+            assertTrue(
+                "Exception must cite unapproved destination host: ${e.message}",
+                e.message!!.contains("is not approved"),
+            )
+        }
+    }
+
+    @Test
+    fun test19_RedirectDepthLimitExceededThrowsIOException() {
+        var count = 0
+        val transport = MockRedirectTransport { url ->
+            count++
+            FakeHttpURLConnection(
+                url,
+                302,
+                mapOf("Location" to "https://objects.githubusercontent.com/redirect-$count"),
+            )
+        }
+        try {
+            transport.fetchBytes("https://github.com/yt-dlp/yt-dlp/releases/download/2025.02.19/asset")
+            fail("Exceeding max redirects must throw IOException")
+        } catch (e: IOException) {
+            assertTrue(
+                "Exception must cite maximum redirect depth: ${e.message}",
+                e.message!!.contains("Exceeded maximum redirect depth"),
+            )
+        }
+    }
+
+    @Test
+    fun test20_InitialUrlInsecureOrUntrustedRejected() {
+        val transport = SecureComponentUpdater.DefaultHttpTransport()
+        try {
+            transport.fetchBytes("http://github.com/yt-dlp/yt-dlp/releases")
+            fail("Insecure HTTP initial URL must throw SecurityException")
         } catch (e: SecurityException) {
             assertTrue(e.message!!.contains("Insecure HTTP protocol rejected"))
         }
-    }
 
-    @Test
-    fun test18_RejectedRedirectHost() {
-        val redirectHost = "untrusted-server.com"
-        assertFalse(SecureComponentUpdater.ALLOWED_REDIRECT_HOSTS.contains(redirectHost))
-    }
-
-    @Test
-    fun test19_ApprovedRedirectHostAllowed() {
-        assertTrue(SecureComponentUpdater.ALLOWED_REDIRECT_HOSTS.contains("objects.githubusercontent.com"))
-        assertTrue(SecureComponentUpdater.ALLOWED_REDIRECT_HOSTS.contains("release-assets.githubusercontent.com"))
-    }
-
-    @Test
-    fun test20_WrongSigningKeyIssuerRejected() {
-        // Create an untrusted public key with different keyID
-        val fakeKeyring = "untrusted-key".toByteArray()
         try {
-            SecureComponentUpdater.loadAndVerifyPublicKey(ByteArrayInputStream(fakeKeyring))
-            fail("Untrusted or invalid keyring must throw exception")
-        } catch (e: Exception) {
-            assertTrue(e is SecurityException || e is IOException || e is IllegalArgumentException)
+            transport.fetchBytes("https://untrusted-domain.com/yt-dlp")
+            fail("Untrusted initial host must throw SecurityException")
+        } catch (e: SecurityException) {
+            assertTrue(e.message!!.contains("is not in allowed download hosts"))
+        }
+    }
+
+    @Test
+    fun test20b_UntrustedKeySignatureRejectedAgainstPinnedKey() {
+        val (untrustedPub, untrustedSec) = generateTestPgpKeyPair()
+        val untrustedSig = signData(realManifestBytes, untrustedSec, setValidIssuerFp = true)
+        val pinnedKey = loadRealKey()
+        try {
+            SecureComponentUpdater.verifyManifestSignature(realManifestBytes, untrustedSig, pinnedKey)
+            fail("Signature from untrusted key must throw SecurityException")
+        } catch (e: SecurityException) {
+            assertTrue(
+                "Must reject due to key ID mismatch: ${e.message}",
+                e.message!!.contains("does not match trusted key ID"),
+            )
+        }
+    }
+
+    @Test
+    fun test20c_UntrustedKeyringRejectedByLoadAndVerify() {
+        val (untrustedPub, _) = generateTestPgpKeyPair()
+        val out = ByteArrayOutputStream()
+        val armOut = org.bouncycastle.bcpg.ArmoredOutputStream(out)
+        untrustedPub.encode(armOut)
+        armOut.close()
+        val untrustedAscBytes = out.toByteArray()
+
+        try {
+            SecureComponentUpdater.loadAndVerifyPublicKey(ByteArrayInputStream(untrustedAscBytes))
+            fail("Untrusted keyring must be rejected by loadAndVerifyPublicKey")
+        } catch (e: SecurityException) {
+            assertTrue(
+                "Must reject key without matching pinned key ID/fingerprint: ${e.message}",
+                e.message!!.contains("not found in provided keyring") || e.message!!.contains("does not match pinned trust anchor"),
+            )
         }
     }
 
@@ -532,5 +745,77 @@ class SecureComponentUpdaterTest {
         val manifestWithAsterisk = "a18843c75b04756ed1d8e261b54de8b7ddf918f73134175d5acab745455dcbc8 *yt-dlp"
         val extracted = SecureComponentUpdater.extractExpectedSha256(manifestWithAsterisk, "yt-dlp")
         assertEquals("a18843c75b04756ed1d8e261b54de8b7ddf918f73134175d5acab745455dcbc8", extracted)
+    }
+
+    @Test
+    fun test27_AtomicMoveUnsupportedFallsBackToReplace() = runBlocking {
+        val targetDir = tempFolder.newFolder("yt-dlp-atomic-fallback")
+        val expectedHash = "a18843c75b04756ed1d8e261b54de8b7ddf918f73134175d5acab745455dcbc8"
+        val mockBinaryContent = "binary-content".toByteArray(Charsets.UTF_8)
+
+        val transport = MockHttpTransport()
+        val baseUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/2025.02.19"
+        transport.urlToBytes["$baseUrl/SHA2-256SUMS"] = realManifestBytes
+        transport.urlToBytes["$baseUrl/SHA2-256SUMS.sig"] = realSignatureBytes
+        transport.urlToFileHash["$baseUrl/yt-dlp"] = Pair(mockBinaryContent, expectedHash)
+
+        var atomicMoveAttempted = false
+        var fallbackReplaceUsed = false
+
+        val testFileOps = object : SecureComponentUpdater.DefaultFileOperations() {
+            override fun moveAtomic(source: File, target: File) {
+                atomicMoveAttempted = true
+                throw AtomicMoveNotSupportedException(source.path, target.path, "Simulated unsupported atomic move")
+            }
+
+            override fun moveReplace(source: File, target: File) {
+                fallbackReplaceUsed = true
+                super.moveReplace(source, target)
+            }
+        }
+
+        val updater = SecureComponentUpdater(
+            customTargetDir = targetDir,
+            customKeySupplier = { loadRealKey() },
+            customValidator = { "2025.02.19" },
+            fileOperations = testFileOps,
+        )
+
+        val result = updater.updateYtDlp(UpdatePreference.STABLE, "2025.02.19", transport)
+        assertTrue("Update must succeed despite atomic move unsupported: ${result.exceptionOrNull()}", result.isSuccess)
+        assertTrue("Atomic move must have been attempted first", atomicMoveAttempted)
+        assertTrue("Fallback replace must have been used", fallbackReplaceUsed)
+
+        val targetFile = File(targetDir, "yt-dlp")
+        assertTrue("Target binary must exist", targetFile.exists())
+        assertEquals("binary-content", targetFile.readText(Charsets.UTF_8))
+    }
+
+    @Test
+    fun test28_FreshInstallPostValidationFailureCleansUpTargetFile() = runBlocking {
+        val targetDir = tempFolder.newFolder("yt-dlp-fresh-fail")
+        val expectedHash = "a18843c75b04756ed1d8e261b54de8b7ddf918f73134175d5acab745455dcbc8"
+        val mockBinaryContent = "faulty-binary".toByteArray(Charsets.UTF_8)
+
+        val transport = MockHttpTransport()
+        val baseUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/2025.02.19"
+        transport.urlToBytes["$baseUrl/SHA2-256SUMS"] = realManifestBytes
+        transport.urlToBytes["$baseUrl/SHA2-256SUMS.sig"] = realSignatureBytes
+        transport.urlToFileHash["$baseUrl/yt-dlp"] = Pair(mockBinaryContent, expectedHash)
+
+        val updater = SecureComponentUpdater(
+            customTargetDir = targetDir,
+            customKeySupplier = { loadRealKey() },
+            customValidator = { null }, // Post-validation fails on fresh install
+        )
+
+        val result = updater.updateYtDlp(UpdatePreference.STABLE, "2025.02.19", transport)
+        assertTrue("Update must fail on validation failure", result.isFailure)
+        assertTrue(result.exceptionOrNull() is IllegalStateException)
+
+        val targetFile = File(targetDir, "yt-dlp")
+        assertFalse("Target binary must be deleted when initial validation fails", targetFile.exists())
+        val backupFile = File(targetDir, "yt-dlp.backup.tmp")
+        assertFalse("No backup file should remain", backupFile.exists())
     }
 }

@@ -165,3 +165,34 @@ The final report does not convert an unrun physical test into a pass.
 | **PHY-03** | Physical Device | GeckoView Browser Session Clearing | Physical UI | **PASS** | "Clear Browser Session" in Settings displays confirmation dialog and purges GeckoView storage successfully. |
 | **PHY-04** | Physical Device | Component Status Truthfulness | Physical UI | **PASS** | `uBlock Origin` and `Puemos` truthfully display `Bundled • App Release`; `yt-dlp` updates authenticated. |
 | **PHY-05** | Physical Device | Direct Extraction & Download Execution | Physical UI | **PASS** | YouTube video download and playback verified functional on device. |
+
+---
+
+## VRKA Android 4.0.3 Release Verification Matrix — 2026-09-07
+
+### Release Candidate Summary
+
+- **Version**: VRKA Android 4.0.3 (`versionCode = 40003`, `versionName = "4.0.3"`)
+- **Package**: `com.mvrk.vrka`
+- **Target Platform**: Android 16 (API Level 36), Minimum Android 8.0 (API Level 26)
+- **Architecture**: `arm64-v8a`
+- **Signing Fingerprints**:
+  - **SHA-256**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa` (Canonical Lineage)
+  - **SHA-1**: `7758980f74a503684bf1a187994e447823d19d7c`
+- **APK SHA-256**: `b447477cf4a0c9a4db473c1d5dc38381956c0092b75060d6000aed6a5edf2ffb`
+- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+
+### Test Matrix
+
+| ID | Category | Test Case | Method | Result | Evidence / Details |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **AUT-12** | Automated | OpenPGP Issuer-Fingerprint Subpacket Verification | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Matches authentic `IssuerFingerprint` subpacket; rejects forged issuer fingerprint subpacket with `SecurityException`. |
+| **AUT-13** | Automated | Atomic Move Unsupported Fallback | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Simulates `AtomicMoveNotSupportedException`; falls back to safe replace and sync successfully. |
+| **AUT-14** | Automated | Behavioral Redirect Chains & Host Whitelisting | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Verifies real multi-hop redirect over mock transport, HTTP downgrade rejection, untrusted host rejection, and max-depth enforcement. |
+| **AUT-15** | Automated | Untrusted Key & Keyring Cryptographic Rejection | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Generates in-memory RSA OpenPGP key; asserts rejection against pinned key ID and trust anchor. |
+| **AUT-16** | Automated | Fresh Install Failure Cleanup & Rollback | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Validates rollback restores active binary on verification failure and cleans up target on fresh install failure. |
+| **AUT-17** | Automated | Full Offline Test Suite (151 tests) | JUnit (Offline) | **PASS** | 151 unit tests passed with 0 failures in 12s via `gradlew testDebugUnitTest --offline`. |
+| **PHY-06** | Physical Device | In-Place Upgrade Compatibility (4.0.2 to 4.0.3) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`) succeeded with zero signature mismatch. |
+| **PHY-07** | Physical Device | Version Reporting in UI | Physical UI | **PASS** | Settings screen About card displays `VRKA v4.0.3` matching `versionName = "4.0.3"`. |
+| **PHY-08** | Physical Device | Browser Session Clearing & State Isolation | Physical UI | **PASS** | "Clear Session" action verified on device; active settings, queue, and preferences preserved. |
+| **PHY-09** | Physical Device | Download Engine & Diagnostic Attribution | Physical UI / Logcat | **PASS** | Download lifecycle and error categorization verified; diagnostics cleanly attributed and persisted. |

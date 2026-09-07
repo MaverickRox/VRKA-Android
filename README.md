@@ -4,7 +4,7 @@
   <p><strong>Native Android media downloader and passive web stream discovery.</strong></p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v4.0.2-8B5CF6?style=flat-square" alt="Release" /></a>
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v4.0.3-8B5CF6?style=flat-square" alt="Release" /></a>
     <a href="https://github.com/MaverickRox/VRKA-Android/releases"><img src="https://img.shields.io/badge/platform-Android%208.0+%20%7C%20arm64--v8a-blue?style=flat-square" alt="Platform" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green?style=flat-square" alt="License" /></a>
     <a href="https://github.com/MaverickRox/VRKA"><img src="https://img.shields.io/badge/origin-VRKA%20Desktop-purple?style=flat-square" alt="Desktop Origin" /></a>
@@ -12,7 +12,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v4.0.2)</b></a> •
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v4.0.3)</b></a> •
     <a href="#screenshots">Screenshots</a> •
     <a href="#architecture">Architecture</a> •
     <a href="#build-instructions">Build Guide</a> •
@@ -98,7 +98,7 @@ Designed for local, on-device processing without an application analytics servic
 - **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation. Updated via application releases.
 - **Passive Stream Discovery**: The integrated `Puemos` WebExtension intercepts network traffic to observe and rank media manifests (`.m3u8` playlists, `.mpd` DASH manifests, direct segments). Updated via application releases.
 - **Local On-Device Diagnostics**: On-device diagnostic failure logging in Settings with stage attribution, terminal trace viewer, secret-sanitized reporting, and one-tap clipboard export.
-- **In-App Component Updates**: Cryptographically authenticated `yt-dlp` updates verified against pinned release signatures (OpenPGP) with transactional staging, execution checks, and automatic rollback.
+- **In-App Component Updates**: Cryptographically authenticated `yt-dlp` updates verified against pinned release signatures (OpenPGP issuer fingerprint and detached signature verification), transactional staging, atomic filesystem move where supported (ext4/f2fs with fallback to safe replace and fsync), post-update execution verification, and automatic rollback to the verified prior component on failure.
 - **Browser Session Clearing**: Dedicated storage clearing for the GeckoView fallback runtime under Settings to purge cached cookies and site data without affecting application history or preferences.
 - **Liquid Glass Design System**: Floating capsule navigation with hardware-accelerated `RenderEffect` backdrop blur across AMOLED Black and Light modes.
 
@@ -196,7 +196,7 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-*(Note: Official GitHub release binaries are verified and published as `VRKA-Android-v4.0.2.apk`)*
+*(Note: Official GitHub release binaries are verified and published as `VRKA-Android-v4.0.3.apk`)*
 
 ---
 
@@ -205,7 +205,7 @@ app/build/outputs/apk/release/app-release.apk
 To ensure Android system update continuity (`INSTALL_FAILED_UPDATE_INCOMPATIBLE` prevention), every release binary must match the original v1.0 signing lineage:
 
 - **Signer SHA-256 Fingerprint**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`
-- **Signer SHA-1 Fingerprint**: `bb4c93ebc5e2d1eb7d00f8bfad1357da8e5ec9c1`
+- **Signer SHA-1 Fingerprint**: `7758980f74a503684bf1a187994e447823d19d7c`
 
 ### Maintainer Verification Steps
 
@@ -220,21 +220,21 @@ To ensure Android system update continuity (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`
    ```
 4. Generate release checksum:
    ```bash
-   sha256sum VRKA-Android-v4.0.2.apk > SHA256SUMS
+   sha256sum VRKA-Android-v4.0.3.apk > SHA256SUMS
    ```
 
 ---
 
 ## Installation
 
-1. Download `VRKA-Android-v4.0.2.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
+1. Download `VRKA-Android-v4.0.3.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
-   (Get-FileHash .\VRKA-Android-v4.0.2.apk -Algorithm SHA256).Hash
+   (Get-FileHash .\VRKA-Android-v4.0.3.apk -Algorithm SHA256).Hash
    ```
 3. Install on your Android device:
    ```bash
-   adb install -r VRKA-Android-v4.0.2.apk
+   adb install -r VRKA-Android-v4.0.3.apk
    ```
 
 ---

@@ -1,7 +1,7 @@
 # Known Limitations
 
 > [!NOTE]
-> **Historical Baseline Document**: This document records the known limitations identified during the original VRKA Android 1.0.0 release audit. It is preserved for historical traceability and baseline reference. For current v4.0.2 architecture and security policies, see [README.md](README.md) and [SECURITY.md](SECURITY.md).
+> **Historical Baseline Document**: This document records the known limitations identified during the original VRKA Android 1.0.0 release audit. It is preserved for historical traceability and baseline reference. For current v4.0.3 architecture and security policies, see [README.md](README.md) and [SECURITY.md](SECURITY.md).
 
 ## Platform
 
@@ -16,7 +16,7 @@
 - A site change can require a newer yt-dlp runtime.
 - Browser fallback depends on Mozilla GeckoView runtime and device network connectivity.
 - Browser session headers remain in memory. Android process death during handoff requires a job retry.
-- Browser fallback cookies and site data are stored in GeckoView's isolated runtime storage. In 4.0.2, users can explicitly purge this data via Settings ("Clear Browser Session") without affecting download history or app preferences.
+- Browser fallback cookies and site data are stored in GeckoView's isolated runtime storage. Users can explicitly purge this data via Settings ("Clear Browser Session") without affecting download history or app preferences.
 
 ## Desktop controls not in the Android UI
 
@@ -28,9 +28,9 @@
 
 These omissions avoid untested controls and unsafe free-text command input.
 
-## Component Updater & Bundled Extensions Scope (v4.0.2 Resolution)
+## Component Updater & Bundled Extensions Scope (v4.0.3 Status)
 
-- **yt-dlp Updater Authenticity**: *Resolved in v4.0.2*. The updater performs standard OpenPGP detached signature verification (`SHA2-256SUMS.sig` over `SHA2-256SUMS`) using Bouncy Castle against the pinned upstream trust anchor (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`), validates the exact SHA-256 hash of `yt-dlp`, uses transactional staging with active component backup, and validates runtime execution (`versionName`) with automatic rollback.
+- **yt-dlp Updater Authenticity**: The updater performs standard OpenPGP detached signature verification (`SHA2-256SUMS.sig` over `SHA2-256SUMS`) and Issuer Fingerprint subpacket verification using Bouncy Castle against the pinned upstream trust anchor (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`), validates the exact SHA-256 hash of `yt-dlp`, uses transactional staging with active component backup, handles atomic move with safe replace and fsync fallback, and validates runtime execution (`versionName`) with automatic rollback.
 - **Bundled Extensions Scope**: `uBlock Origin` (v1.74.0) and `Puemos HLS Detection` (v1.0.0) are built into APK assets (`app/src/main/assets/extensions/`) and loaded via `resource://android/assets/extensions/`. They are immutable at runtime and updated exclusively via application releases.
 - **Transitive Dependencies**: `youtubedl-android` transitive components (`commons-io:2.5`, `commons-compress:1.12`, `jackson-databind:2.11.1`) are used only for internal APK package extraction and local subprocess JSON deserialization; R8 code shrinking minimizes exposed bytecode.
 
