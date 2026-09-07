@@ -163,15 +163,10 @@ class VrkaDownloadManager(
             _runtime.value = _runtime.value.copy(busy = true, message = "Updating yt-dlp")
             runCatching {
                 ensureInitialized()
-                val selected = if (channel == UpdatePreference.NIGHTLY) {
-                    YoutubeDL.UpdateChannel.NIGHTLY
-                } else {
-                    YoutubeDL.UpdateChannel.STABLE
-                }
-                YoutubeDL.getInstance().updateYoutubeDL(context, selected)
-                val version = normalizedVersion(
-                    YoutubeDL.getInstance().versionName(context).orEmpty(),
-                )
+                val updater = SecureComponentUpdater(context)
+                val targetTag = updater.fetchLatestReleaseTag(channel)
+                val postVersion = updater.updateYtDlp(channel, targetTag).getOrThrow()
+                val version = normalizedVersion(postVersion)
                 _runtime.value = RuntimeStatus(
                     initialized = true,
                     version = version,

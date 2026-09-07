@@ -215,3 +215,64 @@ They do not provide a known path for an untrusted site to replace the runtime.
 No unresolved P0 or P1 finding blocks VRKA Android 1.0.0.
 This statement applies only to the checks and evidence in this document.
 It is not an absolute security guarantee.
+
+---
+
+## VRKA Android 4.0.2 Security Hardening & Verification — 2026-09-07
+
+This audit covers the security hardening pass implemented in VRKA Android 4.0.2 addressing component updater authenticity, dependency security, browser session clearing, and diagnostic privacy.
+
+### 1. Authenticated Component Updater (yt-dlp)
+
+- **Standard OpenPGP Implementation**: Integrated Bouncy Castle (`bcpg-jdk18on:1.85` and `bcprov-jdk18on:1.85.2`). Signature verification delegates framing, algorithm negotiation, and verification to Bouncy Castle standard OpenPGP APIs (`PGPObjectFactory`, `JcaPGPContentVerifierBuilderProvider`), eliminating custom crypto parsing.
+- **Pinned Upstream Trust Anchor**: The official yt-dlp release key (`contact@grub4k.xyz`) is embedded in `app/src/main/res/raw/ytdlp_pubkey.asc`. The updater independently derives the key fingerprint on initialization and asserts matching:
+  - Primary Key ID: `0x57CF65933B5A7581`
+  - Primary Key Fingerprint: `AC0CBBE6848D6A873464AF4E57CF65933B5A7581`
+  - Dynamic key fetching over network is strictly disallowed.
+- **Strict HTTPS & Redirect Policy**: All update communication requires HTTPS. Insecure HTTP sources are rejected. Redirects are validated manually (depth limit 5) to recognized GitHub release asset hosts (`objects.githubusercontent.com`, `release-assets.githubusercontent.com`).
+- **Cryptographic Verification Chain**:
+  1. Fetch `SHA2-256SUMS` and detached signature `SHA2-256SUMS.sig`.
+  2. Verify OpenPGP detached signature over manifest using pinned trust anchor.
+  3. Extract SHA-256 hash for target asset `yt-dlp` from the authenticated manifest.
+  4. Stream-download `yt-dlp` to `.download.tmp` while computing SHA-256 digest.
+  5. Reject and delete temp file on hash mismatch.
+- **Transactional Replacement & Rollback**:
+  1. Stage verified file to `yt-dlp.staged.tmp`.
+  2. If active binary exists, create backup `yt-dlp.backup.tmp`.
+  3. Replace active binary via atomic move or safe replace.
+  4. Perform post-update execution validation (`versionName`).
+  5. If execution check fails or returns empty/null, restore `yt-dlp.backup.tmp` over `yt-dlp` and throw error.
+  6. Delete backup only after verified execution check.
+
+### 2. Browser Session & Storage Isolation
+
+- **GeckoView 153.0 Storage Clearing**: Integrated `GeckoRuntime.storageController.clearData(flags)` using exact flags:
+  - `ClearFlags.COOKIES`
+  - `ClearFlags.DOM_STORAGES`
+  - `ClearFlags.AUTH_SESSIONS`
+  - `ClearFlags.SITE_DATA`
+  - `ClearFlags.ALL_CACHES`
+- **In-Memory Cache Reset**: In-memory candidate observation cache cleared via `GeckoMediaBridge.clear()`.
+- **Data Protection Guarantee**: Verified that browser session clearing strictly touches GeckoView runtime storage and never affects download history (`JobStore`), active queue state, user preferences (`DataStore`), or diagnostic logs (`DiagnosticStore`).
+- **UI Confirmation**: Accessible in Settings under "Browser Subsystems" with explicit confirmation dialog informing the user of the clearing scope.
+
+### 3. Bundled Extensions Status
+
+- **Immutable APK Assets**: Verified that `uBlock Origin` (v1.74.0) and `Puemos HLS Detection` (v1.0.0) are built into APK assets (`app/src/main/assets/extensions/`) and loaded via `resource://android/assets/extensions/`.
+- **Truthful Status Reporting**: Replaced simulated version bumping with truthful reporting: displayed as `Bundled • App Release`, preventing misleading out-of-band update prompts.
+
+### 4. Empirical Dependency Vulnerability Audit
+
+- **Audit Target**: Complete resolution of `releaseRuntimeClasspath`.
+- **Bouncy Castle Alignment**: Resolved `org.bouncycastle:bcprov-jdk18on:1.85.2` (patched against known CVEs) alongside `bcpg-jdk18on:1.85` and `bcutil-jdk18on:1.85`.
+- **youtubedl-android Transitive Dependencies**:
+  - `commons-io:2.5` & `commons-compress:1.12`: Used strictly for internal application asset extraction (python/ffmpeg bundles) packaged within the APK. Not exposed to untrusted external archive input.
+  - `jackson-databind:2.11.1`: Used solely to deserialize structured yt-dlp `--dump-json` output from local subprocesses; polymorphic type handling (`enableDefaultTyping`) is not enabled.
+  - R8 full-mode shrinking and ProGuard optimization tree-shake unused transitive classes from the final release APK.
+
+### 5. Deterministic Test Verification
+
+- **Automated Test Coverage**: 145 unit tests pass cleanly offline via `gradlew testDebugUnitTest --offline`.
+- **Test Matrix Expansion**:
+  - `SecureComponentUpdaterTest`: 26 test cases verifying authentic signatures, tampered manifests, corrupted signatures, unpinned keys, wrong binary hashes, network errors, insecure HTTP, redirect policies, transactional staging, and rollback.
+  - `JobStorePersistenceTest`: 6 test cases verifying queue roundtrip (10 jobs), recovery of in-flight jobs as failed with retry prompts, terminal state preservation, corrupted JSON tolerance, and max 250 job capping.

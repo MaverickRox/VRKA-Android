@@ -1,5 +1,5 @@
 /**
- * VRKA Android 4.0.1 Media Discovery WebExtension Background Service
+ * VRKA Android Media Discovery WebExtension Background Service
  * Adapted from Puemos HLS stream capture architecture & GeckoView Native Bridge
  */
 

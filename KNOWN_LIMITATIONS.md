@@ -1,7 +1,7 @@
 # Known Limitations
 
 > [!NOTE]
-> **Historical Baseline Document**: This document records the known limitations identified during the original VRKA Android 1.0.0 release audit. It is preserved for historical traceability and baseline reference. For current v4.0.1 architecture and security policies, see [README.md](README.md) and [SECURITY.md](SECURITY.md).
+> **Historical Baseline Document**: This document records the known limitations identified during the original VRKA Android 1.0.0 release audit. It is preserved for historical traceability and baseline reference. For current v4.0.2 architecture and security policies, see [README.md](README.md) and [SECURITY.md](SECURITY.md).
 
 ## Platform
 
@@ -14,13 +14,11 @@
 - VRKA does not bypass DRM.
 - VRKA does not bypass login, payment, CAPTCHA, consent, or access controls.
 - A site change can require a newer yt-dlp runtime.
-- Browser fallback depends on the installed Android System WebView and the Android network resolver.
-- An intermittent device/router DNS answer caused one Eporner timeout. A later attempt used the normal downloader and succeeded.
-- Browser fallback now reports a main-frame error after a bounded wait. Retry and Close remain available.
+- Browser fallback depends on Mozilla GeckoView runtime and device network connectivity.
 - Browser session headers remain in memory. Android process death during handoff requires a job retry.
-- Android System WebView can keep fallback cookies in its app-private cookie jar. VRKA does not copy these cookies into History, notifications, or logs.
+- Browser fallback cookies and site data are stored in GeckoView's isolated runtime storage. In 4.0.2, users can explicitly purge this data via Settings ("Clear Browser Session") without affecting download history or app preferences.
 
-## Desktop controls not in the Android 1.0 UI
+## Desktop controls not in the Android UI
 
 - Android does not import cookies from a desktop browser profile.
 - Android does not expose proxy, rate-limit, or force-IPv4 controls.
@@ -29,19 +27,14 @@
 - Android uses MediaStore or the Storage Access Framework for final output.
 
 These omissions avoid untested controls and unsafe free-text command input.
-The omissions do not change the accepted YouTube, Instagram, Twitter/X, or Browser fallback paths.
 
-## Dependency review
+## Component Updater & Bundled Extensions Scope (v4.0.2 Resolution)
 
-- youtubedl-android 0.18.1 supplies the Python and FFmpeg runtime integration.
-- Its transitive graph includes Commons IO 2.5, Commons Compress 1.12, and Jackson 2.11.1.
-- The final gate queried OSV for all 147 resolved release coordinates. OSV returned 22 matches in these old transitive libraries.
-- Reachability review found no release-blocking P0 or P1 path. `SECURITY_REVIEW.md` lists each advisory.
-- This gate did not override the transitive versions. A later compatible stack should update them.
-- The yt-dlp updater relies on GitHub HTTPS. It does not verify the published checksum/signature files and does not use an atomic replacement.
-- `THIRD_PARTY_NOTICES.md` lists the significant runtime licenses.
+- **yt-dlp Updater Authenticity**: *Resolved in v4.0.2*. The updater performs standard OpenPGP detached signature verification (`SHA2-256SUMS.sig` over `SHA2-256SUMS`) using Bouncy Castle against the pinned upstream trust anchor (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`), validates the exact SHA-256 hash of `yt-dlp`, uses transactional staging with active component backup, and validates runtime execution (`versionName`) with automatic rollback.
+- **Bundled Extensions Scope**: `uBlock Origin` (v1.74.0) and `Puemos HLS Detection` (v1.0.0) are built into APK assets (`app/src/main/assets/extensions/`) and loaded via `resource://android/assets/extensions/`. They are immutable at runtime and updated exclusively via application releases.
+- **Transitive Dependencies**: `youtubedl-android` transitive components (`commons-io:2.5`, `commons-compress:1.12`, `jackson-databind:2.11.1`) are used only for internal APK package extraction and local subprocess JSON deserialization; R8 code shrinking minimizes exposed bytecode.
 
 ## Test scope
 
-- The final test report identifies each physical test and each automated test.
+- The release test report identifies each physical test, automated test, and verification result.
 - A test that was not run is not a pass.

@@ -4,6 +4,7 @@
 
 | Version | Supported |
 | :--- | :--- |
+| 4.0.2 | :white_check_mark: |
 | 4.0.1 | :white_check_mark: |
 | 4.0.0 | :white_check_mark: |
 | < 4.0.0 | :x: |
@@ -31,7 +32,7 @@ All official release binaries of VRKA Android are signed using the canonical v1.
 Verify the signing certificate of downloaded release APKs using `apksigner`:
 
 ```bash
-apksigner verify --verbose --print-certs VRKA-Android-v4.0.1.apk
+apksigner verify --verbose --print-certs VRKA-Android-v4.0.2.apk
 ```
 
 The signing certificate must match:
@@ -48,14 +49,23 @@ sha256sum -c SHA256SUMS
 Or in PowerShell:
 
 ```powershell
-(Get-FileHash .\VRKA-Android-v4.0.1.apk -Algorithm SHA256).Hash
+(Get-FileHash .\VRKA-Android-v4.0.2.apk -Algorithm SHA256).Hash
 ```
 
 ---
 
-## Security Architecture Highlights
+## Threat Model
 
-- **External Key Isolation**: Production keystores and credentials are never stored in source control. Builds fail fast if release credentials are not provided via environment or local properties.
-- **Content Filtering**: Embedded browser fallback sessions load with integrated uBlock Origin filtering to suppress unwanted advertising and tracking scripts.
-- **Isolated Storage**: Downloads are confined to user-designated public media storage or app-scoped sandboxes using Android Storage Access Framework (SAF).
-- **Local Stream Discovery**: Browser fallback sessions operate with isolated local cookies and hand off captured stream URLs directly to the local downloader without connecting to any external analytics service.
+### Protected Scope
+
+- **Cryptographically Authenticated Updates**: External component updates (`yt-dlp`) are fetched strictly over HTTPS from allowlisted GitHub release endpoints. Release checksum manifests (`SHA2-256SUMS`) must be authenticated via detached OpenPGP signatures (`SHA2-256SUMS.sig`) using standard Bouncy Castle APIs against the pinned upstream trust anchor (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`). Binaries are verified against the authenticated manifest, staged transactionally, validated for executable integrity (`versionName`), and automatically rolled back if validation fails.
+- **Bundled Extension Scope**: Content filtering (`uBlock Origin`) and stream discovery (`Puemos`) are immutable assets packaged into the application APK and updated exclusively through signed application releases.
+- **Browser Session Isolation & Clearing**: Embedded GeckoView fallback sessions operate in an isolated sandbox with strict tracking protection. Users can explicitly purge all cookies, active auth sessions, DOM storages, and caches via Settings without affecting download history or configuration.
+- **Diagnostic Sanitization**: Diagnostic traces automatically redact query parameters (tokens, signatures, keys), Authorization headers, and cookie strings before rendering or clipboard export.
+- **Release Continuity**: The build pipeline enforces canonical signing certificate verification to prevent APK takeover and update incompatibilities.
+
+### Out of Scope / Not Guaranteed
+
+- **Compromised Host OS**: Devices with compromised root access, modified Android frameworks, or active spyware cannot guarantee application memory isolation or secure storage guarantees.
+- **Physical Access**: Unencrypted physical access to an unlocked device bypasses Android's local application sandboxing.
+- **Malicious Third-Party Content**: While GeckoView and uBlock Origin mitigate common script execution threats, untrusted websites visited during fallback navigation remain subject to browser-level sandboxing limits.

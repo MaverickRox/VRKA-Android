@@ -91,14 +91,14 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             ID_UBLOCK to ComponentStatus(
                 id = ID_UBLOCK,
                 name = "uBlock Origin",
-                installedVersion = prefs.getString(KEY_UBLOCK_VER, "1.74.0") ?: "1.74.0",
-                message = "Active",
+                installedVersion = "1.74.0",
+                message = "Bundled • App Release",
             ),
             ID_PUEMOS to ComponentStatus(
                 id = ID_PUEMOS,
                 name = "Puemos HLS Detection",
-                installedVersion = prefs.getString(KEY_PUEMOS_VER, "1.0.0") ?: "1.0.0",
-                message = "Integrated",
+                installedVersion = "1.0.0",
+                message = "Bundled • App Release",
             ),
         ),
     )
@@ -173,13 +173,23 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
             try {
                 withTimeout(CHECK_TIMEOUT_MS) {
+                    if (id == ID_UBLOCK || id == ID_PUEMOS) {
+                        updateState(id) {
+                            it.copy(
+                                checkState = ComponentCheckState.UP_TO_DATE,
+                                message = "Bundled APK extension; updated via application releases.",
+                                error = null,
+                                lastChecked = System.currentTimeMillis(),
+                            )
+                        }
+                        return@withTimeout
+                    }
+
                     val latest = when (id) {
                         ID_YTDLP -> {
                             val repo = if (channel == UpdatePreference.NIGHTLY) "yt-dlp-nightly-builds" else "yt-dlp"
                             fetchLatestGithubRelease("yt-dlp", repo)
                         }
-                        ID_UBLOCK -> fetchLatestGithubRelease("gorhill", "uBlock")
-                        ID_PUEMOS -> fetchLatestGithubRelease("puemos", "hls-downloader")
                         else -> throw IllegalArgumentException("Unknown component $id")
                     }
 
@@ -265,13 +275,37 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             return
         }
         lastCheckAllTimestamp.set(now)
-        val globalGen = globalCheckGeneration.incrementAndGet()
+        globalCheckGeneration.incrementAndGet()
         checkUpdate(ID_YTDLP, channel)
-        checkUpdate(ID_UBLOCK, channel)
-        checkUpdate(ID_PUEMOS, channel)
+        updateState(ID_UBLOCK) {
+            it.copy(
+                checkState = ComponentCheckState.UP_TO_DATE,
+                message = "Bundled APK extension; updated via application releases.",
+                lastChecked = now,
+            )
+        }
+        updateState(ID_PUEMOS) {
+            it.copy(
+                checkState = ComponentCheckState.UP_TO_DATE,
+                message = "Bundled APK extension; updated via application releases.",
+                lastChecked = now,
+            )
+        }
     }
 
     fun applyUpdate(id: String, channel: UpdatePreference = UpdatePreference.STABLE) {
+        if (id == ID_UBLOCK || id == ID_PUEMOS) {
+            updateState(id) {
+                it.copy(
+                    updateState = ComponentUpdateState.UPDATE_SUCCESS,
+                    checkState = ComponentCheckState.UP_TO_DATE,
+                    message = "Bundled APK extension; updated via application releases.",
+                    error = null,
+                )
+            }
+            return
+        }
+
         val generation = updateGenerations.compute(id) { _, v -> (v ?: 0L) + 1L }!!
         activeUpdateJobs[id]?.cancel()
 
@@ -288,7 +322,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 withTimeout(UPDATE_TIMEOUT_MS) {
                     when (id) {
                         ID_YTDLP -> {
-                            // Ensure lazy initialization of yt-dlp singleton
                             val initSuccess = ensureYtdlpInitialized()
                             if (!initSuccess) {
                                 val failureReason = "yt-dlp runtime initialization failed"
@@ -302,29 +335,21 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                                 return@withTimeout
                             }
 
-                            val preVersion = YoutubeDL.getInstance().versionName(context)
-                                ?.removePrefix("yt-dlp ")?.trim()
-                                ?: prefs.getString(KEY_YTDLP_VER, "2026.06.30")
-                                ?: "2026.06.30"
-
                             if (updateGenerations[id] != generation) return@withTimeout
+
+                            val updater = SecureComponentUpdater(context)
+                            val current = _components.value[id]
+                            val targetTag = current?.latestVersion?.takeIf { it.isNotBlank() }
+                                ?: updater.fetchLatestReleaseTag(channel)
 
                             updateState(id) {
                                 it.copy(
                                     updateState = ComponentUpdateState.INSTALLING,
-                                    message = "Applying yt-dlp update (${channel.label})...",
+                                    message = "Authenticating and installing yt-dlp v$targetTag...",
                                 )
                             }
 
-                            val targetChannel = if (channel == UpdatePreference.NIGHTLY) {
-                                YoutubeDL.UpdateChannel.NIGHTLY
-                            } else {
-                                YoutubeDL.UpdateChannel.STABLE
-                            }
-
-                            val updateResult = runCatching {
-                                YoutubeDL.getInstance().updateYoutubeDL(context, targetChannel)
-                            }
+                            val updateResult = updater.updateYtDlp(channel, targetTag)
 
                             if (updateGenerations[id] != generation) return@withTimeout
 
@@ -335,12 +360,8 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                                 )
                             }
 
-                            // Post-update verification against installed binary
-                            val postVersion = runCatching {
-                                YoutubeDL.getInstance().versionName(context)?.removePrefix("yt-dlp ")?.trim()
-                            }.getOrNull()
-
-                            if (updateResult.isSuccess && !postVersion.isNullOrBlank()) {
+                            if (updateResult.isSuccess) {
+                                val postVersion = updateResult.getOrThrow()
                                 val cleanPostVersion = cleanVersionString(postVersion)
                                 prefs.edit().putString(KEY_YTDLP_VER, postVersion).apply()
                                 updateState(id) {
@@ -355,13 +376,9 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                                 }
                             } else {
                                 val failureReason = updateResult.exceptionOrNull()?.message
-                                    ?: "Binary verification returned null/empty"
-                                Log.e(TAG, "yt-dlp update verification failed: $failureReason")
-                                val channelMsg = if (channel == UpdatePreference.STABLE) {
-                                    "Stable installation failed. Current nightly retained."
-                                } else {
-                                    "Nightly installation failed. Current version retained."
-                                }
+                                    ?: "Authenticated update failed"
+                                Log.e(TAG, "yt-dlp secure update failed: $failureReason")
+                                val channelMsg = "Update failed: ${failureReason.take(80)}"
                                 updateState(id) {
                                     it.copy(
                                         updateState = ComponentUpdateState.UPDATE_FAILED,
@@ -369,32 +386,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                                         message = channelMsg,
                                     )
                                 }
-                            }
-                        }
-                        ID_UBLOCK, ID_PUEMOS -> {
-                            val current = _components.value[id]
-                            val targetVer = current?.latestVersion ?: current?.installedVersion ?: "1.0.0"
-
-                            updateState(id) {
-                                it.copy(
-                                    updateState = ComponentUpdateState.INSTALLING,
-                                    message = "Applying rules update (v$targetVer)...",
-                                )
-                            }
-
-                            if (updateGenerations[id] != generation) return@withTimeout
-
-                            val prefKey = if (id == ID_UBLOCK) KEY_UBLOCK_VER else KEY_PUEMOS_VER
-                            prefs.edit().putString(prefKey, targetVer).apply()
-
-                            updateState(id) {
-                                it.copy(
-                                    updateState = ComponentUpdateState.UPDATE_SUCCESS,
-                                    checkState = ComponentCheckState.UP_TO_DATE,
-                                    installedVersion = targetVer,
-                                    message = "Resources up to date (v$targetVer)",
-                                    error = null,
-                                )
                             }
                         }
                     }

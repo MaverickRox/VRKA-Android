@@ -18,6 +18,7 @@ import org.mozilla.geckoview.ContentBlocking
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
+import org.mozilla.geckoview.StorageController
 import org.mozilla.geckoview.WebExtension
 import org.mozilla.geckoview.WebExtensionController
 import kotlin.coroutines.resume
@@ -155,6 +156,28 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                     false
                 }
             }
+        }
+    }
+
+    /**
+     * Clears all browser session data (cookies, storage, auth sessions, site data, caches)
+     * from GeckoView runtime storage and clears in-memory media bridge candidates.
+     * Guaranteed NOT to modify download history, queue state, settings, or diagnostic logs.
+     */
+    suspend fun clearBrowserSession(): Boolean = withContext(Dispatchers.Main) {
+        runCatching {
+            val flags = StorageController.ClearFlags.COOKIES or
+                StorageController.ClearFlags.DOM_STORAGES or
+                StorageController.ClearFlags.AUTH_SESSIONS or
+                StorageController.ClearFlags.SITE_DATA or
+                StorageController.ClearFlags.ALL_CACHES
+            runtime.storageController.clearData(flags).awaitResult()
+            mediaBridge.clear()
+            Log.i(TAG, "Browser session cleared successfully")
+            true
+        }.getOrElse { error ->
+            Log.e(TAG, "Failed to clear browser session: ${error.message}", error)
+            false
         }
     }
 
