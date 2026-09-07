@@ -7,8 +7,8 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-internal class JobStore(context: Context) {
-    private val target = File(context.filesDir, "download_jobs.json")
+internal class JobStore(private val target: File) {
+    constructor(context: Context) : this(File(context.filesDir, "download_jobs.json"))
 
     fun load(): List<DownloadJob> {
         if (!target.isFile) return emptyList()

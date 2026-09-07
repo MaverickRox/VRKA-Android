@@ -154,11 +154,12 @@ internal fun SettingsScreen(
         VrkaSectionContainer {
             componentMap.values.forEachIndexed { index, comp ->
                 if (index > 0) VrkaDivider()
+                val isBundled = comp.id == ComponentUpdateManager.ID_UBLOCK || comp.id == ComponentUpdateManager.ID_PUEMOS
                 val cleanInstalled = ComponentUpdateManager.cleanVersionString(comp.installedVersion)
                 val displayVer = if (cleanInstalled.startsWith("v")) cleanInstalled else "v$cleanInstalled"
                 VrkaSettingRow(
                     title = comp.name,
-                    subtitle = "Installed: $displayVer",
+                    subtitle = if (isBundled) "Installed: $displayVer (Bundled)" else "Installed: $displayVer",
                     isSubtitleMono = true,
                 ) {
                     Row(
@@ -166,6 +167,9 @@ internal fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         when {
+                            isBundled -> {
+                                VrkaStatusBadge("Bundled", VrkaTokens.AccentLight, isMonospace = true)
+                            }
                             comp.isUpdating -> {
                                 val updateLabel = when (comp.updateState) {
                                     ComponentUpdateState.DOWNLOADING -> "Downloading"
@@ -301,6 +305,66 @@ internal fun SettingsScreen(
                 subtitle = "Puemos HLS Discovery",
             ) {
                 VrkaStatusBadge("Active", VrkaTokens.Success, isMonospace = true)
+            }
+
+            VrkaDivider()
+
+            var showClearDialog by remember { mutableStateOf(false) }
+            var isClearingSession by remember { mutableStateOf(false) }
+            var clearSessionMessage by remember { mutableStateOf<String?>(null) }
+
+            VrkaSettingRow(
+                title = "Browser Session",
+                subtitle = clearSessionMessage ?: "Cookies, cached storage, and active auth sessions",
+            ) {
+                VrkaOutlinedButton(
+                    text = if (isClearingSession) "Clearing..." else "Clear Session",
+                    onClick = { showClearDialog = true },
+                    enabled = !isClearingSession,
+                    height = 32.dp,
+                )
+            }
+
+            if (showClearDialog) {
+                AlertDialog(
+                    onDismissRequest = { showClearDialog = false },
+                    title = {
+                        Text(
+                            "Clear Browser Session?",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = VrkaTokens.TextPrimary,
+                        )
+                    },
+                    text = {
+                        Text(
+                            "Removes cookies and site data used by the browser fallback. Download history and app settings are not affected.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = VrkaTokens.TextSecondary,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showClearDialog = false
+                                isClearingSession = true
+                                scope.launch {
+                                    val success = GeckoRuntimeManager.getInstance(context).clearBrowserSession()
+                                    isClearingSession = false
+                                    clearSessionMessage = if (success) "Session cleared successfully" else "Failed to clear session"
+                                }
+                            }
+                        ) {
+                            Text("Clear", color = VrkaTokens.Accent)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showClearDialog = false }) {
+                            Text("Cancel", color = VrkaTokens.TextSecondary)
+                        }
+                    },
+                    containerColor = VrkaTokens.SurfaceCard,
+                )
             }
         }
 
@@ -515,7 +579,7 @@ internal fun SettingsScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "VRKA v4.0.1",
+                        text = "VRKA v${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontFamily = VrkaMonoFamily,
                             fontWeight = FontWeight.Bold,

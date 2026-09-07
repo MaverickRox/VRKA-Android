@@ -4,7 +4,7 @@
   <p><strong>Native Android media downloader and passive web stream discovery.</strong></p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v4.0.1-8B5CF6?style=flat-square" alt="Release" /></a>
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v4.0.2-8B5CF6?style=flat-square" alt="Release" /></a>
     <a href="https://github.com/MaverickRox/VRKA-Android/releases"><img src="https://img.shields.io/badge/platform-Android%208.0+%20%7C%20arm64--v8a-blue?style=flat-square" alt="Platform" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green?style=flat-square" alt="License" /></a>
     <a href="https://github.com/MaverickRox/VRKA"><img src="https://img.shields.io/badge/origin-VRKA%20Desktop-purple?style=flat-square" alt="Desktop Origin" /></a>
@@ -12,7 +12,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v4.0.1)</b></a> •
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v4.0.2)</b></a> •
     <a href="#screenshots">Screenshots</a> •
     <a href="#architecture">Architecture</a> •
     <a href="#build-instructions">Build Guide</a> •
@@ -32,7 +32,7 @@
 ## Origin
 
 > [!NOTE]
-> **Mobile Port**: VRKA Android is the native Android port of the desktop media downloader [**VRKA**](https://github.com/MaverickRox/VRKA) by [MaverickRox](https://github.com/MaverickRox).
+> VRKA Android is the Android companion of the desktop media downloader [**VRKA**](https://github.com/MaverickRox/VRKA) by [MaverickRox](https://github.com/MaverickRox).
 >
 > - **Desktop Source Repository**: [https://github.com/MaverickRox/VRKA](https://github.com/MaverickRox/VRKA)
 > - **Android Port Repository**: [https://github.com/MaverickRox/VRKA-Android](https://github.com/MaverickRox/VRKA-Android)
@@ -43,7 +43,7 @@
 
 **VRKA Android** brings the media extraction and browser fallback architecture of VRKA Desktop to mobile devices. Built natively with **Jetpack Compose**, **Kotlin Coroutines**, and **Android 16** readiness, it delivers direct media processing powered by `yt-dlp` and `FFmpeg`, combined with an isolated Mozilla **GeckoView** browser fallback engine with integrated **uBlock Origin** content filtering and **Puemos** HLS/DASH packet inspection.
 
-Designed for local, on-device processing with zero telemetry or remote analytics services, featuring an AMOLED-optimized Liquid Glass interface.
+Designed for local, on-device processing without an application analytics service, featuring an AMOLED-optimized Liquid Glass interface.
 
 ---
 
@@ -95,10 +95,11 @@ Designed for local, on-device processing with zero telemetry or remote analytics
 - **Direct Extraction & Download**: Powered by `yt-dlp` and `FFmpeg` (`arm64-v8a`), supporting video/audio stream extraction where provided by the source, resolution selection (Best, 4K, 1440p, 1080p, 720p, etc.), 60 FPS preference, subtitle embedding, and audio extraction (MP3, WAV, FLAC).
 - **Background Orchestration**: Foreground `DownloadService` with atomic `JobStore` persistence, notification progress tracking, pause/resume, and sequential queue execution.
 - **Passive Browser Fallback**: An embedded Mozilla `GeckoView` session automatically activates when direct extraction encounters anti-bot challenges or client-side player scripts.
-- **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation.
-- **Passive Stream Discovery**: The integrated `Puemos` WebExtension intercepts network traffic to observe and rank media manifests (`.m3u8` playlists, `.mpd` DASH manifests, direct segments).
-- **Local On-Device Diagnostics**: Full on-device diagnostic failure logging in Settings with stage attribution, terminal trace viewer, secret-sanitized reporting, and one-tap clipboard export with zero network telemetry.
-- **In-App Component Updates**: Manage runtime components (`yt-dlp`) directly in Settings, with Stable and Nightly release channels, rate-limit safeguards, and binary validation.
+- **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation. Updated via application releases.
+- **Passive Stream Discovery**: The integrated `Puemos` WebExtension intercepts network traffic to observe and rank media manifests (`.m3u8` playlists, `.mpd` DASH manifests, direct segments). Updated via application releases.
+- **Local On-Device Diagnostics**: On-device diagnostic failure logging in Settings with stage attribution, terminal trace viewer, secret-sanitized reporting, and one-tap clipboard export.
+- **In-App Component Updates**: Cryptographically authenticated `yt-dlp` updates verified against pinned release signatures (OpenPGP) with transactional staging, execution checks, and automatic rollback.
+- **Browser Session Clearing**: Dedicated storage clearing for the GeckoView fallback runtime under Settings to purge cached cookies and site data without affecting application history or preferences.
 - **Liquid Glass Design System**: Floating capsule navigation with hardware-accelerated `RenderEffect` backdrop blur across AMOLED Black and Light modes.
 
 ---
@@ -195,7 +196,7 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-*(Note: Official GitHub release binaries are verified and published as `VRKA-Android-v4.0.1.apk`)*
+*(Note: Official GitHub release binaries are verified and published as `VRKA-Android-v4.0.2.apk`)*
 
 ---
 
@@ -219,21 +220,21 @@ To ensure Android system update continuity (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`
    ```
 4. Generate release checksum:
    ```bash
-   sha256sum VRKA-Android-v4.0.1.apk > SHA256SUMS
+   sha256sum VRKA-Android-v4.0.2.apk > SHA256SUMS
    ```
 
 ---
 
 ## Installation
 
-1. Download `VRKA-Android-v4.0.1.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
+1. Download `VRKA-Android-v4.0.2.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
-   (Get-FileHash .\VRKA-Android-v4.0.1.apk -Algorithm SHA256).Hash
+   (Get-FileHash .\VRKA-Android-v4.0.2.apk -Algorithm SHA256).Hash
    ```
 3. Install on your Android device:
    ```bash
-   adb install -r VRKA-Android-v4.0.1.apk
+   adb install -r VRKA-Android-v4.0.2.apk
    ```
 
 ---

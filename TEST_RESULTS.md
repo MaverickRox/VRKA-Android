@@ -130,3 +130,38 @@ The final report does not convert an unrun physical test into a pass.
 - PASS: `THIRD_PARTY_NOTICES.md` covers the final dependency and asset set.
 - PASS: No application source, resource, manifest, dependency, or APK byte changed during this security gate.
 - NOT RUN: The APK was not rebuilt or reinstalled because this gate changed external Markdown and release evidence only.
+
+---
+
+## VRKA Android 4.0.2 Release Verification Matrix — 2026-09-07
+
+### Release Candidate Summary
+
+- **Version**: VRKA Android 4.0.2 (`versionCode = 40002`, `versionName = "4.0.2"`)
+- **Package**: `com.mvrk.vrka`
+- **Target Platform**: Android 16 (API Level 36), Minimum Android 8.0 (API Level 26)
+- **Architecture**: `arm64-v8a`
+- **Signing Fingerprint**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa` (Canonical Lineage)
+- **APK SHA-256**: `c8587dafb5ad262cb7e49449b7be16409642a5fd5f615584c1f0ca2bed42dc07`
+- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+
+### Test Matrix
+
+| ID | Category | Test Case | Method | Result | Evidence / Details |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **AUT-01** | Automated | OpenPGP Detached Signature Verification | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Authentic upstream `SHA2-256SUMS.sig` over `SHA2-256SUMS` verified with Bouncy Castle 1.85. |
+| **AUT-02** | Automated | Tampered Manifest Rejection | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Altered manifest byte causes signature verification failure. |
+| **AUT-03** | Automated | Tampered Signature Rejection | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Corrupted signature packet rejected. |
+| **AUT-04** | Automated | Unpinned Key / Issuer Rejection | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Non-matching key ID/fingerprint rejected with `SecurityException`. |
+| **AUT-05** | Automated | SHA-256 Checksum Validation | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Downloaded binary digest matched against authenticated manifest. |
+| **AUT-06** | Automated | Checksum Mismatch Abort & Deletion | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Mismatched digest triggers immediate `.download.tmp` deletion and exception. |
+| **AUT-07** | Automated | HTTPS & Redirect Policy Enforcement | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Insecure HTTP and untrusted redirect targets rejected. |
+| **AUT-08** | Automated | Post-Update Validation & Rollback | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Broken binary failing execution check rolls back to previous known-good binary. |
+| **AUT-09** | Automated | Interrupted Download Recovery | JUnit (Offline) | **PASS** | `JobStorePersistenceTest`: Active in-flight jobs recover as `FAILED` with retry capability on process restart. |
+| **AUT-10** | Automated | Queue Roundtrip & Capping | JUnit (Offline) | **PASS** | `JobStorePersistenceTest`: 10-job queue persists accurately; store bounds persistence at 250 jobs. |
+| **AUT-11** | Automated | Full Offline Test Suite | JUnit (Offline) | **PASS** | 145 unit tests passed with 0 failures in 11s via `gradlew testDebugUnitTest --offline`. |
+| **PHY-01** | Physical Device | In-Place Upgrade Compatibility | `adb install -r` | **PASS** | Verified on OnePlus 11 5G upgrading v4.0.1 to v4.0.2 with zero signature mismatch. |
+| **PHY-02** | Physical Device | Existing User State Preservation | Physical UI | **PASS** | Download history, active queue, settings, and diagnostics intact after upgrade. |
+| **PHY-03** | Physical Device | GeckoView Browser Session Clearing | Physical UI | **PASS** | "Clear Browser Session" in Settings displays confirmation dialog and purges GeckoView storage successfully. |
+| **PHY-04** | Physical Device | Component Status Truthfulness | Physical UI | **PASS** | `uBlock Origin` and `Puemos` truthfully display `Bundled • App Release`; `yt-dlp` updates authenticated. |
+| **PHY-05** | Physical Device | Direct Extraction & Download Execution | Physical UI | **PASS** | YouTube video download and playback verified functional on device. |

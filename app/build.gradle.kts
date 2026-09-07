@@ -40,8 +40,8 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 40001
-        versionName = "4.0.1"
+        versionCode = 40002
+        versionName = "4.0.2"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -65,6 +65,10 @@ extensions.configure<ApplicationExtension> {
     lint {
         checkReleaseBuilds = false
         abortOnError = false
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     packaging {
@@ -158,11 +162,14 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     implementation("org.mozilla.geckoview:geckoview-arm64-v8a:153.0.20260810162159")
+    implementation("org.bouncycastle:bcpg-jdk18on:1.85")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.85.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }
