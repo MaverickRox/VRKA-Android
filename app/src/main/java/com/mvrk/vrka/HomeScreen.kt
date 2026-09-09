@@ -2,6 +2,9 @@ package com.mvrk.vrka
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -76,7 +79,30 @@ internal fun HomeScreen(
     var sponsorCategories by remember { mutableStateOf("sponsor,selfpromo,interaction") }
     var trimStart by remember { mutableStateOf("") }
     var trimEnd by remember { mutableStateOf("") }
+    var referer by remember { mutableStateOf("") }
+    var origin by remember { mutableStateOf("") }
+    var customHeaders by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var validation by remember { mutableStateOf("") }
+    var pendingRequestToEnqueue by remember { mutableStateOf<DownloadRequest?>(null) }
+
+    val folderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        val req = pendingRequestToEnqueue
+        if (req != null) {
+            val treeUri = uri?.let {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        it,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                }
+                it.toString()
+            } ?: ""
+            onEnqueue(req.copy(destinationTreeUri = treeUri))
+        }
+        pendingRequestToEnqueue = null
+    }
 
     Column(
         modifier = modifier
@@ -291,7 +317,7 @@ internal fun HomeScreen(
                         modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
                     )
                     ChoiceRow {
-                        listOf(320, 256, 192, 128).forEach { item ->
+                        listOf(320, 256, 224, 192, 160, 128).forEach { item ->
                             VrkaChip(
                                 selected = bitrate == item,
                                 onClick = { bitrate = item },
@@ -300,13 +326,53 @@ internal fun HomeScreen(
                             )
                         }
                     }
+                } else if (audioFormat == AudioFormat.OPUS) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "AUDIO QUALITY",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = VrkaMonoFamily,
+                            letterSpacing = 1.1.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = VrkaTokens.TextTertiary,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
+                    )
+                    ChoiceRow {
+                        VrkaChip(
+                            selected = true,
+                            onClick = {},
+                            label = "Best Native Opus",
+                            isMonospace = true,
+                        )
+                    }
+                } else if (audioFormat == AudioFormat.WAV) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "AUDIO QUALITY",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = VrkaMonoFamily,
+                            letterSpacing = 1.1.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = VrkaTokens.TextTertiary,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
+                    )
+                    ChoiceRow {
+                        VrkaChip(
+                            selected = true,
+                            onClick = {},
+                            label = "Source / Best (PCM)",
+                            isMonospace = true,
+                        )
+                    }
                 }
 
                 Text(
                     when (audioFormat) {
-                        AudioFormat.MP3 -> "Compressed audio. 320 kbps recommended."
-                        AudioFormat.WAV -> "Uncompressed source stream with large file sizes."
-                        AudioFormat.FLAC -> "Lossless container preservation."
+                        AudioFormat.MP3 -> "Compressed audio. Selectable bitrate (128–320 kbps)."
+                        AudioFormat.OPUS -> "Best Native Opus stream selection with direct stream copy."
+                        AudioFormat.WAV -> "Uncompressed source audio (PCM)."
                     },
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                     color = VrkaTokens.TextTertiary,
@@ -414,7 +480,7 @@ internal fun HomeScreen(
                     OptionToggle("Embed title and media metadata", embedMetadata) {
                         embedMetadata = it
                     }
-                    if (mode == MediaMode.AUDIO) {
+                    if (mode == MediaMode.AUDIO && audioFormat != AudioFormat.WAV) {
                         OptionToggle("Embed thumbnail in audio", embedThumbnail) {
                             embedThumbnail = it
                         }
@@ -460,6 +526,115 @@ internal fun HomeScreen(
                             modifier = Modifier.weight(1f),
                         )
                     }
+                    Text(
+                        "Network & HTTP Headers",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VrkaTokens.TextSecondary,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                    OutlinedTextField(
+                        value = referer,
+                        onValueChange = { referer = it.take(500) },
+                        label = { Text("Referer URL") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                    OutlinedTextField(
+                        value = origin,
+                        onValueChange = { origin = it.take(500) },
+                        label = { Text("Origin URL") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Custom Headers (${customHeaders.size})",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = VrkaTokens.TextSecondary,
+                        )
+                        VrkaTextButton(
+                            text = "+ Add Header",
+                            onClick = {
+                                customHeaders = customHeaders + ("" to "")
+                            },
+                        )
+                    }
+
+                    customHeaders.forEachIndexed { index, (hName, hVal) ->
+                        val nameValidation = HeaderValidation.validateHeaderName(hName)
+                        val valValidation = HeaderValidation.validateHeaderValue(hVal)
+                        val isSensitive = HeaderValidation.isSensitiveHeader(hName)
+
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                OutlinedTextField(
+                                    value = hName,
+                                    onValueChange = { newName ->
+                                        customHeaders = customHeaders.toMutableList().also {
+                                            it[index] = newName to hVal
+                                        }
+                                    },
+                                    label = { Text("Header Name") },
+                                    singleLine = true,
+                                    isError = hName.isNotBlank() && nameValidation is HeaderValidationResult.Invalid,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                OutlinedTextField(
+                                    value = hVal,
+                                    onValueChange = { newVal ->
+                                        customHeaders = customHeaders.toMutableList().also {
+                                            it[index] = hName to newVal
+                                        }
+                                    },
+                                    label = { Text(if (isSensitive) "Value (Redacted)" else "Header Value") },
+                                    singleLine = true,
+                                    isError = hVal.isNotBlank() && valValidation is HeaderValidationResult.Invalid,
+                                    modifier = Modifier.weight(1.2f),
+                                )
+                                VrkaTextButton(
+                                    text = "✕",
+                                    onClick = {
+                                        customHeaders = customHeaders.toMutableList().also { it.removeAt(index) }
+                                    },
+                                    color = VrkaTokens.Destructive,
+                                )
+                            }
+                            if (hName.isNotBlank() && nameValidation is HeaderValidationResult.Invalid) {
+                                Text(
+                                    nameValidation.reason,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = VrkaTokens.Error,
+                                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                                )
+                            } else if (hVal.isNotBlank() && valValidation is HeaderValidationResult.Invalid) {
+                                Text(
+                                    valValidation.reason,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = VrkaTokens.Error,
+                                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                                )
+                            } else if (isSensitive) {
+                                Text(
+                                    "Sensitive header: Redacted in diagnostic logs and error reports.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = VrkaTokens.AccentLight,
+                                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -498,33 +673,66 @@ internal fun HomeScreen(
                 )
                 if (issue != null) {
                     validation = issue
-                } else {
-                    onEnqueue(
-                        DownloadRequest(
-                            url = url,
-                            mode = mode,
-                            quality = quality,
-                            prefer60Fps = prefer60Fps,
-                            audioFormat = audioFormat,
-                            mp3Bitrate = bitrate,
-                            isPlaylist = playlist,
-                            playlistStart = playlistStart.toIntOrNull(),
-                            playlistEnd = playlistEnd.toIntOrNull(),
-                            downloadSubtitles = subtitles,
-                            automaticCaptions = automaticCaptions,
-                            embedSubtitles = embedSubtitles,
-                            subtitleLanguages = subtitleLanguages,
-                            embedMetadata = embedMetadata,
-                            embedThumbnail = embedThumbnail,
-                            sponsorBlock = sponsorBlock,
-                            sponsorCategories = sponsorCategories,
-                            trimStart = trimStart,
-                            trimEnd = trimEnd,
-                        ),
-                    )
-                    url = ""
-                    validation = ""
+                    return@VrkaPrimaryButton
                 }
+
+                var headerError: String? = null
+                for ((k, v) in customHeaders) {
+                    if (k.isNotBlank()) {
+                        when (val r = HeaderValidation.validateHeaderName(k)) {
+                            is HeaderValidationResult.Invalid -> {
+                                headerError = "Invalid header '$k': ${r.reason}"
+                                break
+                            }
+                            else -> {}
+                        }
+                        when (val r = HeaderValidation.validateHeaderValue(v)) {
+                            is HeaderValidationResult.Invalid -> {
+                                headerError = "Invalid value for '$k': ${r.reason}"
+                                break
+                            }
+                            else -> {}
+                        }
+                    }
+                }
+                if (headerError != null) {
+                    validation = headerError
+                    return@VrkaPrimaryButton
+                }
+
+                val customHeadersMap = HeaderValidation.parseHeaderPairs(customHeaders)
+                val req = DownloadRequest(
+                    url = url,
+                    mode = mode,
+                    quality = quality,
+                    prefer60Fps = prefer60Fps,
+                    audioFormat = audioFormat,
+                    mp3Bitrate = bitrate,
+                    isPlaylist = playlist,
+                    playlistStart = playlistStart.toIntOrNull(),
+                    playlistEnd = playlistEnd.toIntOrNull(),
+                    downloadSubtitles = subtitles,
+                    automaticCaptions = automaticCaptions,
+                    embedSubtitles = embedSubtitles,
+                    subtitleLanguages = subtitleLanguages,
+                    embedMetadata = embedMetadata,
+                    embedThumbnail = embedThumbnail,
+                    sponsorBlock = sponsorBlock,
+                    sponsorCategories = sponsorCategories,
+                    trimStart = trimStart,
+                    trimEnd = trimEnd,
+                    referer = referer.trim(),
+                    origin = origin.trim(),
+                    customHeaders = customHeadersMap,
+                )
+                if (settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME) {
+                    pendingRequestToEnqueue = req
+                    folderPicker.launch(null)
+                } else {
+                    onEnqueue(req.copy(destinationTreeUri = settings.outputTreeUri))
+                }
+                url = ""
+                validation = ""
             },
         )
 

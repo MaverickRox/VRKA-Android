@@ -4,6 +4,7 @@
 
 | Version | Supported |
 | :--- | :--- |
+| 4.5 | :white_check_mark: |
 | 4.0.3 | :white_check_mark: |
 | 4.0.2 | :white_check_mark: |
 | 4.0.1 | :white_check_mark: |
@@ -33,7 +34,7 @@ All official release binaries of VRKA Android are signed using the canonical v1.
 Verify the signing certificate of downloaded release APKs using `apksigner`:
 
 ```bash
-apksigner verify --verbose --print-certs VRKA-Android-v4.0.3.apk
+apksigner verify --verbose --print-certs VRKA-Android-v4.5.apk
 ```
 
 The signing certificate must match:
@@ -51,7 +52,7 @@ sha256sum -c SHA256SUMS
 Or in PowerShell:
 
 ```powershell
-(Get-FileHash .\VRKA-Android-v4.0.3.apk -Algorithm SHA256).Hash
+(Get-FileHash .\VRKA-Android-v4.5.apk -Algorithm SHA256).Hash
 ```
 
 ---
@@ -61,9 +62,10 @@ Or in PowerShell:
 ### Protected Scope
 
 - **Cryptographically Authenticated Updates**: External component updates (`yt-dlp`) are fetched strictly over HTTPS from allowlisted GitHub release endpoints. Release checksum manifests (`SHA2-256SUMS`) must be authenticated via detached OpenPGP signatures (`SHA2-256SUMS.sig`) using standard Bouncy Castle APIs against the pinned upstream trust anchor (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`). Binaries are verified against the authenticated manifest, staged transactionally, validated for executable integrity (`versionName`), and automatically rolled back if validation fails.
+- **HTTP Header Validation & Injection Prevention**: Custom HTTP headers are validated strictly against RFC 7230 / RFC 9110 token specifications. Header names containing non-token characters or CRLF sequences (`\r`, `\n`) are rejected at input time. Case-insensitive precedence ensures deduplication, and dedicated `Referer` and `Origin` parameters maintain unambiguous routing precedence.
+- **Sensitive Header Redaction & Diagnostics Sanitization**: Sensitive header keys (including `Authorization`, `Cookie`, `X-Api-Key`, and secret tokens) are systematically masked (`[REDACTED]`) across logs, crash diagnostics, on-device stores, and UI cards. Diagnostic traces automatically sanitize URL query tokens, signatures, and credentials before rendering or clipboard export.
 - **Bundled Extension Scope**: Content filtering (`uBlock Origin`) and stream discovery (`Puemos`) are immutable assets packaged into the application APK and updated exclusively through signed application releases.
 - **Browser Session Isolation & Clearing**: Embedded GeckoView fallback sessions operate in an isolated sandbox with strict tracking protection. Users can explicitly purge all cookies, active auth sessions, DOM storages, and caches via Settings without affecting download history or configuration.
-- **Diagnostic Sanitization**: Diagnostic traces automatically redact query parameters (tokens, signatures, keys), Authorization headers, and cookie strings before rendering or clipboard export.
 - **Release Continuity**: The build pipeline enforces canonical signing certificate verification to prevent APK takeover and update incompatibilities.
 
 ### Out of Scope / Not Guaranteed

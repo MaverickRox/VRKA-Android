@@ -78,29 +78,56 @@ internal fun SettingsScreen(
 
         SettingsHeading("Storage")
         VrkaSectionContainer {
-            VrkaSettingRow(
-                title = "Download Directory",
-                subtitle = if (settings.outputTreeUri.isBlank()) {
-                    "Downloads/VRKA (recommended)"
-                } else {
-                    "Custom folder selected"
-                },
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Text(
+                "Save Location Mode",
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                fontWeight = FontWeight.SemiBold,
+                color = VrkaTokens.TextPrimary,
+                modifier = Modifier.padding(top = 8.dp, bottom = 10.dp),
+            )
+            VrkaSegmentedControl(
+                items = SaveLocationMode.entries,
+                selectedItem = settings.saveLocationMode,
+                onItemSelected = { mode -> scope.launch { repository.setSaveLocationMode(mode) } },
+                label = { it.label },
+                isMonospace = true,
+            )
+
+            Spacer(Modifier.height(10.dp))
+            VrkaDivider()
+
+            if (settings.saveLocationMode == SaveLocationMode.REMEMBER_LOCATION) {
+                VrkaSettingRow(
+                    title = "Remembered Directory",
+                    subtitle = if (settings.outputTreeUri.isBlank()) {
+                        "Downloads/VRKA (default MediaStore)"
+                    } else {
+                        "Custom SAF folder selected"
+                    },
                 ) {
-                    VrkaOutlinedButton(
-                        text = "Choose",
-                        onClick = { folderPicker.launch(null) },
-                        height = 34.dp,
-                    )
-                    if (settings.outputTreeUri.isNotBlank()) {
-                        VrkaTextButton(
-                            text = "Reset",
-                            onClick = { scope.launch { repository.setOutputTree("") } },
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        VrkaOutlinedButton(
+                            text = "Choose",
+                            onClick = { folderPicker.launch(null) },
+                            height = 34.dp,
                         )
+                        if (settings.outputTreeUri.isNotBlank()) {
+                            VrkaTextButton(
+                                text = "Reset",
+                                onClick = { scope.launch { repository.setOutputTree("") } },
+                            )
+                        }
                     }
+                }
+            } else {
+                VrkaSettingRow(
+                    title = "Folder Prompt",
+                    subtitle = "A folder picker prompt appears before each download begins.",
+                ) {
+                    VrkaStatusBadge("Prompt", VrkaTokens.AccentLight, isMonospace = true)
                 }
             }
         }
@@ -139,6 +166,24 @@ internal fun SettingsScreen(
                     ),
                 )
             }
+
+            Spacer(Modifier.height(10.dp))
+            VrkaDivider()
+
+            Text(
+                "Font",
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                fontWeight = FontWeight.SemiBold,
+                color = VrkaTokens.TextPrimary,
+                modifier = Modifier.padding(top = 8.dp, bottom = 10.dp),
+            )
+            VrkaSegmentedControl(
+                items = FontPreference.entries,
+                selectedItem = settings.fontPreference,
+                onItemSelected = { font -> scope.launch { repository.setFontPreference(font) } },
+                label = { it.label },
+                isMonospace = true,
+            )
         }
 
         SettingsHeading("Components & Updates")

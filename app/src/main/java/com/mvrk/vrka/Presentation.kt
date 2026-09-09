@@ -4,8 +4,8 @@ internal fun requestSummary(request: DownloadRequest): String = when (request.mo
     MediaMode.VIDEO -> "Video • ${request.quality.label}"
     MediaMode.AUDIO -> when (request.audioFormat) {
         AudioFormat.MP3 -> "MP3 • ${request.mp3Bitrate} kbps"
-        AudioFormat.WAV -> "WAV • source-dependent"
-        AudioFormat.FLAC -> "FLAC • source-dependent"
+        AudioFormat.OPUS -> "Opus • Best Native Opus"
+        AudioFormat.WAV -> "WAV • Uncompressed PCM"
     }
 }
 
@@ -48,15 +48,15 @@ internal fun friendlyFailureTitle(job: DownloadJob): String {
 
 internal fun friendlyFailureDetail(job: DownloadJob): String {
     val title = friendlyFailureTitle(job)
-    return when (title) {
-        "Couldn’t reach this site" -> "Check the connection, then try again."
-        "Couldn’t find a downloadable format" ->
+    return when {
+        title == "Couldn’t reach this site" -> "Check the connection, then try again."
+        title == "Couldn’t find a downloadable format" ->
             "The page did not expose a supported non-DRM media format."
-        "Sign-in may be required" -> "The source may require an authenticated browser session."
-        "Download failed during publishing" ->
+        title == "Sign-in may be required" -> "The source may require an authenticated browser session."
+        title == "Download failed during publishing" ->
             "The media was processed, but Android could not save the final file."
-        "Browser session timed out" -> "Retry the browser session or close it safely."
-        "Browser session closed" -> "No downloadable non-DRM media was handed off."
+        title == "Browser session timed out" -> "Retry the browser session or close it safely."
+        title == "Browser session closed" -> "No downloadable non-DRM media was handed off."
         else -> "Try again. Failure details saved to Diagnostics in Settings."
     }
 }

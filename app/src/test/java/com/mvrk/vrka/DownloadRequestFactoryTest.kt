@@ -14,8 +14,8 @@ class DownloadRequestFactoryTest {
         val profiles = listOf(
             Triple(AudioFormat.MP3, 320, "320K"),
             Triple(AudioFormat.MP3, 192, "192K"),
-            Triple(AudioFormat.WAV, 320, "0"),
-            Triple(AudioFormat.FLAC, 320, "0"),
+            Triple(AudioFormat.WAV, 320, null),
+            Triple(AudioFormat.OPUS, 320, null),
         )
 
         profiles.forEach { (format, bitrate, expectedQuality) ->
@@ -30,7 +30,11 @@ class DownloadRequestFactoryTest {
             assertTrue(request.hasOption("--extract-audio"))
             assertEquals(format.codec, request.getOption("--audio-format"))
             assertEquals(expectedQuality, request.getOption("--audio-quality"))
-            assertEquals("bestaudio/best", request.getOption("-f"))
+            if (format == AudioFormat.OPUS) {
+                assertEquals("bestaudio[acodec^=opus]/bestaudio/best", request.getOption("-f"))
+            } else {
+                assertEquals("bestaudio/best", request.getOption("-f"))
+            }
         }
     }
 
@@ -217,6 +221,71 @@ class DownloadRequestFactoryTest {
         assertEquals(URL, recovery.getOption("--referer"))
         assertTrue(recovery.getOption("--user-agent").orEmpty().contains("Chrome/"))
     }
+
+    @Test
+    fun dedicatedRefererAndOriginArePassedViaCommandLine() {
+        val request = built(
+            DownloadRequest(
+                url = URL,
+                referer = "https://specific-source.test/page",
+                origin = "https://specific-source.test",
+                customHeaders = mapOf("Authorization" to "Bearer token123"),
+            ),
+        )
+        val command = request.buildCommand()
+        assertTrue(command.any { it == "Referer:https://specific-source.test/page" })
+        assertTrue(command.any { it == "Origin:https://specific-source.test" })
+        assertTrue(command.any { it == "Authorization:Bearer token123" })
+    }
+
+    @Test
+    fun caseInsensitiveHeaderPrecedenceRespectsResolvedOverCustom() {
+        val request = built(
+            DownloadRequest(
+                url = URL,
+                referer = "https://typed-referer.test",
+                customHeaders = mapOf("REFERER" to "https://custom-header.test"),
+                resolvedHeaders = mapOf("Referer" to "https://resolved-browser.test"),
+            ),
+        )
+        val command = request.buildCommand()
+        assertTrue(command.any { it == "Referer:https://resolved-browser.test" })
+        assertFalse(command.any { it.contains("typed-referer.test") })
+        assertFalse(command.any { it.contains("custom-header.test") })
+    }
+    @Test
+    fun wavAudioModeOmitsEmbedThumbnailEvenIfRequested() {
+        val wavRequest = built(
+            DownloadRequest(
+                url = URL,
+                mode = MediaMode.AUDIO,
+                audioFormat = AudioFormat.WAV,
+                embedThumbnail = true,
+            ),
+        )
+        assertFalse(wavRequest.hasOption("--embed-thumbnail"))
+
+        val mp3Request = built(
+            DownloadRequest(
+                url = URL,
+                mode = MediaMode.AUDIO,
+                audioFormat = AudioFormat.MP3,
+                embedThumbnail = true,
+            ),
+        )
+        assertTrue(mp3Request.hasOption("--embed-thumbnail"))
+
+        val opusRequest = built(
+            DownloadRequest(
+                url = URL,
+                mode = MediaMode.AUDIO,
+                audioFormat = AudioFormat.OPUS,
+                embedThumbnail = true,
+            ),
+        )
+        assertTrue(opusRequest.hasOption("--embed-thumbnail"))
+    }
+
     private fun built(request: DownloadRequest) =
         DownloadRequestFactory.download(
             DownloadJob(id = "test-job", request = request),

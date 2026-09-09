@@ -305,3 +305,38 @@ This audit covers the post-v4.0.2 corrective hardening pass addressing OpenPGP i
   - In-memory OpenPGP RSA keypair generation and signing to test untrusted key rejection, untrusted keyring rejection, and issuer fingerprint subpacket verification.
   - Full transactional rollback verification on post-validation failure and fresh install failure.
 - Test suite expanded to 151 total passing unit tests (32 in `SecureComponentUpdaterTest`).
+
+---
+
+## VRKA Android 4.5 Security Architecture & Verification — 2026-09-09
+
+This audit covers the security architecture, input validation, and media pipeline hardening for the VRKA Android 4.5 release.
+
+### 1. RFC 7230 Header Token Validation & CRLF Injection Prevention
+- Header names are strictly validated against RFC 7230 / RFC 9110 token specifications (`!#$%&'*+-.^_`|~` and alphanumeric characters).
+- Explicit rejection of CRLF injection vectors (`\r`, `\n`) across header names and values to eliminate HTTP request/response splitting vulnerabilities.
+- Header values are validated to ensure only printable ASCII characters and horizontal tabs/spaces are permitted.
+- Dedicated `Referer` and `Origin` fields take strict precedence over custom headers with case-insensitive deduplication, preventing ambiguous header state injection.
+
+### 2. Comprehensive Sensitive Header Redaction
+- Automatic identification and redaction of sensitive HTTP headers including `Authorization`, `Cookie`, `Set-Cookie`, `Token`, `Api-Key`, `Secret`, and custom token variants.
+- Two-pass masking mechanism replaces sensitive credential values with `[REDACTED]` before:
+  - Writing to local diagnostic traces (`DiagnosticStore`).
+  - Emitting system logcat messages (`Log.d`, `Log.w`, `Log.e`).
+  - Rendering UI inspection cards and job status chips.
+  - Serialization to persistent job storage (`JobStore`).
+
+### 3. Audio Pipeline Integrity & Safe Codec Boundaries
+- Enforced strict audio format model: MP3 (128–320 kbps selectable bitrate), Opus ("Best Native Opus" with stream-copy remuxing prioritization), and WAV (uncompressed 16-bit linear PCM).
+- Deprecated and permanently removed FLAC support; implemented transparent migration mapping legacy persisted states and settings to Opus.
+- Resolved yt-dlp thumbnail postprocessing incompatibility for WAV audio by conditionally stripping `--embed-thumbnail`.
+- Implemented native `AudioValidator` leveraging `ffprobe` to verify audio stream presence, codec type, and uncompressed PCM format prior to publishing media.
+
+### 4. Storage Access Framework (SAF) Security
+- Storage location configuration supports "Remember Location" (safely persisting tree URI permissions via `ContentResolver.takePersistableUriPermission`) and "Ask Every Time" (interactive folder picker on queue without lingering permissions).
+- Output files published through SAF document trees strictly validate destination boundaries and handle filename collisions safely.
+
+### 5. Automated & Physical Test Verification
+- Expanded unit test coverage to 171 passing offline unit tests across 15 suites (including `HeaderValidationTest`, `AudioFormatPipelineTest`, and `SaveLocationTest`).
+- Verified zero regressions in component updater cryptographic verification (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`) and canonical signing certificate lineage (`9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`).
+- Complete physical device testing on OnePlus 11 5G (`CPH2447`, Android 16) confirming in-place upgrade, UI responsiveness, and successful media downloads across MP3, Opus, and WAV formats.

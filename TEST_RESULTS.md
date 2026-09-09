@@ -196,3 +196,37 @@ The final report does not convert an unrun physical test into a pass.
 | **PHY-07** | Physical Device | Version Reporting in UI | Physical UI | **PASS** | Settings screen About card displays `VRKA v4.0.3` matching `versionName = "4.0.3"`. |
 | **PHY-08** | Physical Device | Browser Session Clearing & State Isolation | Physical UI | **PASS** | "Clear Session" action verified on device; active settings, queue, and preferences preserved. |
 | **PHY-09** | Physical Device | Download Engine & Diagnostic Attribution | Physical UI / Logcat | **PASS** | Download lifecycle and error categorization verified; diagnostics cleanly attributed and persisted. |
+
+---
+
+## VRKA Android 4.5 Release Verification Matrix — 2026-09-09
+
+### Release Candidate Summary
+
+- **Version**: VRKA Android 4.5 (`versionCode = 40500`, `versionName = "4.5"`)
+- **Package**: `com.mvrk.vrka`
+- **Target Platform**: Android 16 (API Level 36), Minimum Android 8.0 (API Level 26)
+- **Architecture**: `arm64-v8a`
+- **Signing Fingerprints**:
+  - **SHA-256**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa` (Canonical Lineage)
+  - **SHA-1**: `7758980f74a503684bf1a187994e447823d19d7c`
+- **APK SHA-256**: `e8b7074aac3001f1374656c87d30a86a31f9852b8158dd32d9a0b4bcbfd2ad8c`
+- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+
+### Test Matrix
+
+| ID | Category | Test Case | Method | Result | Evidence / Details |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **AUT-18** | Automated | RFC 7230 Header Token Validation & CRLF Injection Rejection | JUnit (Offline) | **PASS** | `HeaderValidationTest`: Enforces strict RFC 7230 token rules; rejects illegal characters, spaces, and CRLF injection sequences. |
+| **AUT-19** | Automated | Referer & Origin Dedicated Precedence & Deduplication | JUnit (Offline) | **PASS** | `HeaderValidationTest`: Dedicated Referer and Origin parameters strictly override custom headers; case-insensitive deduplication enforced. |
+| **AUT-20** | Automated | Multi-Tier Sensitive Header Redaction | JUnit (Offline) | **PASS** | `HeaderValidationTest`, `DiagnosticStoreTest`: Two-pass redaction replaces authorization, cookie, and API keys with `[REDACTED]` across logs, errors, and UI. |
+| **AUT-21** | Automated | Audio Format Pipeline & Safe Legacy Migration | JUnit (Offline) | **PASS** | `AudioFormatPipelineTest`: Validates MP3 (128–320 kbps), Best Native Opus stream-copy prioritization, uncompressed PCM WAV parameters, and legacy FLAC to Opus migration. |
+| **AUT-22** | Automated | WAV Postprocessing Thumbnail Omission | JUnit (Offline) | **PASS** | `DownloadRequestFactoryTest`: Confirms `--embed-thumbnail` is conditionally omitted for WAV requests to prevent yt-dlp postprocessing failure. |
+| **AUT-23** | Automated | Storage Access Framework Save Location Modes | JUnit (Offline) | **PASS** | `SaveLocationTest`: Verifies Remember Location persistable URI handling and Ask Every Time interactive prompt behavior. |
+| **AUT-24** | Automated | Full Offline Test Suite (171 tests across 15 suites) | JUnit (Offline) | **PASS** | 171 unit tests passed with 0 failures, 0 errors, 0 skipped in 10s via `gradlew testDebugUnitTest --offline`. |
+| **PHY-10** | Physical Device | In-Place Upgrade Compatibility (4.0.3 to 4.5) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch. |
+| **PHY-11** | Physical Device | Version & Typography UI Reporting | Physical UI | **PASS** | Settings screen About card displays `VRKA v4.5 By MVRK`; font preference toggle switches cleanly between VRKA Font and System Font. |
+| **PHY-12** | Physical Device | Save Location Selection & Persistence | Physical UI | **PASS** | Settings toggle between "Remember Location" and "Ask Every Time" updates UI and persists selection in DataStore. |
+| **PHY-13** | Physical Device | Physical MP3 Audio Extraction & Metadata Verification | Physical UI / FFprobe | **PASS** | Downloaded Big Buck Bunny MP3 at 320 kbps (26,983,272 bytes); ffprobe verified MPEG audio layer 3, 320 kbps, embedded front cover art, and ID3 tags. |
+| **PHY-14** | Physical Device | Physical WAV Uncompressed PCM Download & Integrity | Physical UI / FFprobe | **PASS** | Downloaded Big Buck Bunny WAV (121,839,268 bytes); ffprobe verified 16-bit uncompressed PCM (`pcm_s16le`), 48 kHz, stereo, 1536 kbps, and RIFF tags. |
+| **PHY-15** | Physical Device | Physical Opus Stream Selection & Remuxing | Physical UI | **PASS** | Validated "Best Native Opus" direct stream copy without transcoding. |

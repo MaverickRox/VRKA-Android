@@ -106,7 +106,11 @@ fun VrkaRoot(
         android.util.Log.d("VrkaNavPerf", "VrkaRoot destination committed: ${destination.name}")
     }
 
-    VrkaTheme(themeMode = settings.themeMode, amoled = settings.amoled) {
+    VrkaTheme(
+        themeMode = settings.themeMode,
+        amoled = settings.amoled,
+        fontPreference = settings.fontPreference,
+    ) {
         val backgroundColor = MaterialTheme.colorScheme.background
         val screenBackdrop = rememberLayerBackdrop(
             onDraw = remember(backgroundColor) {
@@ -210,6 +214,7 @@ fun VrkaRoot(
                                     onShare = manager::shareOutput,
                                     onDelete = manager::deleteJob,
                                     onShowFallback = manager::showFallbackView,
+                                    onSetDestination = manager::setJobDestination,
                                 )
                             }
                             VrkaDestination.HISTORY -> {

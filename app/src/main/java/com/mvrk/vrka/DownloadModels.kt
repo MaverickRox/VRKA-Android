@@ -50,8 +50,18 @@ enum class VideoQuality(val label: String, val height: Int?) {
 
 enum class AudioFormat(val label: String, val codec: String) {
     MP3("MP3 (compressed)", "mp3"),
+    OPUS("Opus (native)", "opus"),
     WAV("WAV (uncompressed)", "wav"),
-    FLAC("FLAC (lossless container)", "flac"),
+}
+
+enum class SaveLocationMode(val label: String) {
+    REMEMBER_LOCATION("Remember Location"),
+    ASK_EVERY_TIME("Ask Every Time"),
+}
+
+enum class FontPreference(val label: String) {
+    VRKA_FONT("VRKA Font"),
+    SYSTEM_FONT("System Font"),
 }
 
 enum class ThemeMode(val label: String) {
@@ -86,6 +96,10 @@ data class DownloadRequest(
     val trimStart: String = "",
     val trimEnd: String = "",
     val customArguments: List<String> = emptyList(),
+    val referer: String = "",
+    val origin: String = "",
+    val customHeaders: Map<String, String> = emptyMap(),
+    val destinationTreeUri: String? = null,
     val resolvedMediaUrl: String? = null,
     val resolvedHeaders: Map<String, String> = emptyMap(),
 )
