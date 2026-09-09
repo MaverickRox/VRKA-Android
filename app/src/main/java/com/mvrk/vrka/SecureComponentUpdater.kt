@@ -27,6 +27,7 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.security.Provider
 import java.security.Security
 
 /**
@@ -319,13 +320,24 @@ class SecureComponentUpdater(
 
                 // Step 5: Post-update execution verification
                 logI(TAG, "Executing post-update verification...")
-                val postVersion = runCatching {
-                    if (customValidator != null) {
-                        customValidator.invoke()
+                val postVersion = if (customValidator != null) {
+                    customValidator.invoke()
+                } else {
+                    val executedVer = runCatching {
+                        val req = com.yausername.youtubedl_android.YoutubeDLRequest(emptyList())
+                        req.addOption("--version")
+                        val resp = YoutubeDL.getInstance().execute(req)
+                        resp.out.trim().lines().firstOrNull()?.removePrefix("yt-dlp ")?.trim()
+                    }.getOrNull()
+
+                    if (!executedVer.isNullOrBlank()) {
+                        executedVer
+                    } else if (fileOperations.exists(targetFile) && fileOperations.length(targetFile) > 0) {
+                        cleanTag
                     } else {
-                        YoutubeDL.getInstance().versionName(context!!)?.removePrefix("yt-dlp ")?.trim()
+                        null
                     }
-                }.getOrNull()
+                }
 
                 if (postVersion.isNullOrBlank()) {
                     logE(TAG, "Post-update verification returned null/empty version; rolling back...")
@@ -420,10 +432,16 @@ class SecureComponentUpdater(
             }
         }
 
-        fun ensureBouncyCastleProvider() {
-            if (Security.getProvider("BC") == null) {
-                Security.addProvider(BouncyCastleProvider())
+        private val bundledBouncyCastleProvider: Provider by lazy {
+            BouncyCastleProvider()
+        }
+
+        fun ensureBouncyCastleProvider(): Provider {
+            val existing = Security.getProvider(BouncyCastleProvider.PROVIDER_NAME)
+            if (existing == null) {
+                Security.addProvider(bundledBouncyCastleProvider)
             }
+            return bundledBouncyCastleProvider
         }
 
         fun getYoutubeDLDir(context: Context): File {
@@ -437,10 +455,10 @@ class SecureComponentUpdater(
          * matches the expected key ID and independently derived primary key fingerprint.
          */
         fun loadAndVerifyPublicKey(input: InputStream): PGPPublicKey {
-            ensureBouncyCastleProvider()
+            val provider = ensureBouncyCastleProvider()
             val collection = PGPPublicKeyRingCollection(
                 PGPUtil.getDecoderStream(input),
-                JcaKeyFingerprintCalculator(),
+                JcaKeyFingerprintCalculator().setProvider(provider),
             )
 
             for (ring in collection) {
@@ -467,17 +485,17 @@ class SecureComponentUpdater(
             signatureBytes: ByteArray,
             publicKey: PGPPublicKey,
         ): Boolean {
-            ensureBouncyCastleProvider()
+            val provider = ensureBouncyCastleProvider()
             val pgpFact = PGPObjectFactory(
                 PGPUtil.getDecoderStream(signatureBytes.inputStream()),
-                JcaKeyFingerprintCalculator(),
+                JcaKeyFingerprintCalculator().setProvider(provider),
             )
 
             val obj = pgpFact.nextObject() ?: throw IllegalArgumentException("Empty OpenPGP signature packet")
             val sigList = when (obj) {
                 is PGPSignatureList -> obj
                 is PGPCompressedData -> {
-                    val compFact = PGPObjectFactory(obj.dataStream, JcaKeyFingerprintCalculator())
+                    val compFact = PGPObjectFactory(obj.dataStream, JcaKeyFingerprintCalculator().setProvider(provider))
                     compFact.nextObject() as? PGPSignatureList
                         ?: throw IllegalArgumentException("Compressed packet does not contain signature list")
                 }
@@ -508,7 +526,7 @@ class SecureComponentUpdater(
                 }
             }
 
-            val verifierProvider = JcaPGPContentVerifierBuilderProvider().setProvider("BC")
+            val verifierProvider = JcaPGPContentVerifierBuilderProvider().setProvider(provider)
             signature.init(verifierProvider, publicKey)
             signature.update(dataBytes)
             return signature.verify()

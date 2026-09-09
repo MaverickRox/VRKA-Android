@@ -1,5 +1,7 @@
 -keep class com.yausername.** { *; }
 -keep class org.apache.commons.compress.archivers.zip.** { *; }
+-keep class org.bouncycastle.** { *; }
 -keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
 -dontwarn org.slf4j.**
-
+-dontwarn org.bouncycastle.**
+-dontwarn javax.naming.**
