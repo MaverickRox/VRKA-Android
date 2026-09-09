@@ -123,6 +123,16 @@ VRKA Android includes a dedicated in-app application self-update mechanism desig
 - **FileProvider Installation**: Release APKs are streamed directly into private internal app cache (`cacheDir/updates/update.apk`) and handed off to Android's `PackageInstaller` via `FileProvider` (`com.mvrk.vrka.fileprovider`) with temporary read URI permissions. Validates `canRequestPackageInstalls()` on Android 8.0+ before prompting installation.
 - **Separation from Component Updates**: The application self-updater operates strictly independently from the native `yt-dlp` component updater (`SecureComponentUpdater`), which maintains its own pinned OpenPGP verification pipeline.
 
+### In-App Component Updates (yt-dlp Engine)
+
+VRKA Android maintains an independent, cryptographically authenticated updater for external engine binaries (`yt-dlp`):
+
+- **OpenPGP Detached Signature Verification**: Verifies release manifests (`SHA2-256SUMS`) against the pinned upstream trust anchor (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`) before any binary is accepted.
+- **Explicit BouncyCastle Provider Resolution (v4.5.2)**: Instantiates and supplies an explicit `BouncyCastleProvider` directly to `JcaPGPContentVerifierBuilderProvider` and `JcaKeyFingerprintCalculator`, preventing platform security provider interception on Android.
+- **R8 Minification Compatibility (v4.5.2)**: Includes targeted ProGuard/R8 keep rules (`-keep class org.bouncycastle.** { *; }`), ensuring reflection lookup tables are preserved and resolving the `NoSuchAlgorithmException: no such algorithm: S` issue on fresh minified installs.
+- **SHA-256 Digest Validation**: Enforces exact SHA-256 checksum matching against the authenticated manifest before binary replacement.
+- **Transactional Staging & Rollback**: Stages downloads in temporary storage, creates a verified backup of the active component, performs atomic file moves (with safe copy-and-fsync fallback), verifies post-update execution (`--version`), and automatically rolls back if verification fails.
+
 ---
 
 ## Architecture
