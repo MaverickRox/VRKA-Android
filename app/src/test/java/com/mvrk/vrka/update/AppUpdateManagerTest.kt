@@ -94,9 +94,9 @@ class AppUpdateManagerTest {
                         "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/checksums.sha256"
                     },
                     {
-                        "name": "VRKA-Android-arm64-v8a.apk",
+                        "name": "VRKA-Android-v4.5.2.apk",
                         "size": 25000000,
-                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-arm64-v8a.apk"
+                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk"
                     }
                 ]
             }
@@ -108,10 +108,10 @@ class AppUpdateManagerTest {
         assertEquals(SemanticVersion(4, 5, 2), release.version)
         assertEquals("VRKA Android 4.5.2", release.name)
         assertTrue(release.body.contains("Bug fixes"))
-        assertEquals("VRKA-Android-arm64-v8a.apk", release.apkFileName)
+        assertEquals("VRKA-Android-v4.5.2.apk", release.apkFileName)
         assertEquals(25000000L, release.apkSizeBytes)
         assertEquals(
-            "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-arm64-v8a.apk",
+            "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk",
             release.apkDownloadUrl,
         )
     }
@@ -125,8 +125,8 @@ class AppUpdateManagerTest {
                 "prerelease": false,
                 "assets": [
                     {
-                        "name": "app.apk",
-                        "browser_download_url": "https://example.com/app.apk"
+                        "name": "VRKA-Android-v4.5.2.apk",
+                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk"
                     }
                 ]
             }
@@ -140,8 +140,8 @@ class AppUpdateManagerTest {
                 "prerelease": true,
                 "assets": [
                     {
-                        "name": "app.apk",
-                        "browser_download_url": "https://example.com/app.apk"
+                        "name": "VRKA-Android-v4.5.2.apk",
+                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk"
                     }
                 ]
             }
@@ -240,5 +240,74 @@ class AppUpdateManagerTest {
 
         assertTrue((now - within24h) < AppUpdateManager.TWENTY_FOUR_HOURS_MS)
         assertFalse((now - past24h) < AppUpdateManager.TWENTY_FOUR_HOURS_MS)
+    }
+
+    @Test
+    fun testParseReleaseJsonRejectsUnrelatedAndNonMatchingApkAssets() {
+        val invalidAssetsJson = """
+            {
+                "tag_name": "v4.5.2",
+                "draft": false,
+                "prerelease": false,
+                "assets": [
+                    {
+                        "name": "other-app.apk",
+                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/other-app.apk"
+                    },
+                    {
+                        "name": "VRKA-Android-arm64-v8a.apk",
+                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-arm64-v8a.apk"
+                    },
+                    {
+                        "name": "VRKA-Android-v4.5.2.zip",
+                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.zip"
+                    }
+                ]
+            }
+        """.trimIndent()
+        assertNull(AppUpdateManager.parseReleaseJson(invalidAssetsJson))
+    }
+
+    @Test
+    fun testValidateHttpsUrlApprovedHosts() {
+        val approvedUrls = listOf(
+            "https://api.github.com/repos/MaverickRox/VRKA-Android/releases/latest",
+            "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.1/VRKA-Android-v4.5.1.apk",
+            "https://objects.githubusercontent.com/github-production-release-asset/12345/file.apk",
+            "https://release-assets.githubusercontent.com/github-production-release-asset/67890/file.apk",
+            "https://raw.githubusercontent.com/MaverickRox/VRKA-Android/main/README.md",
+        )
+
+        for (urlStr in approvedUrls) {
+            val validated = AppUpdateManager.validateHttpsUrl(urlStr)
+            assertEquals("https", validated.protocol)
+            assertTrue(AppUpdateManager.isApprovedHost(validated.host))
+        }
+    }
+
+    @Test(expected = SecurityException::class)
+    fun testValidateHttpsUrlRejectsInsecureHttp() {
+        AppUpdateManager.validateHttpsUrl("http://github.com/MaverickRox/VRKA-Android/releases/latest")
+    }
+
+    @Test(expected = SecurityException::class)
+    fun testValidateHttpsUrlRejectsArbitraryHost() {
+        AppUpdateManager.validateHttpsUrl("https://evil-attacker.com/malicious.apk")
+    }
+
+    @Test(expected = SecurityException::class)
+    fun testValidateHttpsUrlRejectsHostSpoofing() {
+        AppUpdateManager.validateHttpsUrl("https://github.com.evil.com/fake.apk")
+    }
+
+    @Test
+    fun testResolveRedirectUrl() {
+        val base = java.net.URL("https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk")
+
+        val absolute = AppUpdateManager.resolveRedirectUrl(base, "https://objects.githubusercontent.com/asset.apk")
+        assertEquals("https://objects.githubusercontent.com/asset.apk", absolute)
+
+        val relative = AppUpdateManager.resolveRedirectUrl(base, "/MaverickRox/VRKA-Android/releases/download/v4.5.2/redirected.apk")
+        assertEquals("https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/redirected.apk", relative)
     }
 }
