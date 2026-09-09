@@ -107,6 +107,22 @@ Designed for local, on-device processing without an application analytics servic
 - **Browser Session Clearing**: Dedicated storage clearing for the GeckoView fallback runtime under Settings to purge cached cookies and site data without affecting application history or preferences.
 - **Liquid Glass Design System**: Floating capsule navigation with hardware-accelerated `RenderEffect` backdrop blur across AMOLED Black and Light modes.
 
+### In-App Application Self-Update
+
+VRKA Android includes a dedicated in-app application self-update mechanism designed for secure, friction-free updates directly from official GitHub releases:
+
+- **GitHub Releases Integration**: Periodically queries the official VRKA Android GitHub Releases repository (`/repos/MaverickRox/VRKA-Android/releases/latest`) for new application releases.
+- **24-Hour Automatic Gate**: Automatic startup update checks are rate-limited to run at most once every 24 hours (`86,400,000 ms`), preventing unnecessary background network traffic and avoiding GitHub API rate limits.
+- **Manual Check Bypass**: A dedicated `[Check for Updates]` button in the Settings "About" card bypasses the 24-hour rate limit and triggers an immediate update check with live feedback.
+- **Non-Blocking Startup**: Startup update checks execute asynchronously on a background thread (`Dispatchers.IO`) and fail silently during offline, network timeout, or rate-limited conditions, guaranteeing zero interruption to application launch.
+- **Semantic Version Comparison**: Evaluates releases using formal numeric segment comparison (`SemanticVersion`), ensuring proper ordering across multi-digit versions (e.g., `4.5.9 < 4.5.10`, `4.9.0 < 5.0.0`).
+- **Strict APK Asset Naming**: Requires the exact release naming pattern `^VRKA-Android-v\d+\.\d+\.\d+\.apk$` matching `VRKA-Android-v$version.apk`. Arbitrary APKs, non-matching version numbers, and non-APK assets are strictly rejected.
+- **HTTPS-Only Networking & Approved Host Validation**: Enforces HTTPS across both release metadata querying and APK binary streaming. Validates destination hosts against approved GitHub release and asset hosts (`api.github.com`, `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, `raw.githubusercontent.com`, `*.githubusercontent.com`).
+- **Per-Hop Redirect Validation**: Explicitly validates each HTTP redirect (`conn.instanceFollowRedirects = false`), immediately rejecting protocol downgrades (HTTPS to HTTP) and redirects to arbitrary or look-alike external hosts.
+- **Redirect Hop Limit**: Enforces a strict limit of at most 5 redirect hops before aborting with an `IOException`.
+- **FileProvider Installation**: Release APKs are streamed directly into private internal app cache (`cacheDir/updates/update.apk`) and handed off to Android's `PackageInstaller` via `FileProvider` (`com.mvrk.vrka.fileprovider`) with temporary read URI permissions. Validates `canRequestPackageInstalls()` on Android 8.0+ before prompting installation.
+- **Separation from Component Updates**: The application self-updater operates strictly independently from the native `yt-dlp` component updater (`SecureComponentUpdater`), which maintains its own pinned OpenPGP verification pipeline.
+
 ---
 
 ## Architecture
