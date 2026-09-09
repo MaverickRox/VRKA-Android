@@ -265,4 +265,32 @@ The final report does not convert an unrun physical test into a pass.
 | **PHY-20** | Physical Device | In-Place Upgrade Compatibility (4.5 to 4.5.1) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch against canonical lineage. |
 | **PHY-21** | Physical Device | In-App Application Updater Execution & 24h Gating | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G: live release check queries GitHub API over HTTPS, correctly identifies app as up-to-date (`v4.5.1`), and logs `VRKA-AppUpdater: Skipping background update check; within 24h gate` on subsequent launches. |
 
+---
+
+## VRKA Android 4.5.2 Release Verification Matrix — 2026-09-09
+
+### Release Candidate Summary
+
+- **Version**: VRKA Android 4.5.2 (`versionCode = 40502`, `versionName = "4.5.2"`)
+- **Package**: `com.mvrk.vrka`
+- **Target Platform**: Android 16 (API Level 36), Minimum Android 8.0 (API Level 26)
+- **Architecture**: `arm64-v8a`
+- **Signing Fingerprints**:
+  - **SHA-256**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa` (Canonical Lineage)
+  - **SHA-1**: `7758980f74a503684bf1a187994e447823d19d7c`
+  - **MD5**: `679d325009a63433f444e333bafe96a5`
+- **APK Size**: 154,866,257 bytes
+- **APK SHA-256**: `468df24d3d0d123f386e8acdf1fcadda7e726950b387394024b418d5db575996`
+- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+
+### Test Matrix
+
+| ID | Category | Test Case | Method | Result | Evidence / Details |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **AUT-31** | Automated | OpenPGP Provider & Algorithm Coverage | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test29_EnsureBouncyCastleProviderSuppliesRequiredAlgorithms`: Validates bundled `BouncyCastleProvider` exposes SHA-256, SHA-512, SHA256withRSA, and SHA512withRSA. |
+| **AUT-32** | Automated | Manifest Signature Verification with Bundled Provider | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test30_VerifyManifestSignatureUsesBundledProviderDirectly`: Validates authentic manifest signature verification against pinned public key using explicit bundled provider. |
+| **AUT-33** | Automated | Full Test Suite (192 tests across 17 suites) | JUnit (Offline) | **PASS** | 192 unit tests passed with 0 failures, 0 errors, 0 skipped in 30s via `gradlew testDebugUnitTest`. |
+| **PHY-22** | Physical Device | In-Place Upgrade Compatibility (4.5.1 to 4.5.2) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch against canonical lineage. |
+| **PHY-23** | Physical Device | yt-dlp Engine Update & OpenPGP Verification on Android 16 | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G (`897f6ce5`): Fetched and verified manifest for `yt-dlp-nightly-builds@2026.08.30.232658`; OpenPGP signature successfully verified against pinned key `AC0CBBE6848D6A873464AF4E57CF65933B5A7581`; SHA-256 checksum verified; post-update execution succeeded; UI updated to `v2026.08.30.232658` without `NoSuchAlgorithmException: no such algorithm: S`. |
+
 

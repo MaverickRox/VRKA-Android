@@ -21,7 +21,9 @@ import java.net.URL
 import java.nio.file.AtomicMoveNotSupportedException
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
+import java.security.Signature
 import java.util.Date
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 
 class SecureComponentUpdaterTest {
 
@@ -817,5 +819,44 @@ class SecureComponentUpdaterTest {
         assertFalse("Target binary must be deleted when initial validation fails", targetFile.exists())
         val backupFile = File(targetDir, "yt-dlp.backup.tmp")
         assertFalse("No backup file should remain", backupFile.exists())
+    }
+
+    @Test
+    fun test29_EnsureBouncyCastleProviderSuppliesRequiredAlgorithms() {
+        val provider = SecureComponentUpdater.ensureBouncyCastleProvider()
+        assertNotNull("Provider returned by ensureBouncyCastleProvider must not be null", provider)
+        assertTrue(
+            "Provider must be full BouncyCastleProvider, not stripped platform provider",
+            provider is BouncyCastleProvider
+        )
+        assertEquals("BC", provider.name)
+
+        // Verify all required digest and signature algorithms are provided directly by this provider
+        val md256 = MessageDigest.getInstance("SHA-256", provider)
+        assertNotNull("MessageDigest SHA-256 must be available", md256)
+        assertEquals("SHA-256", md256.algorithm)
+
+        val md512 = MessageDigest.getInstance("SHA-512", provider)
+        assertNotNull("MessageDigest SHA-512 must be available", md512)
+        assertEquals("SHA-512", md512.algorithm)
+
+        val sig256 = Signature.getInstance("SHA256withRSA", provider)
+        assertNotNull("Signature SHA256withRSA must be available", sig256)
+        assertEquals("SHA256withRSA", sig256.algorithm)
+
+        val sig512 = Signature.getInstance("SHA512withRSA", provider)
+        assertNotNull("Signature SHA512withRSA must be available", sig512)
+        assertEquals("SHA512withRSA", sig512.algorithm)
+    }
+
+    @Test
+    fun test30_VerifyManifestSignatureUsesBundledProviderDirectly() {
+        val testPub = loadRealKey()
+        val valid = SecureComponentUpdater.verifyManifestSignature(
+            realManifestBytes,
+            realSignatureBytes,
+            testPub
+        )
+        assertTrue("Manifest signature must verify successfully using explicit provider", valid)
     }
 }
