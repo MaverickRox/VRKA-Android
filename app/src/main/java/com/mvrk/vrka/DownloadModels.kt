@@ -50,13 +50,13 @@ enum class VideoQuality(val label: String, val height: Int?) {
 
 enum class AudioFormat(val label: String, val codec: String) {
     MP3("MP3 (compressed)", "mp3"),
-    OPUS("Opus (native)", "opus"),
+    OPUS("Opus (prefer native)", "opus"),
     WAV("WAV (uncompressed)", "wav"),
 }
 
 enum class SaveLocationMode(val label: String) {
-    REMEMBER_LOCATION("Remember Location"),
-    ASK_EVERY_TIME("Ask Every Time"),
+    REMEMBER_LOCATION("Use selected"),
+    ASK_EVERY_TIME("Ask every time"),
 }
 
 enum class FontPreference(val label: String) {

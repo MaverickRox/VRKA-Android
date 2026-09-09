@@ -24,6 +24,7 @@ data class AppSettings(
     val fontPreference: FontPreference = FontPreference.VRKA_FONT,
     val saveLocationMode: SaveLocationMode = SaveLocationMode.REMEMBER_LOCATION,
     val outputTreeUri: String = "",
+    val isDownloadLocationConfigured: Boolean = false,
     val defaultMode: MediaMode = MediaMode.VIDEO,
     val defaultQuality: VideoQuality = VideoQuality.BEST,
     val defaultAudioFormat: AudioFormat = AudioFormat.MP3,
@@ -40,6 +41,7 @@ class SettingsRepository(
     private object Keys {
         val darkTheme = booleanPreferencesKey("dark_theme")
         val outputTreeUri = stringPreferencesKey("output_tree_uri")
+        val isDownloadLocationConfigured = booleanPreferencesKey("is_download_location_configured")
         val themeMode = stringPreferencesKey("theme_mode")
         val amoled = booleanPreferencesKey("amoled")
         val fontPreference = stringPreferencesKey("font_preference")
@@ -80,6 +82,17 @@ class SettingsRepository(
         update(Keys.saveLocationMode, value.name)
 
     suspend fun setOutputTree(uri: String) = update(Keys.outputTreeUri, uri)
+
+    suspend fun setDownloadLocationConfigured(value: Boolean) =
+        update(Keys.isDownloadLocationConfigured, value)
+
+    suspend fun setDownloadLocation(uri: String, mode: SaveLocationMode, configured: Boolean = true) {
+        context.vrkaDataStore.edit { preferences ->
+            preferences[Keys.outputTreeUri] = uri
+            preferences[Keys.saveLocationMode] = mode.name
+            preferences[Keys.isDownloadLocationConfigured] = configured
+        }
+    }
 
     suspend fun setUpdatePreference(value: UpdatePreference) =
         update(Keys.updatePreference, value.name)
@@ -127,12 +140,16 @@ class SettingsRepository(
             enumValue(storedAudio, AudioFormat.MP3)
         }
 
+        val isConfigured = preferences[Keys.isDownloadLocationConfigured]
+            ?: (preferences[Keys.outputTreeUri]?.isNotBlank() == true || preferences[Keys.saveLocationMode] != null)
+
         return AppSettings(
             themeMode = themeMode,
             amoled = amoled,
             fontPreference = enumValue(preferences[Keys.fontPreference], FontPreference.VRKA_FONT),
             saveLocationMode = enumValue(preferences[Keys.saveLocationMode], SaveLocationMode.REMEMBER_LOCATION),
             outputTreeUri = preferences[Keys.outputTreeUri].orEmpty(),
+            isDownloadLocationConfigured = isConfigured,
             defaultMode = enumValue(preferences[Keys.defaultMode], MediaMode.VIDEO),
             defaultQuality = enumValue(preferences[Keys.defaultQuality], VideoQuality.BEST),
             defaultAudioFormat = defaultAudioFormat,

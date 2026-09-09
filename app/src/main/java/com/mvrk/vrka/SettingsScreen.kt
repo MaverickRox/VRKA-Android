@@ -76,15 +76,35 @@ internal fun SettingsScreen(
             color = VrkaTokens.TextPrimary,
         )
 
-        SettingsHeading("Storage")
+        SettingsHeading("Download Location")
         VrkaSectionContainer {
-            Text(
-                "Save Location Mode",
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
-                fontWeight = FontWeight.SemiBold,
-                color = VrkaTokens.TextPrimary,
-                modifier = Modifier.padding(top = 8.dp, bottom = 10.dp),
-            )
+            VrkaSettingRow(
+                title = "Destination",
+                subtitle = OutputPublisher.formatDisplayPath(settings.outputTreeUri),
+                isSubtitleMono = true,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    VrkaOutlinedButton(
+                        text = "Change",
+                        onClick = { folderPicker.launch(null) },
+                        height = 34.dp,
+                    )
+                    if (settings.outputTreeUri.isNotBlank()) {
+                        VrkaTextButton(
+                            text = "Reset",
+                            onClick = { scope.launch { repository.setOutputTree("") } },
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            VrkaDivider()
+            Spacer(Modifier.height(10.dp))
+
             VrkaSegmentedControl(
                 items = SaveLocationMode.entries,
                 selectedItem = settings.saveLocationMode,
@@ -93,43 +113,16 @@ internal fun SettingsScreen(
                 isMonospace = true,
             )
 
-            Spacer(Modifier.height(10.dp))
-            VrkaDivider()
-
-            if (settings.saveLocationMode == SaveLocationMode.REMEMBER_LOCATION) {
-                VrkaSettingRow(
-                    title = "Remembered Directory",
-                    subtitle = if (settings.outputTreeUri.isBlank()) {
-                        "Downloads/VRKA (default MediaStore)"
-                    } else {
-                        "Custom SAF folder selected"
-                    },
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        VrkaOutlinedButton(
-                            text = "Choose",
-                            onClick = { folderPicker.launch(null) },
-                            height = 34.dp,
-                        )
-                        if (settings.outputTreeUri.isNotBlank()) {
-                            VrkaTextButton(
-                                text = "Reset",
-                                onClick = { scope.launch { repository.setOutputTree("") } },
-                            )
-                        }
-                    }
-                }
-            } else {
-                VrkaSettingRow(
-                    title = "Folder Prompt",
-                    subtitle = "A folder picker prompt appears before each download begins.",
-                ) {
-                    VrkaStatusBadge("Prompt", VrkaTokens.AccentLight, isMonospace = true)
-                }
-            }
+            Text(
+                text = if (settings.saveLocationMode == SaveLocationMode.REMEMBER_LOCATION) {
+                    "Downloads will be saved directly to the selected location."
+                } else {
+                    "You will be prompted to choose a location for each download."
+                },
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                color = VrkaTokens.TextTertiary,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+            )
         }
 
         SettingsHeading("Appearance")

@@ -4,7 +4,7 @@
   <p><strong>Native Android media downloader and passive web stream discovery.</strong></p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v4.5-8B5CF6?style=flat-square" alt="Release" /></a>
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v4.5.1-8B5CF6?style=flat-square" alt="Release" /></a>
     <a href="https://github.com/MaverickRox/VRKA-Android/releases"><img src="https://img.shields.io/badge/platform-Android%208.0+%20%7C%20arm64--v8a-blue?style=flat-square" alt="Platform" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green?style=flat-square" alt="License" /></a>
     <a href="https://github.com/MaverickRox/VRKA"><img src="https://img.shields.io/badge/origin-VRKA%20Desktop-purple?style=flat-square" alt="Desktop Origin" /></a>
@@ -12,7 +12,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v4.5)</b></a> •
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v4.5.1)</b></a> •
     <a href="#screenshots">Screenshots</a> •
     <a href="#architecture">Architecture</a> •
     <a href="#build-instructions">Build Guide</a> •
@@ -92,11 +92,11 @@ Designed for local, on-device processing without an application analytics servic
 
 ## Features
 
-- **Direct Extraction & Download**: Powered by `yt-dlp` and `FFmpeg` (`arm64-v8a`), supporting video/audio stream extraction where provided by the source, resolution selection (Best, 4K, 1440p, 1080p, 720p, etc.), 60 FPS preference, subtitle embedding, and audio extraction (MP3 with 128–320 kbps selectable bitrate, Opus with stream-copy remuxing, and uncompressed 16-bit PCM WAV).
+- **Direct Extraction & Download**: Powered by `yt-dlp` and `FFmpeg` (`arm64-v8a`), supporting video/audio stream extraction where provided by the source, resolution selection (Best, 4K, 1440p, 1080p, 720p, etc.), 60 FPS preference, subtitle embedding, and audio extraction (MP3 with 128–320 kbps selectable bitrate, Opus with prefer native stream-copy remuxing and fallback transcode, and uncompressed 16-bit PCM WAV).
 - **Custom HTTP Headers & Injection Protection**: Network customization with dedicated `Referer` and `Origin` parameters and user-defined HTTP headers validated against RFC 7230 token specifications and CRLF injection rejection.
 - **Sensitive Header Redaction**: Multi-tier data protection masking sensitive authorization tokens, cookies, and secret headers (`[REDACTED]`) across logs, crash diagnostics, on-device stores, and UI cards.
 - **Dynamic Font Preference**: User-toggleable application typography supporting the signature monospace `VRKA Font` (Space Mono) and clean `System Font` (Roboto / device default) with persistent DataStore configuration.
-- **Storage Access Framework (SAF) Location Modes**: Flexible destination control supporting "Remember Location" (persisted directory via persistable URI permissions) or "Ask Every Time" (interactive folder picker on queue).
+- **Download Location Modes**: Clear destination control supporting "Use selected" (defaulting to Downloads/VRKA with persistent directory permissions) or "Ask every time" (modal confirmation before queuing).
 - **Background Orchestration**: Foreground `DownloadService` with atomic `JobStore` persistence, notification progress tracking, pause/resume, and sequential queue execution.
 - **Passive Browser Fallback**: An embedded Mozilla `GeckoView` session automatically activates when direct extraction encounters anti-bot challenges or client-side player scripts.
 - **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation. Updated via application releases.
@@ -200,7 +200,7 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-*(Note: Official GitHub release binaries are verified and published as `VRKA-Android-v4.5.apk`)*
+*(Note: Official GitHub release binaries are verified and published as `VRKA-Android-v4.5.1.apk`)*
 
 ---
 
@@ -224,21 +224,21 @@ To ensure Android system update continuity (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`
    ```
 4. Generate release checksum:
    ```bash
-   sha256sum VRKA-Android-v4.5.apk > SHA256SUMS
+   sha256sum VRKA-Android-v4.5.1.apk > SHA256SUMS
    ```
 
 ---
 
 ## Installation
 
-1. Download `VRKA-Android-v4.5.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
+1. Download `VRKA-Android-v4.5.1.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
-   (Get-FileHash .\VRKA-Android-v4.5.apk -Algorithm SHA256).Hash
+   (Get-FileHash .\VRKA-Android-v4.5.1.apk -Algorithm SHA256).Hash
    ```
 3. Install on your Android device:
    ```bash
-   adb install -r VRKA-Android-v4.5.apk
+   adb install -r VRKA-Android-v4.5.1.apk
    ```
 
 ---

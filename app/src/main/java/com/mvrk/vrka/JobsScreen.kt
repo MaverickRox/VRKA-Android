@@ -331,7 +331,7 @@ private fun JobCard(
                         !job.state.isTerminal -> {
                             if (job.state == JobState.WAITING_FOR_USER && onChooseFolder != null) {
                                 VrkaOutlinedButton(
-                                    text = "Choose Folder",
+                                    text = "Set Location",
                                     onClick = onChooseFolder,
                                     height = 32.dp,
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),

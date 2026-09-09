@@ -199,6 +199,11 @@ fun VrkaRoot(
                                         .fillMaxSize()
                                         .statusBarsPadding(),
                                     onEnqueue = handleEnqueue,
+                                    onUpdateDownloadLocation = { uri, mode, configured ->
+                                        scope.launch {
+                                            manager.settingsRepository.setDownloadLocation(uri, mode, configured)
+                                        }
+                                    },
                                 )
                             }
                             VrkaDestination.QUEUE -> {
