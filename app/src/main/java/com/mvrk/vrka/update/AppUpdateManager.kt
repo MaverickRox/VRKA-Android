@@ -178,8 +178,9 @@ class AppUpdateManager(
         var redirects = 0
 
         while (redirects < maxRedirects) {
-            val url = URL(currentUrl)
+            val url = validateHttpsUrl(currentUrl)
             val conn = url.openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = false
             conn.setRequestProperty("User-Agent", USER_AGENT)
             conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
             conn.connectTimeout = CONNECT_TIMEOUT_MS
@@ -196,7 +197,9 @@ class AppUpdateManager(
                     307, 308 -> {
                         val location = conn.getHeaderField("Location")
                             ?: throw IOException("HTTP redirect $code without Location header")
-                        currentUrl = location
+                        val nextUrl = resolveRedirectUrl(url, location)
+                        validateHttpsUrl(nextUrl)
+                        currentUrl = nextUrl
                         redirects++
                     }
                     HttpURLConnection.HTTP_FORBIDDEN -> {
@@ -222,8 +225,9 @@ class AppUpdateManager(
         val maxRedirects = 5
 
         while (redirects < maxRedirects) {
-            val url = URL(currentUrl)
+            val url = validateHttpsUrl(currentUrl)
             val conn = url.openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = false
             conn.setRequestProperty("User-Agent", USER_AGENT)
             conn.connectTimeout = CONNECT_TIMEOUT_MS
             conn.readTimeout = DOWNLOAD_READ_TIMEOUT_MS
@@ -270,7 +274,9 @@ class AppUpdateManager(
                     307, 308 -> {
                         val location = conn.getHeaderField("Location")
                             ?: throw IOException("HTTP redirect $code without Location header")
-                        currentUrl = location
+                        val nextUrl = resolveRedirectUrl(url, location)
+                        validateHttpsUrl(nextUrl)
+                        currentUrl = nextUrl
                         redirects++
                     }
                     else -> throw IOException("Download failed with HTTP $code")
@@ -292,6 +298,47 @@ class AppUpdateManager(
         private const val READ_TIMEOUT_MS = 6000
         private const val DOWNLOAD_READ_TIMEOUT_MS = 30000
         private const val BUFFER_SIZE = 8192
+
+        val ALLOWED_UPDATE_HOSTS = setOf(
+            "api.github.com",
+            "github.com",
+            "objects.githubusercontent.com",
+            "release-assets.githubusercontent.com",
+            "raw.githubusercontent.com",
+        )
+
+        val APK_NAME_PATTERN = Regex("""^VRKA-Android-v\d+\.\d+\.\d+\.apk$""", RegexOption.IGNORE_CASE)
+
+        fun isApprovedHost(host: String): Boolean {
+            val h = host.lowercase()
+            return h in ALLOWED_UPDATE_HOSTS || (h.endsWith(".githubusercontent.com") && !h.startsWith("."))
+        }
+
+        fun validateHttpsUrl(urlString: String): URL {
+            val url = try {
+                URL(urlString)
+            } catch (e: Exception) {
+                throw SecurityException("Malformed update URL: $urlString", e)
+            }
+            if (!url.protocol.equals("https", ignoreCase = true)) {
+                throw SecurityException("Insecure protocol '${url.protocol}' rejected (HTTPS required): $urlString")
+            }
+            val host = url.host.lowercase()
+            if (!isApprovedHost(host)) {
+                throw SecurityException("Host '$host' is not an approved GitHub update host: $urlString")
+            }
+            return url
+        }
+
+        fun resolveRedirectUrl(baseUrl: URL, location: String): String {
+            val trimmed = location.trim()
+            if (trimmed.isEmpty()) throw IOException("Empty redirect Location header")
+            return if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+                trimmed
+            } else {
+                URL(baseUrl, trimmed).toString()
+            }
+        }
 
         @Volatile
         private var instance: AppUpdateManager? = null
@@ -336,13 +383,15 @@ class AppUpdateManager(
 
             val assets = json.optJSONArray("assets") ?: return null
             var chosenAsset: JSONObject? = null
+            val expectedVersionApk = "VRKA-Android-v$version.apk"
 
-            // Prioritize arm64-v8a APK, otherwise pick first valid APK asset
+            // APK asset selection must require the expected VRKA Android APK naming convention:
+            // VRKA-Android-vX.Y.Z.apk. Reject unrelated APK assets and non-APK assets.
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val assetName = asset.optString("name", "")
-                if (assetName.endsWith(".apk", ignoreCase = true)) {
-                    if (assetName.contains("arm64", ignoreCase = true)) {
+                if (APK_NAME_PATTERN.matches(assetName)) {
+                    if (assetName.equals(expectedVersionApk, ignoreCase = true)) {
                         chosenAsset = asset
                         break
                     } else if (chosenAsset == null) {
@@ -353,9 +402,14 @@ class AppUpdateManager(
 
             val asset = chosenAsset ?: return null
             val apkDownloadUrl = asset.optString("browser_download_url", "")
-            if (!apkDownloadUrl.startsWith("https://")) return null
+            if (!apkDownloadUrl.startsWith("https://", ignoreCase = true)) return null
+            try {
+                validateHttpsUrl(apkDownloadUrl)
+            } catch (_: Exception) {
+                return null
+            }
 
-            val apkFileName = asset.optString("name", "VRKA-Android-v$version.apk")
+            val apkFileName = asset.optString("name", expectedVersionApk)
             val apkSizeBytes = asset.optLong("size", 0L)
 
             return AppReleaseInfo(
