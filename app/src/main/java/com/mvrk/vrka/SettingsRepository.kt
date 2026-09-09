@@ -6,12 +6,14 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.io.IOException
@@ -53,6 +55,7 @@ class SettingsRepository(
         val updatePreference = stringPreferencesKey("update_preference")
         val concurrency = intPreferencesKey("concurrency")
         val adBlocking = booleanPreferencesKey("ad_blocking")
+        val lastAppUpdateCheckTimestamp = longPreferencesKey("last_app_update_check_timestamp")
     }
 
     val settings: StateFlow<AppSettings> = context.vrkaDataStore.data
@@ -115,6 +118,12 @@ class SettingsRepository(
             preferences[Keys.defaultBitrate] = bitrate
         }
     }
+
+    suspend fun getLastAppUpdateCheckTimestamp(): Long =
+        context.vrkaDataStore.data.first()[Keys.lastAppUpdateCheckTimestamp] ?: 0L
+
+    suspend fun setLastAppUpdateCheckTimestamp(value: Long) =
+        update(Keys.lastAppUpdateCheckTimestamp, value)
 
     private suspend fun <T> update(key: Preferences.Key<T>, value: T) {
         context.vrkaDataStore.edit { it[key] = value }
