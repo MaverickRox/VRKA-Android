@@ -142,6 +142,18 @@ class VrkaDownloadManager(
         cleanupStaging(jobId)
     }
 
+    fun setJobDestination(jobId: String, treeUri: String) {
+        val job = current(jobId) ?: return
+        val updated = job.copy(
+            request = job.request.copy(destinationTreeUri = treeUri),
+            state = JobState.PREPARING,
+            detail = "Folder selected; resuming",
+            updatedAt = System.currentTimeMillis(),
+        )
+        replace(updated, persist = true)
+        queue.trySend(jobId)
+    }
+
     fun deleteJob(jobId: String) {
         val job = _jobs.value.firstOrNull { it.id == jobId } ?: return
         if (!job.state.isTerminal) return
@@ -210,6 +222,36 @@ class VrkaDownloadManager(
 
     private suspend fun process(jobId: String) {
         if (isCancelled(jobId)) return
+        val currentJobInitial = current(jobId) ?: return
+        val saveMode = settingsRepository.settings.value.saveLocationMode
+        val hasExplicitDest = !currentJobInitial.request.destinationTreeUri.isNullOrBlank()
+
+        if (saveMode == SaveLocationMode.ASK_EVERY_TIME && !hasExplicitDest) {
+            update(
+                jobId,
+                state = JobState.WAITING_FOR_USER,
+                detail = "Waiting for folder selection",
+                persist = true,
+            )
+            return
+        }
+
+        val targetTreeUri = currentJobInitial.request.destinationTreeUri?.takeIf { it.isNotBlank() }
+            ?: settingsRepository.settings.value.outputTreeUri.takeIf { it.isNotBlank() }
+        if (!targetTreeUri.isNullOrBlank()) {
+            val treeUri = Uri.parse(targetTreeUri)
+            if (!OutputPublisher.hasPersistedTreePermission(context, treeUri)) {
+                Log.w("VRKA", "Tree permission not granted or revoked for $targetTreeUri")
+                update(
+                    jobId,
+                    state = JobState.WAITING_FOR_USER,
+                    detail = "Folder permission revoked; choose folder",
+                    persist = true,
+                )
+                return
+            }
+        }
+
         var currentStage = "Direct Extraction"
         update(jobId, state = JobState.PREPARING, detail = "Starting runtime", persist = true)
         DownloadService.start(context)
@@ -533,18 +575,29 @@ class VrkaDownloadManager(
                 .toList()
         }
         check(outputs.isNotEmpty()) { "yt-dlp completed but produced no output file." }
-        requireVideoStreams(job, outputs)
+        if (job.request.mode == MediaMode.VIDEO) {
+            requireVideoStreams(job, outputs)
+        } else {
+            requireAudioStreams(job, outputs)
+        }
         val published = outputs.mapIndexed { index, file ->
             val outputName = preferredOutputName(job, file, index, outputs.size)
-            publisher.publish(file, outputName).toString()
+            publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+        }
+        val isOpus = job.request.mode == MediaMode.AUDIO && job.request.audioFormat == AudioFormat.OPUS
+        val transcoded = isOpus && outputLines.any { it.contains("libopus", ignoreCase = true) || it.contains("Converting audio", ignoreCase = true) }
+        val doneDetail = if (isOpus) {
+            if (transcoded) "Saved (transcoded to Opus)" else "Saved (native Opus stream copy)"
+        } else if (published.size == 1) {
+            "Saved to Downloads/VRKA"
+        } else {
+            "Saved " + published.size + " files"
         }
         update(
             job.id,
             state = JobState.DONE,
             progress = 100f,
-            detail = if (published.size == 1) "Saved to Downloads/VRKA" else {
-                "Saved " + published.size + " files"
-            },
+            detail = doneDetail,
             outputUris = published,
             error = "",
             persist = true,
@@ -572,6 +625,9 @@ class VrkaDownloadManager(
         val transport = GeckoWebExecutorTransport(runtime)
 
         val headers = buildMap {
+            putAll(job.request.customHeaders)
+            if (job.request.referer.isNotBlank()) put("Referer", job.request.referer)
+            if (job.request.origin.isNotBlank()) put("Origin", job.request.origin)
             if (bundle.referer.isNotBlank()) put("Referer", bundle.referer)
             if (bundle.origin.isNotBlank()) put("Origin", bundle.origin)
             if (bundle.userAgent.isNotBlank()) put("User-Agent", bundle.userAgent)
@@ -687,10 +743,14 @@ class VrkaDownloadManager(
         )
 
         val outputs = listOf(outputFile)
-        requireVideoStreams(job, outputs)
+        if (job.request.mode == MediaMode.VIDEO) {
+            requireVideoStreams(job, outputs)
+        } else {
+            requireAudioStreams(job, outputs)
+        }
         val published = outputs.mapIndexed { index, file ->
             val outputName = preferredOutputName(job, file, index, outputs.size)
-            publisher.publish(file, outputName).toString()
+            publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
         }
 
         update(
@@ -703,6 +763,14 @@ class VrkaDownloadManager(
             persist = true,
         )
         cleanupStaging(job.id)
+    }
+
+    private fun requireAudioStreams(job: DownloadJob, outputs: List<File>) {
+        val expectedBitrate = if (job.request.audioFormat == AudioFormat.MP3) job.request.mp3Bitrate else null
+        outputs.forEach { file ->
+            val info = AudioValidator.validateAudioOutput(file, job.request.audioFormat, expectedBitrate, context)
+            Log.i("VRKA", "Audio validation passed for ${file.name}: format=${job.request.audioFormat}, codec=${info.codecName}, duration=${info.durationMs}ms")
+        }
     }
 
     private fun requireVideoStreams(job: DownloadJob, outputs: List<File>) {
@@ -859,8 +927,9 @@ class VrkaDownloadManager(
         } else {
             raw.lineSequence().toList().takeLast(2).joinToString(" ")
         }
-        return text
-            .replace(Regex("""(?i)(cookie|authorization|token|signature)=?[^\s&]*"""), "$1=[redacted]")
+        val redactedText = HeaderValidation.redactSensitiveHeaderInText(text)
+        return redactedText
+            .replace(Regex("""(?i)(cookie|authorization|proxy-authorization|token|signature|key|secret)=?[^\s&]*"""), "$1=[REDACTED]")
             .replace(Regex("""https?://[^\s]+"""), "[private URL]")
             .take(320)
             .ifBlank { "The operation failed." }

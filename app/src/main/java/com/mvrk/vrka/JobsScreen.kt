@@ -1,6 +1,9 @@
 package com.mvrk.vrka
 
+import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,10 +34,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,7 +61,26 @@ internal fun JobsScreen(
     onDelete: (String) -> Unit,
     onClear: (() -> Unit)? = null,
     onShowFallback: ((String) -> Unit)? = null,
+    onSetDestination: ((String, String) -> Unit)? = null,
 ) {
+    val context = LocalContext.current
+    var pendingFolderJobId by remember { mutableStateOf<String?>(null) }
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        val id = pendingFolderJobId
+        if (uri != null && id != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            onSetDestination?.invoke(id, uri.toString())
+        }
+        pendingFolderJobId = null
+    }
+
     Column(modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -134,6 +160,10 @@ internal fun JobsScreen(
                         onShare = onShare,
                         onDelete = { onDelete(job.id) },
                         onShowFallback = onShowFallback?.let { fn -> { fn(job.id) } },
+                        onChooseFolder = {
+                            pendingFolderJobId = job.id
+                            folderPicker.launch(null)
+                        },
                     )
                 }
             }
@@ -150,6 +180,7 @@ private fun JobCard(
     onShare: (String) -> Unit,
     onDelete: () -> Unit,
     onShowFallback: (() -> Unit)? = null,
+    onChooseFolder: (() -> Unit)? = null,
 ) {
     val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = (job.progress.coerceIn(0f, 100f) / 100f),
@@ -298,6 +329,14 @@ private fun JobCard(
                 ) {
                     when {
                         !job.state.isTerminal -> {
+                            if (job.state == JobState.WAITING_FOR_USER && onChooseFolder != null) {
+                                VrkaOutlinedButton(
+                                    text = "Choose Folder",
+                                    onClick = onChooseFolder,
+                                    height = 32.dp,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                )
+                            }
                             if (job.state == JobState.BROWSER_FALLBACK && onShowFallback != null) {
                                 VrkaOutlinedButton(
                                     text = "Interact",

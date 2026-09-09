@@ -64,14 +64,18 @@ internal object DownloadRequestFactory {
             }
 
             if (options.mode == MediaMode.AUDIO) {
-                addOption("-f", "bestaudio/best")
+                val format = when (options.audioFormat) {
+                    AudioFormat.OPUS -> "bestaudio[acodec^=opus]/bestaudio/best"
+                    else -> "bestaudio/best"
+                }
+                addOption("-f", format)
                 addOption("--extract-audio")
                 addOption("--audio-format", options.audioFormat.codec)
-                addOption(
-                    "--audio-quality",
-                    if (options.audioFormat == AudioFormat.MP3) "${options.mp3Bitrate}K" else "0",
-                )
-                if (options.embedThumbnail) addOption("--embed-thumbnail")
+                if (options.audioFormat == AudioFormat.MP3) {
+                    val bitrate = options.mp3Bitrate.coerceIn(128, 320)
+                    addOption("--audio-quality", "${bitrate}K")
+                }
+                if (options.embedThumbnail && options.audioFormat != AudioFormat.WAV) addOption("--embed-thumbnail")
             } else {
                 val format = if (options.resolvedMediaUrl != null) {
                     "bestvideo+bestaudio/best"
@@ -110,11 +114,12 @@ internal object DownloadRequestFactory {
             if (recoveryAttempt) {
                 addOption("--extractor-args", "generic:impersonate")
             }
+            val effectiveHeaders = HeaderValidation.resolveEffectiveHeaders(options)
             if (recoveryAttempt || options.resolvedMediaUrl != null) {
-                if (options.resolvedHeaders.keys.none { it.equals("User-Agent", true) }) {
+                if (effectiveHeaders.keys.none { it.equals("User-Agent", true) }) {
                     addOption("--user-agent", DESKTOP_USER_AGENT)
                 }
-                if (options.resolvedHeaders.keys.none { it.equals("Referer", true) }) {
+                if (effectiveHeaders.keys.none { it.equals("Referer", true) }) {
                     addOption("--referer", options.url)
                 }
             }
@@ -135,22 +140,10 @@ internal object DownloadRequestFactory {
             .toList()
 
     private fun YoutubeDLRequest.addSessionContext(request: DownloadRequest) {
-        val allowed = setOf(
-            "authorization",
-            "cookie",
-            "origin",
-            "referer",
-            "user-agent",
-            "x-video-expiration",
-            "x-video-ip",
-            "x-video-token",
-        )
-        request.resolvedHeaders.entries
-            .filter { it.key.lowercase() in allowed && it.value.isNotBlank() }
-            .take(12)
-            .forEach { (name, value) ->
-                addCommands(listOf("--add-header", "$name:$value"))
-            }
+        val effectiveHeaders = HeaderValidation.resolveEffectiveHeaders(request)
+        effectiveHeaders.forEach { (name, value) ->
+            addCommands(listOf("--add-header", "$name:$value"))
+        }
     }
 
     private fun safeCustomArguments(request: DownloadRequest): List<String> {

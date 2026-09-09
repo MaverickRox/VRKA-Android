@@ -21,6 +21,8 @@ private val Context.vrkaDataStore by preferencesDataStore(name = "vrka_settings"
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.DARK,
     val amoled: Boolean = true,
+    val fontPreference: FontPreference = FontPreference.VRKA_FONT,
+    val saveLocationMode: SaveLocationMode = SaveLocationMode.REMEMBER_LOCATION,
     val outputTreeUri: String = "",
     val defaultMode: MediaMode = MediaMode.VIDEO,
     val defaultQuality: VideoQuality = VideoQuality.BEST,
@@ -40,6 +42,8 @@ class SettingsRepository(
         val outputTreeUri = stringPreferencesKey("output_tree_uri")
         val themeMode = stringPreferencesKey("theme_mode")
         val amoled = booleanPreferencesKey("amoled")
+        val fontPreference = stringPreferencesKey("font_preference")
+        val saveLocationMode = stringPreferencesKey("save_location_mode")
         val defaultMode = stringPreferencesKey("default_mode")
         val defaultQuality = stringPreferencesKey("default_quality")
         val defaultAudio = stringPreferencesKey("default_audio")
@@ -68,6 +72,12 @@ class SettingsRepository(
     }
 
     suspend fun setAmoled(value: Boolean) = update(Keys.amoled, value)
+
+    suspend fun setFontPreference(value: FontPreference) =
+        update(Keys.fontPreference, value.name)
+
+    suspend fun setSaveLocationMode(value: SaveLocationMode) =
+        update(Keys.saveLocationMode, value.name)
 
     suspend fun setOutputTree(uri: String) = update(Keys.outputTreeUri, uri)
 
@@ -109,22 +119,32 @@ class SettingsRepository(
         val amoled = preferences[Keys.amoled]
             ?: (storedTheme == "AMOLED" ||
                 (storedTheme == null && preferences[Keys.darkTheme] != false))
+
+        val storedAudio = preferences[Keys.defaultAudio]
+        val defaultAudioFormat = if (storedAudio == "FLAC") {
+            AudioFormat.OPUS
+        } else {
+            enumValue(storedAudio, AudioFormat.MP3)
+        }
+
         return AppSettings(
-        themeMode = themeMode,
-        amoled = amoled,
-        outputTreeUri = preferences[Keys.outputTreeUri].orEmpty(),
-        defaultMode = enumValue(preferences[Keys.defaultMode], MediaMode.VIDEO),
-        defaultQuality = enumValue(preferences[Keys.defaultQuality], VideoQuality.BEST),
-        defaultAudioFormat = enumValue(preferences[Keys.defaultAudio], AudioFormat.MP3),
-        defaultMp3Bitrate = (preferences[Keys.defaultBitrate] ?: 320)
-            .takeIf { it in setOf(128, 192, 256, 320) } ?: 320,
-        updatePreference = enumValue(
-            preferences[Keys.updatePreference],
-            UpdatePreference.STABLE,
-        ),
-        concurrency = (preferences[Keys.concurrency] ?: 1).coerceIn(1, 2),
-        adBlocking = preferences[Keys.adBlocking] ?: true,
-    )
+            themeMode = themeMode,
+            amoled = amoled,
+            fontPreference = enumValue(preferences[Keys.fontPreference], FontPreference.VRKA_FONT),
+            saveLocationMode = enumValue(preferences[Keys.saveLocationMode], SaveLocationMode.REMEMBER_LOCATION),
+            outputTreeUri = preferences[Keys.outputTreeUri].orEmpty(),
+            defaultMode = enumValue(preferences[Keys.defaultMode], MediaMode.VIDEO),
+            defaultQuality = enumValue(preferences[Keys.defaultQuality], VideoQuality.BEST),
+            defaultAudioFormat = defaultAudioFormat,
+            defaultMp3Bitrate = (preferences[Keys.defaultBitrate] ?: 320)
+                .takeIf { it in setOf(128, 160, 192, 224, 256, 320) } ?: 320,
+            updatePreference = enumValue(
+                preferences[Keys.updatePreference],
+                UpdatePreference.STABLE,
+            ),
+            concurrency = (preferences[Keys.concurrency] ?: 1).coerceIn(1, 2),
+            adBlocking = preferences[Keys.adBlocking] ?: true,
+        )
     }
 
     private inline fun <reified T : Enum<T>> enumValue(value: String?, fallback: T): T =

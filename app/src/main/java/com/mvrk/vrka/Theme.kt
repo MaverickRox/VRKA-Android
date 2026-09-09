@@ -170,32 +170,46 @@ val SpaceMono = FontFamily(
     Font(R.font.space_mono_regular, FontWeight.Normal),
     Font(R.font.space_mono_bold, FontWeight.Bold),
 )
-val VrkaMonoFamily = SpaceMono
-val VrkaSansFamily = SpaceMono
+
+val LocalVrkaFontFamily = staticCompositionLocalOf { SpaceMono }
+
+val VrkaMonoFamily: FontFamily
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalVrkaFontFamily.current
+
+val VrkaSansFamily: FontFamily
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalVrkaFontFamily.current
 
 private val defaultTypography = Typography()
-val VrkaTypography = Typography(
-    displayLarge = defaultTypography.displayLarge.copy(fontFamily = VrkaMonoFamily),
-    displayMedium = defaultTypography.displayMedium.copy(fontFamily = VrkaMonoFamily),
-    displaySmall = defaultTypography.displaySmall.copy(fontFamily = VrkaMonoFamily),
-    headlineLarge = defaultTypography.headlineLarge.copy(fontFamily = VrkaMonoFamily),
-    headlineMedium = defaultTypography.headlineMedium.copy(fontFamily = VrkaMonoFamily),
-    headlineSmall = defaultTypography.headlineSmall.copy(fontFamily = VrkaMonoFamily),
-    titleLarge = defaultTypography.titleLarge.copy(fontFamily = VrkaMonoFamily),
-    titleMedium = defaultTypography.titleMedium.copy(fontFamily = VrkaMonoFamily),
-    titleSmall = defaultTypography.titleSmall.copy(fontFamily = VrkaMonoFamily),
-    bodyLarge = defaultTypography.bodyLarge.copy(fontFamily = VrkaMonoFamily),
-    bodyMedium = defaultTypography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
-    bodySmall = defaultTypography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-    labelLarge = defaultTypography.labelLarge.copy(fontFamily = VrkaMonoFamily),
-    labelMedium = defaultTypography.labelMedium.copy(fontFamily = VrkaMonoFamily),
-    labelSmall = defaultTypography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+
+fun vrkaTypography(fontFamily: FontFamily): Typography = Typography(
+    displayLarge = defaultTypography.displayLarge.copy(fontFamily = fontFamily),
+    displayMedium = defaultTypography.displayMedium.copy(fontFamily = fontFamily),
+    displaySmall = defaultTypography.displaySmall.copy(fontFamily = fontFamily),
+    headlineLarge = defaultTypography.headlineLarge.copy(fontFamily = fontFamily),
+    headlineMedium = defaultTypography.headlineMedium.copy(fontFamily = fontFamily),
+    headlineSmall = defaultTypography.headlineSmall.copy(fontFamily = fontFamily),
+    titleLarge = defaultTypography.titleLarge.copy(fontFamily = fontFamily),
+    titleMedium = defaultTypography.titleMedium.copy(fontFamily = fontFamily),
+    titleSmall = defaultTypography.titleSmall.copy(fontFamily = fontFamily),
+    bodyLarge = defaultTypography.bodyLarge.copy(fontFamily = fontFamily),
+    bodyMedium = defaultTypography.bodyMedium.copy(fontFamily = fontFamily),
+    bodySmall = defaultTypography.bodySmall.copy(fontFamily = fontFamily),
+    labelLarge = defaultTypography.labelLarge.copy(fontFamily = fontFamily),
+    labelMedium = defaultTypography.labelMedium.copy(fontFamily = fontFamily),
+    labelSmall = defaultTypography.labelSmall.copy(fontFamily = fontFamily),
 )
+
+val VrkaTypography = vrkaTypography(SpaceMono)
 
 @Composable
 fun VrkaTheme(
     themeMode: ThemeMode = ThemeMode.DARK,
     amoled: Boolean = true,
+    fontPreference: FontPreference = FontPreference.VRKA_FONT,
     content: @Composable () -> Unit,
 ) {
     val isLight = themeMode == ThemeMode.LIGHT
@@ -210,6 +224,12 @@ fun VrkaTheme(
         amoledEffective -> AmoledColors
         else -> StandardDarkColors
     }
+    val selectedFont = when (fontPreference) {
+        FontPreference.VRKA_FONT -> SpaceMono
+        FontPreference.SYSTEM_FONT -> FontFamily.Default
+    }
+    val typography = vrkaTypography(selectedFont)
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -225,10 +245,13 @@ fun VrkaTheme(
             }
         }
     }
-    CompositionLocalProvider(LocalVrkaColors provides vrkaColors) {
+    CompositionLocalProvider(
+        LocalVrkaColors provides vrkaColors,
+        LocalVrkaFontFamily provides selectedFont,
+    ) {
         MaterialTheme(
             colorScheme = colors,
-            typography = VrkaTypography,
+            typography = typography,
             content = content,
         )
     }

@@ -14,11 +14,16 @@ internal class OutputPublisher(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
 ) {
-    fun publish(file: File, requestedName: String = file.name): Uri {
+    fun publish(
+        file: File,
+        requestedName: String = file.name,
+        destinationTreeUri: String? = null,
+    ): Uri {
         require(file.isFile) { "Completed output is missing." }
         val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
-        val destination = settingsRepository.settings.value.outputTreeUri
-        val uri = if (destination.isNotBlank()) {
+        val destination = destinationTreeUri?.takeIf { it.isNotBlank() }
+            ?: settingsRepository.settings.value.outputTreeUri.takeIf { it.isNotBlank() }
+        val uri = if (destination != null) {
             publishToTree(file, Uri.parse(destination), safeName)
         } else {
             publishToDownloads(file, safeName)
@@ -127,10 +132,21 @@ internal class OutputPublisher(
         URLConnection.guessContentTypeFromName(name)
             ?: when (name.substringAfterLast('.', "").lowercase()) {
                 "mkv" -> "video/x-matroska"
+                "opus" -> "audio/opus"
+                "ogg" -> "audio/ogg"
+                "wav" -> "audio/wav"
+                "mp3" -> "audio/mpeg"
                 "flac" -> "audio/flac"
                 "m3u8" -> "application/vnd.apple.mpegurl"
                 else -> "application/octet-stream"
             }
+
+    companion object {
+        fun hasPersistedTreePermission(context: Context, treeUri: Uri): Boolean = runCatching {
+            val persisted = context.contentResolver.persistedUriPermissions
+            persisted.any { it.uri == treeUri && it.isWritePermission }
+        }.getOrDefault(false)
+    }
 }
 
 internal object SafeOutputNames {

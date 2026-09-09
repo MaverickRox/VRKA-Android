@@ -36,8 +36,8 @@ internal fun ConfigurationSummary(
             "Video · ${quality.label} · 60 FPS ${if (prefer60Fps) "on" else "off"}"
         MediaMode.AUDIO -> when (audioFormat) {
             AudioFormat.MP3 -> "MP3 · $bitrate kbps"
-            AudioFormat.WAV -> "WAV · source-dependent"
-            AudioFormat.FLAC -> "FLAC · source-dependent"
+            AudioFormat.OPUS -> "Opus · Best Native Opus"
+            AudioFormat.WAV -> "WAV · Uncompressed PCM"
         }
     }
     val extras = buildList {

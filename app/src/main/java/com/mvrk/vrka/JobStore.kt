@@ -80,7 +80,11 @@ internal class JobStore(private val target: File) {
                     .put("sponsorCategories", request.sponsorCategories)
                     .put("trimStart", request.trimStart)
                     .put("trimEnd", request.trimEnd)
-                    .put("customArguments", JSONArray(request.customArguments)),
+                    .put("customArguments", JSONArray(request.customArguments))
+                    .put("referer", request.referer)
+                    .put("origin", request.origin)
+                    .put("customHeaders", JSONObject(request.customHeaders))
+                    .put("destinationTreeUri", request.destinationTreeUri),
             )
     }
 
@@ -93,6 +97,25 @@ internal class JobStore(private val target: File) {
         } else {
             "Download was interrupted when Android stopped VRKA. Tap retry."
         }
+
+        val storedAudioFormat = encodedRequest.optString("audioFormat")
+        val restoredAudioFormat = if (storedAudioFormat == "FLAC") {
+            AudioFormat.OPUS
+        } else {
+            enumValue(storedAudioFormat, AudioFormat.MP3)
+        }
+
+        val customHeadersObj = encodedRequest.optJSONObject("customHeaders")
+        val customHeadersMap = if (customHeadersObj != null) {
+            buildMap {
+                for (key in customHeadersObj.keys()) {
+                    put(key, customHeadersObj.optString(key))
+                }
+            }
+        } else {
+            emptyMap()
+        }
+
         DownloadJob(
             id = value.getString("id"),
             request = DownloadRequest(
@@ -103,10 +126,7 @@ internal class JobStore(private val target: File) {
                     VideoQuality.BEST,
                 ),
                 prefer60Fps = encodedRequest.optBoolean("prefer60Fps"),
-                audioFormat = enumValue(
-                    encodedRequest.optString("audioFormat"),
-                    AudioFormat.MP3,
-                ),
+                audioFormat = restoredAudioFormat,
                 mp3Bitrate = encodedRequest.optInt("bitrate", 320),
                 isPlaylist = encodedRequest.optBoolean("playlist"),
                 playlistStart = encodedRequest.optionalInt("playlistStart"),
@@ -127,6 +147,10 @@ internal class JobStore(private val target: File) {
                 customArguments = encodedRequest.optJSONArray("customArguments")
                     ?.strings()
                     .orEmpty(),
+                referer = encodedRequest.optString("referer"),
+                origin = encodedRequest.optString("origin"),
+                customHeaders = customHeadersMap,
+                destinationTreeUri = if (encodedRequest.isNull("destinationTreeUri")) null else encodedRequest.optString("destinationTreeUri").takeIf { it.isNotBlank() },
             ),
             state = restoredState,
             title = value.optString("title"),

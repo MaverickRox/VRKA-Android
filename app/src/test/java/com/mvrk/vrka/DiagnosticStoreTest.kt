@@ -23,9 +23,9 @@ class DiagnosticStoreTest {
         val sanitized = DiagnosticStore.sanitizeUrl(sensitiveUrl)
         assertTrue(sanitized.contains("v=12345"))
         assertTrue(sanitized.contains("quality=hd"))
-        assertTrue(sanitized.contains("token=%5Bredacted%5D") || sanitized.contains("token=[redacted]"))
-        assertTrue(sanitized.contains("key=%5Bredacted%5D") || sanitized.contains("key=[redacted]"))
-        assertTrue(sanitized.contains("signature=%5Bredacted%5D") || sanitized.contains("signature=[redacted]"))
+        assertTrue(sanitized.contains("token=[REDACTED]"))
+        assertTrue(sanitized.contains("key=[REDACTED]"))
+        assertTrue(sanitized.contains("signature=[REDACTED]"))
         assertFalse(sanitized.contains("secret_token_abc"))
         assertFalse(sanitized.contains("api_key_xyz"))
         assertFalse(sanitized.contains("sig_123"))
@@ -33,12 +33,14 @@ class DiagnosticStoreTest {
 
     @Test
     fun secretRedactionProtectsAuthorizationAndCookies() {
-        val rawDetail = "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.test\nCookie: session=secret123; user=admin\npassword=super_secret"
+        val rawDetail = "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.test\nCookie: session=secret123; user=admin\npassword=super_secret\nProxy-Authorization: Basic dXNlcjpwYXNz\nX-API-Key: sensitive_api_key_999"
         val sanitized = DiagnosticStore.sanitizeText(rawDetail)
         assertFalse(sanitized.contains("secret123"))
         assertFalse(sanitized.contains("super_secret"))
         assertFalse(sanitized.contains("eyJhbGciOiJIUzI1NiJ9.test"))
-        assertTrue(sanitized.contains("[redacted]"))
+        assertFalse(sanitized.contains("dXNlcjpwYXNz"))
+        assertFalse(sanitized.contains("sensitive_api_key_999"))
+        assertTrue(sanitized.contains("[REDACTED]"))
     }
 
     @Test

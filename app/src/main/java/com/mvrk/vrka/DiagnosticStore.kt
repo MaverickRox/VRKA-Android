@@ -253,7 +253,7 @@ class DiagnosticStore(
         private val SECRET_PATTERNS = listOf(
             Regex("""(?i)Authorization:\s*Bearer\s+[^\r\n,;]+"""),
             Regex("""(?i)Bearer\s+[A-Za-z0-9\-_=.]+"""),
-            Regex("""(?i)(cookie|authorization|token|signature|key|secret|password|passwd|pwd)\s*[:=]\s*[^\r\n,;]+"""),
+            Regex("""(?i)(cookie|set-cookie|authorization|proxy-authorization|x-api-key|api-key|apikey|token|signature|key|secret|password|passwd|pwd)\s*[:=]\s*[^\r\n,;]+"""),
             Regex("""[A-Za-z0-9+/]{40,}={0,2}"""),
         )
 
@@ -269,13 +269,13 @@ class DiagnosticStore(
                     val eq = pair.indexOf('=')
                     if (eq < 0) {
                         val key = pair.lowercase()
-                        if (SENSITIVE_QUERY_PARAMS.any { key.contains(it) }) "$pair=[redacted]" else pair
+                        if (SENSITIVE_QUERY_PARAMS.any { key.contains(it) }) "$pair=[REDACTED]" else pair
                     } else {
                         val key = pair.substring(0, eq)
                         val value = pair.substring(eq + 1)
                         val lowerKey = key.lowercase()
                         if (SENSITIVE_QUERY_PARAMS.any { lowerKey.contains(it) }) {
-                            "$key=[redacted]"
+                            "$key=[REDACTED]"
                         } else {
                             "$key=$value"
                         }
@@ -287,16 +287,16 @@ class DiagnosticStore(
 
         fun sanitizeText(text: String): String {
             if (text.isBlank()) return ""
-            var sanitized = text
+            var sanitized = HeaderValidation.redactSensitiveHeaderInText(text)
             for (pattern in SECRET_PATTERNS) {
                 sanitized = sanitized.replace(pattern) { match ->
                     val matchedText = match.value
                     if (matchedText.contains(":") || matchedText.contains("=")) {
                         val prefix = matchedText.substringBefore(':').substringBefore('=')
                         val delimiter = if (matchedText.contains(':')) ":" else "="
-                        "$prefix$delimiter [redacted]"
+                        "$prefix$delimiter [REDACTED]"
                     } else {
-                        "[redacted]"
+                        "[REDACTED]"
                     }
                 }
             }
