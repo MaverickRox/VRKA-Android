@@ -26,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
@@ -57,6 +58,7 @@ internal fun HomeScreen(
     runtime: RuntimeStatus,
     modifier: Modifier = Modifier,
     onEnqueue: (DownloadRequest) -> Unit,
+    onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val context = LocalContext.current
     var url by remember { mutableStateOf("") }
@@ -84,24 +86,22 @@ internal fun HomeScreen(
     var customHeaders by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var validation by remember { mutableStateOf("") }
     var pendingRequestToEnqueue by remember { mutableStateOf<DownloadRequest?>(null) }
+    var showLocationDialog by remember { mutableStateOf(false) }
+    var dialogSelectedUri by remember { mutableStateOf("") }
+    var setAsDefaultChecked by remember { mutableStateOf(true) }
 
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
-        val req = pendingRequestToEnqueue
-        if (req != null) {
-            val treeUri = uri?.let {
-                runCatching {
-                    context.contentResolver.takePersistableUriPermission(
-                        it,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                    )
-                }
-                it.toString()
-            } ?: ""
-            onEnqueue(req.copy(destinationTreeUri = treeUri))
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            dialogSelectedUri = uri.toString()
         }
-        pendingRequestToEnqueue = null
     }
 
     Column(
@@ -342,7 +342,7 @@ internal fun HomeScreen(
                         VrkaChip(
                             selected = true,
                             onClick = {},
-                            label = "Best Native Opus",
+                            label = "Prefer Native Opus",
                             isMonospace = true,
                         )
                     }
@@ -371,7 +371,7 @@ internal fun HomeScreen(
                 Text(
                     when (audioFormat) {
                         AudioFormat.MP3 -> "Compressed audio. Selectable bitrate (128–320 kbps)."
-                        AudioFormat.OPUS -> "Best Native Opus stream selection with direct stream copy."
+                        AudioFormat.OPUS -> "Prefer native Opus stream copy when available; transcode fallback if non-Opus source."
                         AudioFormat.WAV -> "Uncompressed source audio (PCM)."
                     },
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
@@ -725,14 +725,21 @@ internal fun HomeScreen(
                     origin = origin.trim(),
                     customHeaders = customHeadersMap,
                 )
-                if (settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME) {
+                val isLocationValid = OutputPublisher.isTreePermissionValid(context, settings.outputTreeUri)
+                val needsLocationPrompt = !settings.isDownloadLocationConfigured ||
+                    settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME ||
+                    !isLocationValid
+
+                if (needsLocationPrompt) {
                     pendingRequestToEnqueue = req
-                    folderPicker.launch(null)
+                    dialogSelectedUri = if (isLocationValid) settings.outputTreeUri else ""
+                    setAsDefaultChecked = !settings.isDownloadLocationConfigured || !isLocationValid
+                    showLocationDialog = true
                 } else {
                     onEnqueue(req.copy(destinationTreeUri = settings.outputTreeUri))
+                    url = ""
+                    validation = ""
                 }
-                url = ""
-                validation = ""
             },
         )
 
@@ -742,6 +749,129 @@ internal fun HomeScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = VrkaTokens.TextSecondary,
                 modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+
+        if (showLocationDialog && pendingRequestToEnqueue != null) {
+            AlertDialog(
+                onDismissRequest = {
+                    showLocationDialog = false
+                    pendingRequestToEnqueue = null
+                },
+                title = {
+                    Text(
+                        "Download Location",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = VrkaTokens.TextPrimary,
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Text(
+                            "Choose where downloaded files will be saved on your device.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = VrkaTokens.TextSecondary,
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = VrkaTokens.SurfaceCard,
+                            border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Column {
+                                    Text(
+                                        "Destination",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = VrkaTokens.TextTertiary,
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        OutputPublisher.formatDisplayPath(dialogSelectedUri),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = VrkaTokens.TextPrimary,
+                                    )
+                                }
+                                VrkaOutlinedButton(
+                                    text = "Choose Location",
+                                    onClick = { folderPicker.launch(null) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    height = 36.dp,
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { setAsDefaultChecked = !setAsDefaultChecked }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = setAsDefaultChecked,
+                                onCheckedChange = { setAsDefaultChecked = it },
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Set as default and don't ask again",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = VrkaTokens.TextPrimary,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val req = pendingRequestToEnqueue ?: return@Button
+                            val mode = if (setAsDefaultChecked) SaveLocationMode.REMEMBER_LOCATION else SaveLocationMode.ASK_EVERY_TIME
+                            val destUri = dialogSelectedUri
+                            if (setAsDefaultChecked) {
+                                onUpdateDownloadLocation(destUri, mode, true)
+                            } else {
+                                onUpdateDownloadLocation(settings.outputTreeUri, mode, true)
+                            }
+                            onEnqueue(req.copy(destinationTreeUri = destUri))
+                            url = ""
+                            validation = ""
+                            showLocationDialog = false
+                            pendingRequestToEnqueue = null
+                        },
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = VrkaTokens.Accent,
+                            contentColor = Color.White,
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(
+                            "Download",
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                },
+                dismissButton = {
+                    VrkaTextButton(
+                        text = "Cancel",
+                        onClick = {
+                            showLocationDialog = false
+                            pendingRequestToEnqueue = null
+                        },
+                    )
+                },
+                containerColor = VrkaTokens.SurfaceElevated,
+                shape = RoundedCornerShape(18.dp),
             )
         }
 

@@ -224,13 +224,13 @@ class VrkaDownloadManager(
         if (isCancelled(jobId)) return
         val currentJobInitial = current(jobId) ?: return
         val saveMode = settingsRepository.settings.value.saveLocationMode
-        val hasExplicitDest = !currentJobInitial.request.destinationTreeUri.isNullOrBlank()
+        val hasExplicitDest = currentJobInitial.request.destinationTreeUri != null
 
         if (saveMode == SaveLocationMode.ASK_EVERY_TIME && !hasExplicitDest) {
             update(
                 jobId,
                 state = JobState.WAITING_FOR_USER,
-                detail = "Waiting for folder selection",
+                detail = "Choose download location to start",
                 persist = true,
             )
             return
@@ -245,7 +245,7 @@ class VrkaDownloadManager(
                 update(
                     jobId,
                     state = JobState.WAITING_FOR_USER,
-                    detail = "Folder permission revoked; choose folder",
+                    detail = "Download location unavailable; choose location",
                     persist = true,
                 )
                 return

@@ -19,6 +19,34 @@ class SaveLocationTest {
     }
 
     @Test
+    fun saveLocationModeLabelsMatchExpectedDesign() {
+        assertEquals("Use selected", SaveLocationMode.REMEMBER_LOCATION.label)
+        assertEquals("Ask every time", SaveLocationMode.ASK_EVERY_TIME.label)
+        assertEquals("Opus (prefer native)", AudioFormat.OPUS.label)
+    }
+
+    @Test
+    fun formatDisplayPathReturnsCleanUserFacingPaths() {
+        assertEquals("Downloads/VRKA", OutputPublisher.formatDisplayPath(null))
+        assertEquals("Downloads/VRKA", OutputPublisher.formatDisplayPath(""))
+        assertEquals(
+            "Download/VRKA",
+            OutputPublisher.formatDisplayPath("content://com.android.externalstorage.documents/tree/primary%3ADownload%2FVRKA"),
+        )
+        assertEquals(
+            "Music",
+            OutputPublisher.formatDisplayPath("content://com.android.externalstorage.documents/tree/primary%3AMusic"),
+        )
+    }
+
+    @Test
+    fun appSettingsDefaultsToNotConfiguredForFreshInstalls() {
+        val settings = AppSettings()
+        org.junit.Assert.assertFalse(settings.isDownloadLocationConfigured)
+        assertEquals(SaveLocationMode.REMEMBER_LOCATION, settings.saveLocationMode)
+    }
+
+    @Test
     fun downloadRequestPreservesDestinationTreeUri() {
         val request = DownloadRequest(
             url = "https://example.com/video",

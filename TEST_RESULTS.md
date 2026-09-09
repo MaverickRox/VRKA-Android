@@ -230,3 +230,34 @@ The final report does not convert an unrun physical test into a pass.
 | **PHY-13** | Physical Device | Physical MP3 Audio Extraction & Metadata Verification | Physical UI / FFprobe | **PASS** | Downloaded Big Buck Bunny MP3 at 320 kbps (26,983,272 bytes); ffprobe verified MPEG audio layer 3, 320 kbps, embedded front cover art, and ID3 tags. |
 | **PHY-14** | Physical Device | Physical WAV Uncompressed PCM Download & Integrity | Physical UI / FFprobe | **PASS** | Downloaded Big Buck Bunny WAV (121,839,268 bytes); ffprobe verified 16-bit uncompressed PCM (`pcm_s16le`), 48 kHz, stereo, 1536 kbps, and RIFF tags. |
 | **PHY-15** | Physical Device | Physical Opus Stream Selection & Remuxing | Physical UI | **PASS** | Validated "Best Native Opus" direct stream copy without transcoding. |
+
+---
+
+## VRKA Android 4.5.1 Release Verification Matrix — 2026-09-09
+
+### Release Candidate Summary
+
+- **Version**: VRKA Android 4.5.1 (`versionCode = 40501`, `versionName = "4.5.1"`)
+- **Package**: `com.mvrk.vrka`
+- **Target Platform**: Android 16 (API Level 36), Minimum Android 8.0 (API Level 26)
+- **Architecture**: `arm64-v8a`
+- **Signing Fingerprints**:
+  - **SHA-256**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa` (Canonical Lineage)
+  - **SHA-1**: `7758980f74a503684bf1a187994e447823d19d7c`
+  - **MD5**: `679d325009a63433f444e333bafe96a5`
+- **APK SHA-256**: `0c286458aad3dbc0e4d651efcf75b5520d2679014ede55daf79efa5e6bbb7e91`
+- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+
+### Test Matrix
+
+| ID | Category | Test Case | Method | Result | Evidence / Details |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **AUT-25** | Automated | HTTP Header E2E Propagation & Options | JUnit (Offline) | **PASS** | `HttpHeaderE2ETest`: Controlled local HTTP server and raw socket tests verify direct, HLS manifest, and HLS segment requests carry `Referer`, `Origin`, and custom headers. |
+| **AUT-26** | Automated | Download Location UX Models & Formatting | JUnit (Offline) | **PASS** | `SaveLocationTest`: Validates display path formatting without technical jargon (`Downloads/VRKA`), segmented control labels, and fresh install unconfigured defaults. |
+| **AUT-27** | Automated | Full Offline Test Suite (176 tests) | JUnit (Offline) | **PASS** | 176 unit tests passed with 0 failures, 0 errors, 0 skipped in 11s via `gradlew testDebugUnitTest --offline`. |
+| **PHY-16** | Physical Device | Physical HTTP Header E2E Propagation | `connectedDebugAndroidTest` | **PASS** | `HttpHeaderDeviceTest`: Verified on OnePlus 11 5G over `adb reverse tcp:8888 tcp:8888`. Server logs confirmed GeckoView manifest (`/test.m3u8`) and segment (`/segment0.ts`) requests received `Origin`, `Referer`, and `X-Test-Trace`. |
+| **PHY-17** | Physical Device | Download Location Modal Prompt & Settings | Physical UI | **PASS** | Clean modal prompt on first download attempt displaying `Downloads/VRKA` with `[Choose Location]` and checkbox; Settings card with destination, `[Change]`, `[Reset]`, and `[Use selected]` vs `[Ask every time]` without jargon. |
+| **PHY-18** | Physical Device | Physical Native Opus Stream Copy & Verification | `connectedDebugAndroidTest` / FFprobe | **PASS** | `VrkaDownloadTest#testDownloadOpusStreamCopyOnDevice`: Downloaded `Big_Buck_Bunny_4K.webm.360p.vp9.opus` (6,850,532 bytes). FFprobe verified native Opus stream copy (48000 Hz, 5.1 surround, 86 kb/s) without re-encoding. |
+| **PHY-19** | Physical Device | Physical MP3 Audio Pipeline | `connectedDebugAndroidTest` | **PASS** | `VrkaDownloadTest#testDownloadPipelineOnDevice`: Successfully downloaded and converted audio pipeline to MP3 on physical device. |
+| **PHY-20** | Physical Device | In-Place Upgrade Compatibility (4.5 to 4.5.1) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch against canonical lineage. |
+

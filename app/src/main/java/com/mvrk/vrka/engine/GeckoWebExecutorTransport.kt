@@ -8,6 +8,7 @@ import org.mozilla.geckoview.GeckoWebExecutor
 import org.mozilla.geckoview.WebRequest
 import org.mozilla.geckoview.WebRequestError
 import org.mozilla.geckoview.WebResponse
+import com.mvrk.vrka.HeaderValidation
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -80,15 +81,11 @@ class GeckoWebExecutorTransport(
         private const val DEFAULT_TIMEOUT_MS = 30_000L
         private const val STREAM_BUFFER_SIZE = 32_768 // 32 KB bounded buffer
 
-        private val ALLOWED_HEADERS = setOf(
-            "user-agent",
-            "referer",
-            "origin",
-            "accept",
-            "accept-language",
-            "accept-encoding",
-            "range",
-            "cookie",
+        private val DISALLOWED_HEADERS = setOf(
+            "host",
+            "content-length",
+            "connection",
+            "upgrade",
         )
     }
 
@@ -138,9 +135,10 @@ class GeckoWebExecutorTransport(
         val exec = getOrCreateExecutor()
         val builder = WebRequest.Builder(request.url)
 
-        // Inject allowed headers
+        // Inject validated headers
         request.headers.forEach { (key, value) ->
-            if (value.isNotBlank() && key.lowercase() in ALLOWED_HEADERS) {
+            val lower = key.lowercase()
+            if (value.isNotBlank() && lower !in DISALLOWED_HEADERS && HeaderValidation.isValidHeaderName(key)) {
                 builder.addHeader(key, value)
             }
         }

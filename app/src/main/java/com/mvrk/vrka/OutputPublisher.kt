@@ -146,6 +146,39 @@ internal class OutputPublisher(
             val persisted = context.contentResolver.persistedUriPermissions
             persisted.any { it.uri == treeUri && it.isWritePermission }
         }.getOrDefault(false)
+
+        fun isTreePermissionValid(context: Context, treeUriString: String?): Boolean {
+            if (treeUriString.isNullOrBlank()) return true
+            return runCatching {
+                val uri = Uri.parse(treeUriString)
+                hasPersistedTreePermission(context, uri)
+            }.getOrDefault(false)
+        }
+
+        fun formatDisplayPath(treeUriString: String?): String {
+            if (treeUriString.isNullOrBlank()) return "Downloads/VRKA"
+            return runCatching {
+                val docId = if (treeUriString.contains("/tree/")) {
+                    val raw = treeUriString.substringAfter("/tree/").substringBefore("?")
+                    java.net.URLDecoder.decode(raw, "UTF-8")
+                } else {
+                    val uri = Uri.parse(treeUriString)
+                    DocumentsContract.getTreeDocumentId(uri)
+                }
+                val cleanPath = if (docId.contains(":")) {
+                    val parts = docId.split(":", limit = 2)
+                    val sub = parts.getOrNull(1).orEmpty()
+                    if (sub.isBlank()) {
+                        if (parts[0].equals("primary", ignoreCase = true)) "Internal Storage" else parts[0]
+                    } else {
+                        sub
+                    }
+                } else {
+                    docId
+                }
+                cleanPath.ifBlank { "Downloads/VRKA" }
+            }.getOrDefault("Downloads/VRKA")
+        }
     }
 }
 
