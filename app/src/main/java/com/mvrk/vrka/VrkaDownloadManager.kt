@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import com.mvrk.vrka.engine.*
+import com.mvrk.vrka.update.AppUpdateManager
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.CompletableDeferred
@@ -64,6 +65,8 @@ class VrkaDownloadManager(
 
     val diagnosticStore = DiagnosticStore(context, scope)
     val diagnostics: StateFlow<List<DiagnosticEntry>> = diagnosticStore.entries
+
+    val appUpdateManager = AppUpdateManager.getInstance(context, settingsRepository)
 
     fun clearDiagnostics() {
         scope.launch(Dispatchers.IO) {

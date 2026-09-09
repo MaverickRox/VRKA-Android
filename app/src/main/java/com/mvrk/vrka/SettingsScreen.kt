@@ -47,6 +47,32 @@ internal fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val updateManager = remember { ComponentUpdateManager.getInstance(context) }
     val componentMap by updateManager.components.collectAsStateWithLifecycle()
+    val appUpdateManager = remember { com.mvrk.vrka.update.AppUpdateManager.getInstance(context, repository) }
+    val appUpdateState by appUpdateManager.checkState.collectAsStateWithLifecycle()
+    var manualCheckRequested by remember { mutableStateOf(false) }
+
+    LaunchedEffect(appUpdateState) {
+        if (manualCheckRequested) {
+            when (val s = appUpdateState) {
+                is com.mvrk.vrka.update.AppUpdateCheckState.UpToDate -> {
+                    Toast.makeText(
+                        context,
+                        "You're on the latest version (v${BuildConfig.VERSION_NAME})",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    manualCheckRequested = false
+                }
+                is com.mvrk.vrka.update.AppUpdateCheckState.Error -> {
+                    Toast.makeText(context, s.message, Toast.LENGTH_LONG).show()
+                    manualCheckRequested = false
+                }
+                is com.mvrk.vrka.update.AppUpdateCheckState.UpdateAvailable -> {
+                    manualCheckRequested = false
+                }
+                else -> Unit
+            }
+        }
+    }
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
@@ -653,6 +679,32 @@ internal fun SettingsScreen(
                     contentDescription = "VRKA Logo",
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                     modifier = Modifier.size(72.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            VrkaDivider()
+            Spacer(modifier = Modifier.height(4.dp))
+
+            VrkaSettingRow(
+                title = "App Updates",
+                subtitle = when (val state = appUpdateState) {
+                    is com.mvrk.vrka.update.AppUpdateCheckState.Checking -> "Checking for updates..."
+                    is com.mvrk.vrka.update.AppUpdateCheckState.UpdateAvailable -> "v${state.release.version} available"
+                    is com.mvrk.vrka.update.AppUpdateCheckState.UpToDate -> "VRKA is up to date"
+                    is com.mvrk.vrka.update.AppUpdateCheckState.Error -> state.message
+                    else -> "Check GitHub for new releases"
+                },
+                isSubtitleMono = true,
+            ) {
+                VrkaOutlinedButton(
+                    text = if (appUpdateState is com.mvrk.vrka.update.AppUpdateCheckState.Checking) "Checking..." else "Check for Updates",
+                    onClick = {
+                        manualCheckRequested = true
+                        appUpdateManager.checkForUpdate(isManual = true)
+                    },
+                    enabled = appUpdateState !is com.mvrk.vrka.update.AppUpdateCheckState.Checking,
+                    height = 32.dp,
                 )
             }
         }
