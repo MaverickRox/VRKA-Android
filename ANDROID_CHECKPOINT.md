@@ -91,7 +91,7 @@
 - Build: JUnit, lint-vital, R8, resource shrinking, signing, and release assembly passed.
 - Signing: APK Signature Scheme v2 passed with one RSA-4096 signer.
 - Certificate SHA-256: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`.
-- Install: `adb install -r` returned Success on device `897f6ce5`.
+- Install: `adb install -r` returned Success on physical device.
 - Package: `com.mvrk.vrka`, version 1.0.0, min SDK 24, target SDK 36, ARM64 ABI.
 - Runtime UI: yt-dlp `2026.07.04` reported Ready after first use.
 - History: the Eporner Complete row remained after APK replacement and process recreation.
@@ -115,8 +115,8 @@
 - Known stabilization bugs: Video/Best may select audio-only; quality choices must be upper bounds; WebView fallback may resume as a black surface; browser-candidate staging can derive an overlong signed-URL name; Android direct Instagram/Eporner extraction differs from Windows; optional theme/about P2 cleanup remains.
 - Read-only Windows VRKA build-007 reference: `C:\Users\Shukla\Documents\Codex\2026-07-23\v\work\vrka2007\VRKA-2.0.0-build007-source`. Never modify it.
 - Build command: set `JAVA_HOME=F:\Android\Android Studio\jbr`, set `VRKA_SIGNING_PROPERTIES=C:\Users\Shukla\.vrka-android-signing\signing.properties`, then run `.\gradlew.bat :app:testDebugUnitTest :app:assembleRelease`.
-- Install command: `F:\Android\Sdk\platform-tools\adb.exe -s 897f6ce5 install -r release\VRKA-Android-1.0.0-arm64-v8a.apk`.
-- Physical test setup: connected CPH2447, serial `897f6ce5`, Android 16/API 36, arm64-v8a, high-refresh 1440x3216 display.
+- Install command: `adb install -r release\VRKA-Android-1.0.0-arm64-v8a.apk`.
+- Physical test setup: connected OnePlus 11, Android 16/API 36, arm64-v8a, high-refresh 1440x3216 display.
 - Recovery rule: use the dated interrupted source archive and the pre-stabilization APK. Do not touch the Windows reference or signing secrets.
 
 ## Pre-stabilization frozen release
@@ -134,7 +134,7 @@
 
 ## Physical-device acceptance
 
-- Device: CPH2447, Android 16/API 36, arm64-v8a.
+- Device: OnePlus 11, Android 16/API 36, arm64-v8a.
 - Final exact artifact: `adb install -r` returned Success; installed package metadata remained version 1.0.0, min SDK 24, target SDK 36, primary ABI arm64-v8a.
 - Runtime: youtubedl-android 0.18.1, bundled native FFmpeg, yt-dlp updated successfully in the minified release to stable `2026.07.04`.
 - Ordinary path: `https://media.w3.org/wai/perspective-videos/large-links-buttons-controls.mp4` completed and published a playable 9,757,446-byte MP4 to `Downloads/VRKA`; the final minified release repeated this smoke test successfully.
@@ -187,7 +187,7 @@
 - Signing: APK Signature Scheme v2 passed with one RSA-4096 signer.
 - Certificate SHA-256: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`.
 - Build: JUnit, lint-vital, R8, resource shrinking, signing validation, and release assembly passed.
-- Install: `adb install -r` returned Success on device `897f6ce5`.
+- Install: `adb install -r` returned Success on physical device.
 - Appearance: compact Light/Dark control; separate remembered AMOLED preference; dynamic system bars.
 - Navigation: matching vector icons and a compact active-download strip.
 - Presentation: Home plan summary, polished Queue/History rows, phase labels, bounded failure copy, and one foreground notification.

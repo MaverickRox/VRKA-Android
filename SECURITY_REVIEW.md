@@ -339,4 +339,4 @@ This audit covers the security architecture, input validation, and media pipelin
 ### 5. Automated & Physical Test Verification
 - Expanded unit test coverage to 171 passing offline unit tests across 15 suites (including `HeaderValidationTest`, `AudioFormatPipelineTest`, and `SaveLocationTest`).
 - Verified zero regressions in component updater cryptographic verification (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`) and canonical signing certificate lineage (`9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`).
-- Complete physical device testing on OnePlus 11 5G (`CPH2447`, Android 16) confirming in-place upgrade, UI responsiveness, and successful media downloads across MP3, Opus, and WAV formats.
+- Complete physical device testing on OnePlus 11 5G (Android 16) confirming in-place upgrade, UI responsiveness, and successful media downloads across MP3, Opus, and WAV formats.
