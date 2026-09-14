@@ -119,6 +119,10 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                 runCatching {
                     withTimeout(timeoutMs) {
                         val controller = runtime.webExtensionController
+                        seedBundledExtensionsIfMissing()
+                        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+                        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
+                        val puemosXpi = java.io.File(xpiDir, "puemos.xpi")
 
                         // 1. Install & Register Media Detector WebExtension (internal bridge)
                         if (!_mediaDetectorActive.value) {
@@ -139,31 +143,19 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                             _mediaDetectorActive.value = true
                         }
 
-                        // 2. Install & Register uBlock Origin WebExtension (intact XPI if updated, else bundled asset)
-                        if (!_uBlockActive.value) {
-                            Log.i(TAG, "Installing uBlock Origin extension...")
+                        // 2. Install & Register uBlock Origin WebExtension from intact XPI
+                        if (!_uBlockActive.value && ublockXpi.exists() && ublockXpi.length() > 0L) {
+                            Log.i(TAG, "Installing uBlock Origin extension from intact XPI...")
                             ensurePromptDelegate(controller)
-                            val ublockXpi = java.io.File(context.filesDir, "extensions/xpis/ublock.xpi")
-                            val ublockUri = if (ublockXpi.exists() && ublockXpi.length() > 0L) {
-                                "file://${ublockXpi.absolutePath}"
-                            } else {
-                                "resource://android/assets/extensions/ublock/"
-                            }
-
-                            val ublock = runCatching {
-                                installExtensionInternal(controller, ublockUri, UBLOCK_ID)
-                            }.getOrNull() ?: controller.ensureBuiltIn(
-                                "resource://android/assets/extensions/ublock/",
-                                UBLOCK_ID
-                            ).awaitResult() ?: throw IllegalStateException("uBlock Origin returned null")
+                            val ublock = installExtensionInternal(controller, "file://${ublockXpi.absolutePath}", UBLOCK_ID)
+                                ?: throw IllegalStateException("uBlock Origin returned null")
 
                             val privateUblock = controller.setAllowedInPrivateBrowsing(ublock, true).awaitResult()
                             Log.i(TAG, "uBlock Origin active and allowed in private browsing: ${privateUblock?.id ?: ublock.id}")
                             _uBlockActive.value = true
                         }
 
-                        // 3. Register updated Puemos WebExtension if present
-                        val puemosXpi = java.io.File(context.filesDir, "extensions/xpis/puemos.xpi")
+                        // 3. Register Puemos WebExtension from intact XPI
                         if (puemosXpi.exists() && puemosXpi.length() > 0L) {
                             runCatching {
                                 ensurePromptDelegate(controller)
@@ -290,17 +282,18 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                     controller.setAllowedInPrivateBrowsing(restored, true).awaitResult()
                 }
             } else {
-                if (extensionId == UBLOCK_ID) {
-                    val fallback = controller.ensureBuiltIn("resource://android/assets/extensions/ublock/", UBLOCK_ID).awaitResult()
-                    if (fallback != null) {
-                        controller.setAllowedInPrivateBrowsing(fallback, true).awaitResult()
-                        _uBlockActive.value = true
+                val assetName = if (extensionId == UBLOCK_ID) "ublock.xpi" else "puemos.xpi"
+                val targetXpi = java.io.File(context.filesDir, "extensions/xpis/$assetName")
+                runCatching {
+                    context.assets.open("extensions/$assetName").use { input ->
+                        targetXpi.outputStream().use { output -> input.copyTo(output) }
                     }
-                } else if (extensionId == PUEMOS_ID) {
-                    val list = controller.list().awaitResult() ?: emptyList()
-                    val activePuemos = list.firstOrNull { it.id == extensionId }
-                    if (activePuemos != null) {
-                        controller.uninstall(activePuemos).awaitResult()
+                }
+                if (targetXpi.exists() && targetXpi.length() > 0L) {
+                    val restored = installExtensionInternal(controller, "file://${targetXpi.absolutePath}", extensionId)
+                    if (restored != null) {
+                        controller.setAllowedInPrivateBrowsing(restored, true).awaitResult()
+                        if (extensionId == UBLOCK_ID) _uBlockActive.value = true
                     }
                 }
             }
@@ -308,6 +301,42 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
         }.onFailure { error ->
             Log.e(TAG, "Rollback encountered error for $extensionId: ${error.message}", error)
         }
+    }
+
+    fun seedBundledExtensionsIfMissing() {
+        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+        if (!xpiDir.exists()) xpiDir.mkdirs()
+
+        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
+        if (!ublockXpi.exists() || ublockXpi.length() == 0L) {
+            runCatching {
+                context.assets.open("extensions/ublock.xpi").use { input ->
+                    ublockXpi.outputStream().use { output -> input.copyTo(output) }
+                }
+                Log.i(TAG, "Seeded bundled ublock.xpi (${ublockXpi.length()} bytes)")
+            }
+        }
+
+        val puemosXpi = java.io.File(xpiDir, "puemos.xpi")
+        if (!puemosXpi.exists() || puemosXpi.length() == 0L) {
+            runCatching {
+                context.assets.open("extensions/puemos.xpi").use { input ->
+                    puemosXpi.outputStream().use { output -> input.copyTo(output) }
+                }
+                Log.i(TAG, "Seeded bundled puemos.xpi (${puemosXpi.length()} bytes)")
+            }
+        }
+    }
+
+    suspend fun getInstalledExtensionVersion(id: String): String? = withContext(Dispatchers.Main) {
+        runCatching {
+            ensureExtensionsReady()
+            if (!_isReady.value) return@runCatching null
+            val controller = runtime.webExtensionController
+            val list = controller.list().awaitResult() ?: emptyList()
+            val ext = list.firstOrNull { it.id == id }
+            ext?.metaData?.version?.trim()?.ifBlank { null }
+        }.getOrNull()
     }
 
     /**

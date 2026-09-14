@@ -391,7 +391,9 @@ class SecureComponentUpdater(
     /**
      * Inspects an XPI archive in-place without directory extraction.
      * Verifies manifest integrity, extension ID allowlist, version, dynamic GeckoView
-     * compatibility, and the presence of Mozilla Add-ons (AMO) signature files.
+     * compatibility, and the presence of Mozilla Add-ons (AMO) signature metadata files
+     * (META-INF/mozilla.rsa, META-INF/mozilla.sf). Full cryptographic signature verification
+     * is executed by the GeckoView WebExtension engine during installation.
      */
     fun validateXpiArchive(
         xpiFile: File,
@@ -403,7 +405,7 @@ class SecureComponentUpdater(
         }
 
         var manifestContent: String? = null
-        var hasMozillaSignature = false
+        var hasMozillaSignatureMetadata = false
 
         java.util.zip.ZipInputStream(xpiFile.inputStream().buffered()).use { zis ->
             var entry = zis.nextEntry
@@ -421,7 +423,7 @@ class SecureComponentUpdater(
                     }
                     manifestContent = baos.toString(Charsets.UTF_8.name())
                 } else if (name.startsWith("META-INF/") && (name.endsWith(".rsa") || name.endsWith(".sf") || name.endsWith(".mf"))) {
-                    hasMozillaSignature = true
+                    hasMozillaSignatureMetadata = true
                 }
                 zis.closeEntry()
                 entry = zis.nextEntry
@@ -475,7 +477,7 @@ class SecureComponentUpdater(
             )
         }
 
-        if (!hasMozillaSignature) {
+        if (!hasMozillaSignatureMetadata) {
             throw SecurityException("XPI archive is missing Mozilla signature entries in META-INF")
         }
 
@@ -484,7 +486,7 @@ class SecureComponentUpdater(
             version = ver,
             minGeckoVersion = minGeckoVer,
             maxGeckoVersion = maxGeckoVer,
-            hasSignatures = hasMozillaSignature,
+            hasSignatures = hasMozillaSignatureMetadata,
         )
     }
 

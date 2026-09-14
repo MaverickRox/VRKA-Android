@@ -170,6 +170,7 @@ dependencies {
     implementation("org.mozilla.geckoview:geckoview-arm64-v8a:153.0.20260810162159")
     implementation("org.bouncycastle:bcpg-jdk18on:1.85")
     implementation("org.bouncycastle:bcprov-jdk18on:1.85.2")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }

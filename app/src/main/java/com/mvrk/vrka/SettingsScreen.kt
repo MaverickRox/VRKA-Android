@@ -47,6 +47,7 @@ internal fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val updateManager = remember { ComponentUpdateManager.getInstance(context) }
     val componentMap by updateManager.components.collectAsStateWithLifecycle()
+    val batchState by updateManager.batchState.collectAsStateWithLifecycle()
     val appUpdateManager = remember { com.mvrk.vrka.update.AppUpdateManager.getInstance(context, repository) }
     val appUpdateState by appUpdateManager.checkState.collectAsStateWithLifecycle()
     var manualCheckRequested by remember { mutableStateOf(false) }
@@ -219,7 +220,11 @@ internal fun SettingsScreen(
             componentMap.values.forEachIndexed { index, comp ->
                 if (index > 0) VrkaDivider()
                 val cleanInstalled = ComponentUpdateManager.cleanVersionString(comp.installedVersion)
-                val displayVer = if (cleanInstalled.startsWith("v")) cleanInstalled else "v$cleanInstalled"
+                val displayVer = when {
+                    cleanInstalled.equals("Unknown", ignoreCase = true) || cleanInstalled.isBlank() -> "Unknown"
+                    cleanInstalled.startsWith("v") -> cleanInstalled
+                    else -> "v$cleanInstalled"
+                }
                 VrkaSettingRow(
                     title = comp.name,
                     subtitle = "Installed: $displayVer",
@@ -290,16 +295,19 @@ internal fun SettingsScreen(
 
             VrkaDivider()
 
+            val isBusy = batchState in setOf(BatchOperationState.CHECKING, BatchOperationState.UPDATING) ||
+                componentMap.values.any { it.isChecking || it.isUpdating }
+
             val checkButtonText = when {
-                componentMap.values.any { it.isUpdating } -> "Updating components..."
-                componentMap.values.any { it.isChecking } -> "Checking updates..."
+                batchState == BatchOperationState.UPDATING || componentMap.values.any { it.isUpdating } -> "Updating components..."
+                batchState == BatchOperationState.CHECKING || componentMap.values.any { it.isChecking } -> "Checking updates..."
                 else -> "Check All Updates"
             }
 
             VrkaOutlinedButton(
                 text = checkButtonText,
                 onClick = { updateManager.checkAllUpdates(settings.updatePreference) },
-                enabled = !isAnyCheckingOrUpdating,
+                enabled = !isBusy,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 10.dp),

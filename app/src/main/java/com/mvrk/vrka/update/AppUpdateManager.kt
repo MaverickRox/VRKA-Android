@@ -7,8 +7,14 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.mvrk.vrka.BuildConfig
 import com.mvrk.vrka.SettingsRepository
+import com.mvrk.vrka.worker.AppUpdateDownloadWorker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +50,59 @@ class AppUpdateManager(
 
     val currentVersion: SemanticVersion by lazy {
         SemanticVersion.parseOrNull(BuildConfig.VERSION_NAME) ?: SemanticVersion(4, 5, 1)
+    }
+
+    init {
+        restoreStateAndObserveWorker()
+    }
+
+    private fun restoreStateAndObserveWorker() {
+        val prefs = context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
+        val savedState = prefs.getString(AppUpdateDownloadWorker.KEY_STATE, null)
+        val savedFilePath = prefs.getString(AppUpdateDownloadWorker.KEY_FILE_PATH, null)
+        if (savedState == AppUpdateDownloadWorker.STATE_READY_TO_INSTALL && !savedFilePath.isNullOrBlank()) {
+            val file = File(savedFilePath)
+            if (file.exists() && file.length() > 0L) {
+                _downloadState.value = AppUpdateDownloadState.ReadyToInstall(file)
+            }
+        }
+
+        runCatching {
+            val workManager = WorkManager.getInstance(context)
+            scope.launch {
+                workManager.getWorkInfosForUniqueWorkFlow(AppUpdateDownloadWorker.WORK_NAME).collect { workInfos ->
+                    val workInfo = workInfos.firstOrNull() ?: return@collect
+                    when (workInfo.state) {
+                        WorkInfo.State.RUNNING -> {
+                            val progress = workInfo.progress.getFloat(AppUpdateDownloadWorker.KEY_PROGRESS, 0f)
+                            val downloaded = workInfo.progress.getLong(AppUpdateDownloadWorker.KEY_DOWNLOADED_BYTES, 0L)
+                            val total = workInfo.progress.getLong(AppUpdateDownloadWorker.KEY_TOTAL_BYTES, 0L)
+                            _downloadState.value = AppUpdateDownloadState.Downloading(progress, downloaded, total)
+                        }
+                        WorkInfo.State.SUCCEEDED -> {
+                            val filePath = workInfo.outputData.getString(AppUpdateDownloadWorker.KEY_FILE_PATH)
+                                ?: prefs.getString(AppUpdateDownloadWorker.KEY_FILE_PATH, null)
+                            if (filePath != null) {
+                                val file = File(filePath)
+                                if (file.exists() && file.length() > 0L) {
+                                    _downloadState.value = AppUpdateDownloadState.ReadyToInstall(file)
+                                }
+                            }
+                        }
+                        WorkInfo.State.FAILED -> {
+                            val error = workInfo.outputData.getString(AppUpdateDownloadWorker.KEY_ERROR)
+                                ?: prefs.getString(AppUpdateDownloadWorker.KEY_ERROR, null)
+                                ?: "Download failed"
+                            _downloadState.value = AppUpdateDownloadState.Error(error)
+                        }
+                        WorkInfo.State.CANCELLED -> {
+                            _downloadState.value = AppUpdateDownloadState.Idle
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+        }
     }
 
     fun checkForUpdate(isManual: Boolean = false) {
@@ -98,41 +157,44 @@ class AppUpdateManager(
     fun dismissUpdate() {
         _checkState.value = AppUpdateCheckState.Idle
         _downloadState.value = AppUpdateDownloadState.Idle
+        runCatching {
+            WorkManager.getInstance(context).cancelUniqueWork(AppUpdateDownloadWorker.WORK_NAME)
+        }
     }
 
     fun resetState() {
         _checkState.value = AppUpdateCheckState.Idle
         _downloadState.value = AppUpdateDownloadState.Idle
+        runCatching {
+            WorkManager.getInstance(context).cancelUniqueWork(AppUpdateDownloadWorker.WORK_NAME)
+        }
     }
 
     fun downloadAndInstall(release: AppReleaseInfo) {
-        if (activeDownloadJob?.isActive == true) return
+        if (_downloadState.value is AppUpdateDownloadState.Downloading) return
 
-        activeDownloadJob = scope.launch {
-            _downloadState.value = AppUpdateDownloadState.Downloading(0f, 0L, release.apkSizeBytes)
-            val updatesDir = File(context.cacheDir, "updates")
-            if (!updatesDir.exists()) updatesDir.mkdirs()
+        _downloadState.value = AppUpdateDownloadState.Downloading(0f, 0L, release.apkSizeBytes)
 
-            val targetFile = File(updatesDir, release.apkFileName)
-            try {
-                downloadFileWithProgress(release.apkDownloadUrl, targetFile) { downloaded, total ->
-                    val progress = if (total > 0) downloaded.toFloat() / total.toFloat() else 0f
-                    _downloadState.value = AppUpdateDownloadState.Downloading(progress, downloaded, total)
-                }
+        runCatching {
+            val workManager = WorkManager.getInstance(context)
+            val inputData = workDataOf(
+                AppUpdateDownloadWorker.KEY_DOWNLOAD_URL to release.apkDownloadUrl,
+                AppUpdateDownloadWorker.KEY_APK_NAME to release.apkFileName,
+                AppUpdateDownloadWorker.KEY_EXPECTED_SIZE to release.apkSizeBytes,
+                AppUpdateDownloadWorker.KEY_TARGET_VERSION to release.version.toString(),
+            )
+            val workRequest = OneTimeWorkRequestBuilder<AppUpdateDownloadWorker>()
+                .setInputData(inputData)
+                .build()
 
-                if (!targetFile.exists() || targetFile.length() == 0L) {
-                    throw IOException("Downloaded APK file is empty or missing")
-                }
-
-                _downloadState.value = AppUpdateDownloadState.ReadyToInstall(targetFile)
-                installApk(targetFile)
-            } catch (ce: CancellationException) {
-                Log.d(TAG, "Download cancelled")
-                _downloadState.value = AppUpdateDownloadState.Idle
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to download update: ${e.message}", e)
-                _downloadState.value = AppUpdateDownloadState.Error(e.message ?: "Download failed")
-            }
+            workManager.enqueueUniqueWork(
+                AppUpdateDownloadWorker.WORK_NAME,
+                ExistingWorkPolicy.KEEP,
+                workRequest,
+            )
+        }.onFailure { error ->
+            Log.e(TAG, "Failed to enqueue AppUpdateDownloadWorker: ${error.message}", error)
+            _downloadState.value = AppUpdateDownloadState.Error(error.message ?: "Failed to start background download")
         }
     }
 
