@@ -67,6 +67,7 @@ class VrkaDownloadManager(
     val diagnostics: StateFlow<List<DiagnosticEntry>> = diagnosticStore.entries
 
     val appUpdateManager = AppUpdateManager.getInstance(context, settingsRepository)
+    val componentUpdateManager = ComponentUpdateManager.getInstance(context)
 
     fun clearDiagnostics() {
         scope.launch(Dispatchers.IO) {

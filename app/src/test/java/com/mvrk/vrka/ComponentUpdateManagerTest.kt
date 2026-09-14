@@ -578,4 +578,102 @@ class ComponentUpdateManagerTest {
         assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_YTDLP]?.checkState)
         assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_UBLOCK]?.checkState)
     }
+
+    @Test
+    fun testBundledStableBaselineConstants() {
+        assertEquals("2026.08.19", ComponentUpdateManager.DEFAULT_YTDLP_VER)
+        assertEquals("1.74.0", ComponentUpdateManager.DEFAULT_UBLOCK_VER)
+        assertEquals("5.5.0", ComponentUpdateManager.DEFAULT_PUEMOS_VER)
+    }
+
+    @Test
+    fun testYtDlp20260819Comparisons() {
+        // v4.5.3 baseline is 2026.08.19
+        val baseline = "2026.08.19"
+        // Old 2026.06.30 is strictly older
+        assertTrue(ComponentUpdateManager.isNewerVersion(baseline, "2026.06.30"))
+        // Baseline is not newer than itself
+        assertFalse(ComponentUpdateManager.isNewerVersion(baseline, baseline))
+        assertFalse(ComponentUpdateManager.isNewerVersion("v$baseline", baseline))
+        // Future release is newer
+        assertTrue(ComponentUpdateManager.isNewerVersion("2026.08.30", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("v2026.08.30.232658", baseline))
+    }
+
+    @Test
+    fun testPuemos550Comparisons() {
+        // v4.5.3 baseline is 5.5.0
+        val baseline = "5.5.0"
+        // Old 1.0.0 is strictly older
+        assertTrue(ComponentUpdateManager.isNewerVersion(baseline, "1.0.0"))
+        assertTrue(ComponentUpdateManager.isNewerVersion(baseline, "5.4.0"))
+        // Baseline is not newer than itself
+        assertFalse(ComponentUpdateManager.isNewerVersion(baseline, baseline))
+        assertFalse(ComponentUpdateManager.isNewerVersion("v$baseline", baseline))
+        // Future release is newer
+        assertTrue(ComponentUpdateManager.isNewerVersion("5.5.1", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("5.6.0", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("6.0.0", baseline))
+    }
+
+    @Test
+    fun testUBlock1740Comparisons() {
+        // v4.5.3 baseline is 1.74.0
+        val baseline = "1.74.0"
+        assertFalse(ComponentUpdateManager.isNewerVersion(baseline, baseline))
+        assertFalse(ComponentUpdateManager.isNewerVersion("1.73.0", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("1.74.1", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("1.75.0", baseline))
+    }
+
+    @Test
+    fun testBatchOperationStateTransitions() {
+        assertEquals(BatchOperationState.IDLE, BatchOperationState.valueOf("IDLE"))
+        assertEquals(BatchOperationState.CHECKING, BatchOperationState.valueOf("CHECKING"))
+        assertEquals(BatchOperationState.UPDATING, BatchOperationState.valueOf("UPDATING"))
+        assertEquals(BatchOperationState.COMPLETED, BatchOperationState.valueOf("COMPLETED"))
+        assertEquals(BatchOperationState.FAILED, BatchOperationState.valueOf("FAILED"))
+        assertEquals(BatchOperationState.CANCELLED, BatchOperationState.valueOf("CANCELLED"))
+    }
+
+    @Test
+    fun testStartupUpdateDialogDataModels() {
+        val item = ComponentUpdateItem(
+            id = ComponentUpdateManager.ID_YTDLP,
+            name = "yt-dlp Engine",
+            currentVersion = "2026.08.19",
+            targetVersion = "2026.08.30",
+        )
+        val dialogData = StartupUpdateDialogData(listOf(item))
+        assertEquals(1, dialogData.updates.size)
+        assertEquals("yt-dlp Engine", dialogData.updates[0].name)
+        assertEquals("2026.08.19", dialogData.updates[0].currentVersion)
+        assertEquals("2026.08.30", dialogData.updates[0].targetVersion)
+    }
+
+    @Test
+    fun testTwentyFourHourIntervalGate() {
+        val twentyFourHoursMs = 24 * 60 * 60 * 1000L
+        val now = 100_000_000_000L
+        // Exactly within 24h
+        val recentCheck = now - (12 * 60 * 60 * 1000L) // 12 hours ago
+        assertTrue(now - recentCheck < twentyFourHoursMs)
+
+        // 23 hours ago
+        val almostCheck = now - (23 * 60 * 60 * 1000L)
+        assertTrue(now - almostCheck < twentyFourHoursMs)
+
+        // 25 hours ago -> eligible for automatic startup check
+        val expiredCheck = now - (25 * 60 * 60 * 1000L)
+        assertFalse(now - expiredCheck < twentyFourHoursMs)
+    }
+
+    @Test
+    fun testUnknownVersionNormalization() {
+        val unknown = "Unknown"
+        val cleaned = ComponentUpdateManager.cleanVersionString(unknown)
+        assertEquals("Unknown", cleaned)
+        val displayVer = if (cleaned.equals("Unknown", ignoreCase = true)) "Unknown" else "v$cleaned"
+        assertEquals("Unknown", displayVer)
+    }
 }

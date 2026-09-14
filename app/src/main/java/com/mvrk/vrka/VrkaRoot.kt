@@ -77,6 +77,7 @@ fun VrkaRoot(
     val diagnostics by manager.diagnostics.collectAsStateWithLifecycle()
     val appUpdateCheckState by manager.appUpdateManager.checkState.collectAsStateWithLifecycle()
     val appUpdateDownloadState by manager.appUpdateManager.downloadState.collectAsStateWithLifecycle()
+    val startupUpdateDialogData by manager.componentUpdateManager.startupUpdateDialogData.collectAsStateWithLifecycle()
     var destination by remember { mutableStateOf(VrkaDestination.DOWNLOAD) }
     var pendingRequest by remember { mutableStateOf<DownloadRequest?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -84,6 +85,7 @@ fun VrkaRoot(
 
     LaunchedEffect(Unit) {
         manager.appUpdateManager.checkForUpdate(isManual = false)
+        manager.componentUpdateManager.performStartupCheckIfNeeded(settings.updatePreference)
     }
 
     val notificationPermission = rememberLauncherForActivityResult(
@@ -327,6 +329,14 @@ fun VrkaRoot(
                                 manager.appUpdateManager.downloadAndInstall(release)
                             }
                         },
+                    )
+                }
+
+                startupUpdateDialogData?.let { dialogData ->
+                    com.mvrk.vrka.ui.ComponentStartupUpdateDialog(
+                        dialogData = dialogData,
+                        onUpdateNow = { manager.componentUpdateManager.applyAllUpdates(settings.updatePreference) },
+                        onDismiss = manager.componentUpdateManager::dismissStartupDialog,
                     )
                 }
             }

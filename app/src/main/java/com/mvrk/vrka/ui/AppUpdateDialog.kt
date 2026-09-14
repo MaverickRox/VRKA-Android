@@ -516,3 +516,164 @@ private fun formatFileSize(bytes: Long): String {
 private fun formatPublishedDate(dateStr: String): String {
     return if (dateStr.length >= 10) dateStr.substring(0, 10) else dateStr
 }
+
+@Composable
+fun ComponentStartupUpdateDialog(
+    dialogData: com.mvrk.vrka.StartupUpdateDialogData,
+    onUpdateNow: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            usePlatformDefaultWidth = false,
+        ),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 24.dp),
+            shape = RoundedCornerShape(22.dp),
+            color = VrkaTokens.SurfaceCard,
+            contentColor = VrkaTokens.TextPrimary,
+            border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+            tonalElevation = 6.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            ) {
+                // Header
+                Text(
+                    text = "Component Updates",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontFamily = VrkaMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                    ),
+                    color = VrkaTokens.TextPrimary,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "New updates are available for your background components:",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = VrkaMonoFamily,
+                    ),
+                    color = VrkaTokens.TextSecondary,
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // List of components with update available
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    dialogData.updates.forEach { item ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = VrkaTokens.SurfaceElevated,
+                            border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column {
+                                    Text(
+                                        text = item.name,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontFamily = VrkaMonoFamily,
+                                            fontWeight = FontWeight.SemiBold,
+                                        ),
+                                        color = VrkaTokens.TextPrimary,
+                                    )
+                                    val currentClean = com.mvrk.vrka.ComponentUpdateManager.cleanVersionString(item.currentVersion)
+                                    Text(
+                                        text = "Installed: v$currentClean",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = VrkaMonoFamily,
+                                        ),
+                                        color = VrkaTokens.TextSecondary,
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = VrkaTokens.AccentContainer,
+                                    border = BorderStroke(1.dp, VrkaTokens.Accent.copy(alpha = 0.4f)),
+                                ) {
+                                    val targetClean = com.mvrk.vrka.ComponentUpdateManager.cleanVersionString(item.targetVersion)
+                                    Text(
+                                        text = "v$targetClean",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontFamily = VrkaMonoFamily,
+                                            fontWeight = FontWeight.Bold,
+                                        ),
+                                        color = VrkaTokens.Accent,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Action buttons: "Later" and "Update Now"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = VrkaTokens.TextSecondary,
+                        ),
+                    ) {
+                        Text(
+                            text = "Later",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontFamily = VrkaMonoFamily,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                        )
+                    }
+
+                    Button(
+                        onClick = onUpdateNow,
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = VrkaTokens.Accent,
+                            contentColor = Color.White,
+                        ),
+                    ) {
+                        Text(
+                            text = "Update Now",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontFamily = VrkaMonoFamily,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
