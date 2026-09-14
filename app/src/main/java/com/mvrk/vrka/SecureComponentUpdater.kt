@@ -446,18 +446,7 @@ class SecureComponentUpdater(
         val id = geckoObj?.optString("id")?.trim() ?: ""
 
         // Strict ID enforcement
-        if (expectedId == UBLOCK_EXTENSION_ID) {
-            if (id == REJECTED_UBO_LITE_ID) {
-                throw SecurityException("uBlock Origin Lite ID ($REJECTED_UBO_LITE_ID) rejected; VRKA strictly requires full uBlock Origin ($UBLOCK_EXTENSION_ID)")
-            }
-            if (id != UBLOCK_EXTENSION_ID) {
-                throw SecurityException("Extension ID mismatch: expected $UBLOCK_EXTENSION_ID, got '$id'")
-            }
-        } else if (expectedId == PUEMOS_EXTENSION_ID) {
-            if (id != PUEMOS_EXTENSION_ID) {
-                throw SecurityException("Extension ID mismatch: expected $PUEMOS_EXTENSION_ID, got '$id'")
-            }
-        } else if (id != expectedId) {
+        if (id != expectedId) {
             throw SecurityException("Extension ID mismatch: expected $expectedId, got '$id'")
         }
 
@@ -651,7 +640,6 @@ class SecureComponentUpdater(
 
         const val UBLOCK_EXTENSION_ID = "uBlock0@raymondhill.net"
         const val PUEMOS_EXTENSION_ID = "{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}"
-        const val REJECTED_UBO_LITE_ID = "uBOLiteRedux@raymondhill.net"
 
         val UBLOCK_ASSET_REGEX = Regex("""^uBlock0_.*\.firefox\.signed\.xpi$""")
         val PUEMOS_ASSET_REGEX = Regex("""^extension-mv2-firefox\.xpi$""")
