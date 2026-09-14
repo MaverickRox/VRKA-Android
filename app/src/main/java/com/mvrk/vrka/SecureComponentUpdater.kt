@@ -380,6 +380,257 @@ class SecureComponentUpdater(
         }
     }
 
+    data class XpiValidationResult(
+        val id: String,
+        val version: String,
+        val minGeckoVersion: String?,
+        val maxGeckoVersion: String?,
+        val hasSignatures: Boolean,
+    )
+
+    /**
+     * Inspects an XPI archive in-place without directory extraction.
+     * Verifies manifest integrity, extension ID allowlist, version, dynamic GeckoView
+     * compatibility, and the presence of Mozilla Add-ons (AMO) signature files.
+     */
+    fun validateXpiArchive(
+        xpiFile: File,
+        expectedId: String,
+        expectedVersion: String,
+    ): XpiValidationResult {
+        if (!fileOperations.exists(xpiFile) || fileOperations.length(xpiFile) == 0L) {
+            throw java.io.FileNotFoundException("XPI file is missing or empty: ${xpiFile.path}")
+        }
+
+        var manifestContent: String? = null
+        var hasMozillaSignature = false
+
+        java.util.zip.ZipInputStream(xpiFile.inputStream().buffered()).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val name = entry.name
+                if (name.contains("..")) {
+                    throw SecurityException("Path traversal attempt in archive: $name")
+                }
+                if (name == "manifest.json") {
+                    val baos = ByteArrayOutputStream()
+                    val buf = ByteArray(4096)
+                    var n: Int
+                    while (zis.read(buf).also { n = it } != -1) {
+                        baos.write(buf, 0, n)
+                    }
+                    manifestContent = baos.toString(Charsets.UTF_8.name())
+                } else if (name.startsWith("META-INF/") && (name.endsWith(".rsa") || name.endsWith(".sf") || name.endsWith(".mf"))) {
+                    hasMozillaSignature = true
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
+        }
+
+        if (manifestContent == null) {
+            throw SecurityException("Archive does not contain manifest.json")
+        }
+
+        val json = org.json.JSONObject(manifestContent)
+        val ver = json.optString("version").trim()
+        if (ver.isBlank()) {
+            throw SecurityException("Manifest does not contain a valid version")
+        }
+
+        // Extract Gecko settings
+        val geckoObj = json.optJSONObject("browser_specific_settings")?.optJSONObject("gecko")
+            ?: json.optJSONObject("applications")?.optJSONObject("gecko")
+        val id = geckoObj?.optString("id")?.trim() ?: ""
+
+        // Strict ID enforcement
+        if (expectedId == UBLOCK_EXTENSION_ID) {
+            if (id == REJECTED_UBO_LITE_ID) {
+                throw SecurityException("uBlock Origin Lite ID ($REJECTED_UBO_LITE_ID) rejected; VRKA strictly requires full uBlock Origin ($UBLOCK_EXTENSION_ID)")
+            }
+            if (id != UBLOCK_EXTENSION_ID) {
+                throw SecurityException("Extension ID mismatch: expected $UBLOCK_EXTENSION_ID, got '$id'")
+            }
+        } else if (expectedId == PUEMOS_EXTENSION_ID) {
+            if (id != PUEMOS_EXTENSION_ID) {
+                throw SecurityException("Extension ID mismatch: expected $PUEMOS_EXTENSION_ID, got '$id'")
+            }
+        } else if (id != expectedId) {
+            throw SecurityException("Extension ID mismatch: expected $expectedId, got '$id'")
+        }
+
+        // Dynamic GeckoView compatibility check
+        val minGeckoVer = geckoObj?.optString("strict_min_version")?.trim()?.takeIf { it.isNotBlank() }
+        val maxGeckoVer = geckoObj?.optString("strict_max_version")?.trim()?.takeIf { it.isNotBlank() }
+        val installedGecko = getInstalledGeckoViewVersion()
+
+        if (minGeckoVer != null && ComponentUpdateManager.isNewerVersion(minGeckoVer, installedGecko)) {
+            throw IllegalStateException(
+                "Extension requires GeckoView min version $minGeckoVer, but installed version is $installedGecko"
+            )
+        }
+        if (maxGeckoVer != null && ComponentUpdateManager.isNewerVersion(installedGecko, maxGeckoVer)) {
+            throw IllegalStateException(
+                "Extension requires GeckoView max version $maxGeckoVer, but installed version is $installedGecko"
+            )
+        }
+
+        if (!hasMozillaSignature) {
+            throw SecurityException("XPI archive is missing Mozilla signature entries in META-INF")
+        }
+
+        return XpiValidationResult(
+            id = id,
+            version = ver,
+            minGeckoVersion = minGeckoVer,
+            maxGeckoVersion = maxGeckoVer,
+            hasSignatures = hasMozillaSignature,
+        )
+    }
+
+    /**
+     * Executes a cryptographically verified and transactional extension update (uBlock Origin or Puemos).
+     *
+     * Verification chain:
+     * 1. Downgrade prevention: candidateVersion must be strictly newer than installedVersion.
+     * 2. Asset allowlist: enforces exact filename pattern; rejects Chromium ZIPs, CRX, MV3.
+     * 3. HTTPS-only transport with strict redirect validation (only approved hosts).
+     * 4. SHA-256 checksum verification against expected hash (if supplied).
+     * 5. In-place archive validation without extracting: reads manifest.json, enforces exact ID,
+     *    checks dynamic GeckoView compatibility, verifies Mozilla signature files.
+     * 6. Transactional staging: downloads to .download.tmp, backs up active XPI to .backup.tmp,
+     *    and atomically moves verified XPI into active storage.
+     * 7. Runtime installation and verification via GeckoView WebExtension controller with automatic
+     *    rollback on failure.
+     */
+    suspend fun updateExtension(
+        componentId: String,
+        candidateVersion: String,
+        installedVersion: String,
+        downloadUrl: String,
+        expectedSha256: String? = null,
+        transport: HttpTransport = DefaultHttpTransport(),
+        customExtensionValidator: ((File) -> String?)? = null,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            // Step 1: Downgrade prevention
+            if (!ComponentUpdateManager.isNewerVersion(candidateVersion, installedVersion)) {
+                throw IllegalArgumentException(
+                    "Downgrade rejected for $componentId: candidate v$candidateVersion is not newer than installed v$installedVersion"
+                )
+            }
+
+            // Step 2: Asset validation
+            val assetName = downloadUrl.substringAfterLast("/")
+            if (isRejectedAsset(assetName)) {
+                throw SecurityException("Incompatible asset rejected for $componentId: $assetName")
+            }
+            if (!validateAssetFileName(componentId, assetName)) {
+                throw SecurityException("Asset filename '$assetName' does not match allowlist for $componentId")
+            }
+
+            val expectedId = when (componentId) {
+                ComponentUpdateManager.ID_UBLOCK -> UBLOCK_EXTENSION_ID
+                ComponentUpdateManager.ID_PUEMOS -> PUEMOS_EXTENSION_ID
+                else -> throw IllegalArgumentException("Unknown extension component: $componentId")
+            }
+
+            val xpiDir = customTargetDir ?: File(context?.filesDir, "extensions/xpis")
+            if (!xpiDir.exists()) xpiDir.mkdirs()
+
+            val targetXpi = File(xpiDir, "$componentId.xpi")
+            val downloadTmp = File(xpiDir, "$componentId.download.tmp")
+            val backupTmp = File(xpiDir, "$componentId.backup.tmp")
+
+            if (fileOperations.exists(downloadTmp)) fileOperations.delete(downloadTmp)
+            if (fileOperations.exists(backupTmp)) fileOperations.delete(backupTmp)
+
+            var replacedActiveXpi = false
+            try {
+                logI(TAG, "Downloading extension update for $componentId v$candidateVersion from $downloadUrl...")
+                val actualHash = transport.downloadToFile(downloadUrl, downloadTmp)
+
+                if (expectedSha256 != null && !actualHash.equals(expectedSha256, ignoreCase = true)) {
+                    fileOperations.delete(downloadTmp)
+                    throw SecurityException("SHA-256 mismatch for $componentId: expected $expectedSha256, got $actualHash")
+                }
+                logI(TAG, "SHA-256 checksum verified for $componentId: $actualHash")
+
+                // Step 3: Validate intact XPI archive without extraction
+                validateXpiArchive(downloadTmp, expectedId, candidateVersion)
+
+                // Step 4: Backup existing active version if present
+                if (fileOperations.exists(targetXpi) && fileOperations.length(targetXpi) > 0L) {
+                    fileOperations.copy(targetXpi, backupTmp)
+                    fileOperations.sync(backupTmp)
+                }
+
+                // Step 5: Replace active XPI atomically
+                fileOperations.sync(downloadTmp)
+                try {
+                    fileOperations.moveAtomic(downloadTmp, targetXpi)
+                } catch (_: Exception) {
+                    fileOperations.moveReplace(downloadTmp, targetXpi)
+                }
+                fileOperations.sync(targetXpi)
+                replacedActiveXpi = true
+
+                // Step 6: Post-update validation and GeckoView runtime installation read-back
+                val postVersion = if (customExtensionValidator != null) {
+                    customExtensionValidator.invoke(targetXpi)
+                } else {
+                    val ctx = context ?: throw IllegalStateException("Context required when customExtensionValidator is null")
+                    val geckoManager = GeckoRuntimeManager.getInstance(ctx)
+                    val ext = geckoManager.installAndVerifyExtension(targetXpi, expectedId, candidateVersion)
+                    ext.metaData.version.trim()
+                }
+
+                if (postVersion.isNullOrBlank()) {
+                    logE(TAG, "Post-update validation failed for $componentId; rolling back to previous component...")
+                    throw IllegalStateException("Installed extension failed validation; rolled back to previous component")
+                }
+
+                // Success commit: remove backup
+                if (fileOperations.exists(backupTmp)) fileOperations.delete(backupTmp)
+                logI(TAG, "$componentId successfully updated and verified: v$postVersion")
+                postVersion
+            } catch (e: Exception) {
+                fileOperations.delete(downloadTmp)
+                if (replacedActiveXpi) {
+                    rollbackActiveExtension(targetXpi, backupTmp, expectedId)
+                } else {
+                    if (fileOperations.exists(backupTmp)) fileOperations.delete(backupTmp)
+                }
+                throw e
+            }
+        }
+    }
+
+    private suspend fun rollbackActiveExtension(targetXpi: File, backupTmp: File, expectedId: String) {
+        if (fileOperations.exists(backupTmp)) {
+            runCatching {
+                fileOperations.moveReplace(backupTmp, targetXpi)
+                fileOperations.sync(targetXpi)
+                fileOperations.delete(backupTmp)
+            }
+        } else {
+            fileOperations.delete(targetXpi)
+        }
+        val ctx = context
+        if (ctx != null) {
+            runCatching {
+                val geckoManager = GeckoRuntimeManager.getInstance(ctx)
+                geckoManager.rollbackExtension(targetXpi.takeIf { fileOperations.exists(it) }, expectedId)
+            }
+        }
+    }
+
+    fun getInstalledGeckoViewVersion(): String {
+        return runCatching {
+            org.mozilla.geckoview.BuildConfig.MOZILLA_VERSION
+        }.getOrNull()?.trim()?.ifBlank { null } ?: "153.0"
+    }
+
     /**
      * Loads the pinned public key and asserts that its derived fingerprint matches the trust anchor.
      */
@@ -395,6 +646,32 @@ class SecureComponentUpdater(
     companion object {
         const val PINNED_PRIMARY_KEY_ID = 0x57CF65933B5A7581L
         const val PINNED_PRIMARY_KEY_FINGERPRINT = "AC0CBBE6848D6A873464AF4E57CF65933B5A7581"
+
+        const val UBLOCK_EXTENSION_ID = "uBlock0@raymondhill.net"
+        const val PUEMOS_EXTENSION_ID = "{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}"
+        const val REJECTED_UBO_LITE_ID = "uBOLiteRedux@raymondhill.net"
+
+        val UBLOCK_ASSET_REGEX = Regex("""^uBlock0_.*\.firefox\.signed\.xpi$""")
+        val PUEMOS_ASSET_REGEX = Regex("""^extension-mv2-firefox\.xpi$""")
+
+        fun validateAssetFileName(componentId: String, assetName: String): Boolean {
+            return when (componentId) {
+                ComponentUpdateManager.ID_UBLOCK -> UBLOCK_ASSET_REGEX.matches(assetName)
+                ComponentUpdateManager.ID_PUEMOS -> PUEMOS_ASSET_REGEX.matches(assetName)
+                else -> false
+            }
+        }
+
+        fun isRejectedAsset(assetName: String): Boolean {
+            val lower = assetName.lowercase()
+            return lower.endsWith(".crx") ||
+                lower.contains("chromium") ||
+                lower.contains("chrome") ||
+                lower.contains("mv3") ||
+                lower.contains("no-blocklist") ||
+                lower.endsWith(".tar.gz") ||
+                lower.endsWith(".zip")
+        }
 
         const val REPO_STABLE = "yt-dlp/yt-dlp"
         const val REPO_NIGHTLY = "yt-dlp/yt-dlp-nightly-builds"

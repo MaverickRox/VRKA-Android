@@ -293,4 +293,35 @@ The final report does not convert an unrun physical test into a pass.
 | **PHY-22** | Physical Device | In-Place Upgrade Compatibility (4.5.1 to 4.5.2) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch against canonical lineage. |
 | **PHY-23** | Physical Device | yt-dlp Engine Update & OpenPGP Verification on Android 16 | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G (`897f6ce5`): Fetched and verified manifest for `yt-dlp-nightly-builds@2026.08.30.232658`; OpenPGP signature successfully verified against pinned key `AC0CBBE6848D6A873464AF4E57CF65933B5A7581`; SHA-256 checksum verified; post-update execution succeeded; UI updated to `v2026.08.30.232658` without `NoSuchAlgorithmException: no such algorithm: S`. |
 
+---
+
+## VRKA Android 4.5.3 Release Verification Matrix — 2026-09-14
+
+### Release Candidate Summary
+
+- **Version**: VRKA Android 4.5.3 (`versionCode = 40503`, `versionName = "4.5.3"`)
+- **Package**: `com.mvrk.vrka`
+- **Target Platform**: Android 16 (API Level 36), Minimum Android 8.0 (API Level 26)
+- **Architecture**: `arm64-v8a`
+- **Signing Fingerprints**:
+  - **SHA-256**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa` (Canonical Lineage)
+  - **SHA-1**: `7758980f74a503684bf1a187994e447823d19d7c`
+  - **MD5**: `679d325009a63433f444e333bafe96a5`
+- **APK Size**: 154,879,143 bytes
+- **APK SHA-256**: `0f2820e8271d6a1d65085adebd40dfe8768dc7fbc34c28ab95d3b7c42d5779ce`
+- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+
+### Test Matrix
+
+| ID | Category | Test Case | Method | Result | Evidence / Details |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **AUT-34** | Automated | Generic Browser Fallback Classification | JUnit (Offline) | **PASS** | `FailureClassifierTest`: Verified generic recognition of Cloudflare anti-bot, JavaScript execution walls, and HTML challenge pages as `BROWSER_RECOVERABLE` without site-specific or domain-specific hardcoding. |
+| **AUT-35** | Automated | uBlock Origin Signed XPI Integrity & Allowlisting | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test31-test32`: Enforces exact extension ID `uBlock0@raymondhill.net`; strictly rejects `uBlock Origin Lite` (`uBOLiteRedux@raymondhill.net`); checks Mozilla digital signatures (`META-INF/mozilla.rsa`); performs dynamic GeckoView compatibility verification. |
+| **AUT-36** | Automated | Puemos MV2 XPI Integrity & Bridge Isolation | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test33-test34`: Enforces exact upstream Puemos ID `{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}` from `puemos/hls-downloader`; checks Mozilla digital signatures; keeps internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) decoupled as bundled asset. |
+| **AUT-37** | Automated | Transactional Staging, Rollback & State Machine | JUnit (Offline) | **PASS** | `ComponentUpdateManagerTest`: Verified atomic move, active version backup, rollback preservation of existing component on validation failure, and strict lifecycle states preventing premature "Updated" signals. |
+| **AUT-38** | Automated | Full Test Suite (229 tests across 18 suites) | JUnit (Offline) | **PASS** | 229 unit tests passed with 0 failures, 0 errors, 0 skipped via `gradlew testDebugUnitTest`. |
+| **PHY-24** | Physical Device | In-Place Upgrade Compatibility (4.5.2 to 4.5.3) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch against canonical lineage. |
+| **PHY-25** | Physical Device | Physical Browser Fallback E2E Execution | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G (`897f6ce5`): Ultrathots direct extraction failed with generic Cloudflare HTML challenge; automatically transitioned to browser fallback; GeckoView sandbox captured media candidate; produced 169 MB playable MP4. |
+| **PHY-26** | Physical Device | Independent Component Update & Runtime Verification | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G (`897f6ce5`): Check All Updates queried `puemos/hls-downloader` and `gorhill/uBlock` over HTTPS without 404; downloaded `extension-mv2-firefox.xpi`; validated without extraction; installed into GeckoView; read back `{e3ec0551-9bfa-4233-b9dd-6b36f6a80962} v5.5.0`; UI transitioned to `Updated`. |
+
 

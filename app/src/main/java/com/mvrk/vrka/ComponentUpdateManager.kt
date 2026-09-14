@@ -42,21 +42,48 @@ enum class ComponentUpdateState {
     UPDATE_FAILED,
 }
 
+enum class ComponentLifecycleState {
+    UNKNOWN,
+    CHECKING,
+    UPDATE_AVAILABLE,
+    DOWNLOADING,
+    VERIFYING,
+    STAGING,
+    INSTALLING,
+    VERIFYING_INSTALL,
+    UP_TO_DATE,
+    UPDATED,
+    FAILED,
+    ROLLING_BACK,
+    ROLLED_BACK,
+}
+
 data class ComponentStatus(
     val id: String,
     val name: String,
     val installedVersion: String,
     val latestVersion: String? = null,
+    val lifecycleState: ComponentLifecycleState = ComponentLifecycleState.UNKNOWN,
     val checkState: ComponentCheckState = ComponentCheckState.CHECK_IDLE,
     val updateState: ComponentUpdateState = ComponentUpdateState.UPDATE_IDLE,
     val message: String = "",
     val error: String? = null,
     val lastChecked: Long = 0L,
 ) {
-    val isChecking: Boolean get() = checkState == ComponentCheckState.CHECKING
-    val isUpdating: Boolean get() = updateState == ComponentUpdateState.DOWNLOADING ||
-        updateState == ComponentUpdateState.VERIFYING ||
-        updateState == ComponentUpdateState.INSTALLING
+    val isChecking: Boolean get() = checkState == ComponentCheckState.CHECKING ||
+        lifecycleState == ComponentLifecycleState.CHECKING
+    val isUpdating: Boolean get() = updateState in setOf(
+        ComponentUpdateState.DOWNLOADING,
+        ComponentUpdateState.VERIFYING,
+        ComponentUpdateState.INSTALLING,
+    ) || lifecycleState in setOf(
+        ComponentLifecycleState.DOWNLOADING,
+        ComponentLifecycleState.VERIFYING,
+        ComponentLifecycleState.STAGING,
+        ComponentLifecycleState.INSTALLING,
+        ComponentLifecycleState.VERIFYING_INSTALL,
+        ComponentLifecycleState.ROLLING_BACK,
+    )
 }
 
 class ComponentUpdateManager private constructor(private val context: Context) {
@@ -80,6 +107,50 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     @Volatile
     private var rateLimitErrorMessage: String? = null
 
+    private fun getInstalledUBlockVersion(): String {
+        val updatedXpi = File(context.filesDir, "extensions/xpis/ublock.xpi")
+        if (updatedXpi.exists() && updatedXpi.length() > 0L) {
+            runCatching {
+                java.util.zip.ZipFile(updatedXpi).use { z ->
+                    val entry = z.getEntry("manifest.json")
+                    if (entry != null) {
+                        val json = JSONObject(z.getInputStream(entry).bufferedReader().readText())
+                        val ver = json.optString("version").trim()
+                        if (ver.isNotBlank()) return ver
+                    }
+                }
+            }
+        }
+        return prefs.getString(KEY_UBLOCK_VER, null) ?: runCatching {
+            context.assets.open("extensions/ublock/manifest.json").use { stream ->
+                val json = JSONObject(stream.bufferedReader().readText())
+                json.optString("version", "1.74.0")
+            }
+        }.getOrDefault("1.74.0")
+    }
+
+    private fun getInstalledPuemosVersion(): String {
+        val updatedXpi = File(context.filesDir, "extensions/xpis/puemos.xpi")
+        if (updatedXpi.exists() && updatedXpi.length() > 0L) {
+            runCatching {
+                java.util.zip.ZipFile(updatedXpi).use { z ->
+                    val entry = z.getEntry("manifest.json")
+                    if (entry != null) {
+                        val json = JSONObject(z.getInputStream(entry).bufferedReader().readText())
+                        val ver = json.optString("version").trim()
+                        if (ver.isNotBlank()) return ver
+                    }
+                }
+            }
+        }
+        return prefs.getString(KEY_PUEMOS_VER, null) ?: runCatching {
+            context.assets.open("extensions/media-detector/manifest.json").use { stream ->
+                val json = JSONObject(stream.bufferedReader().readText())
+                json.optString("version", "1.0.0")
+            }
+        }.getOrDefault("1.0.0")
+    }
+
     private val _components = MutableStateFlow<Map<String, ComponentStatus>>(
         mapOf(
             ID_YTDLP to ComponentStatus(
@@ -91,14 +162,14 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             ID_UBLOCK to ComponentStatus(
                 id = ID_UBLOCK,
                 name = "uBlock Origin",
-                installedVersion = "1.74.0",
-                message = "Bundled • App Release",
+                installedVersion = getInstalledUBlockVersion(),
+                message = "Ready",
             ),
             ID_PUEMOS to ComponentStatus(
                 id = ID_PUEMOS,
-                name = "Puemos HLS Detection",
-                installedVersion = "1.0.0",
-                message = "Bundled • App Release",
+                name = "Puemos",
+                installedVersion = getInstalledPuemosVersion(),
+                message = "Ready",
             ),
         ),
     )
@@ -118,8 +189,12 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             val ytdlpVer = runCatching {
                 YoutubeDL.getInstance().versionName(context)?.removePrefix("yt-dlp ")?.trim()
             }.getOrNull() ?: prefs.getString(KEY_YTDLP_VER, "2026.06.30") ?: "2026.06.30"
+            val ublockVer = getInstalledUBlockVersion()
+            val puemosVer = getInstalledPuemosVersion()
 
             updateState(ID_YTDLP) { it.copy(installedVersion = ytdlpVer) }
+            updateState(ID_UBLOCK) { it.copy(installedVersion = ublockVer) }
+            updateState(ID_PUEMOS) { it.copy(installedVersion = puemosVer) }
         }
     }
 
@@ -173,22 +248,16 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
             try {
                 withTimeout(CHECK_TIMEOUT_MS) {
-                    if (id == ID_UBLOCK || id == ID_PUEMOS) {
-                        updateState(id) {
-                            it.copy(
-                                checkState = ComponentCheckState.UP_TO_DATE,
-                                message = "Bundled APK extension; updated via application releases.",
-                                error = null,
-                                lastChecked = System.currentTimeMillis(),
-                            )
-                        }
-                        return@withTimeout
-                    }
-
                     val latest = when (id) {
                         ID_YTDLP -> {
                             val repo = if (channel == UpdatePreference.NIGHTLY) "yt-dlp-nightly-builds" else "yt-dlp"
                             fetchLatestGithubRelease("yt-dlp", repo)
+                        }
+                        ID_UBLOCK -> {
+                            fetchLatestGithubRelease("gorhill", "uBlock")
+                        }
+                        ID_PUEMOS -> {
+                            fetchLatestGithubRelease("puemos", "hls-downloader")
                         }
                         else -> throw IllegalArgumentException("Unknown component $id")
                     }
@@ -277,34 +346,11 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         lastCheckAllTimestamp.set(now)
         globalCheckGeneration.incrementAndGet()
         checkUpdate(ID_YTDLP, channel)
-        updateState(ID_UBLOCK) {
-            it.copy(
-                checkState = ComponentCheckState.UP_TO_DATE,
-                message = "Bundled APK extension; updated via application releases.",
-                lastChecked = now,
-            )
-        }
-        updateState(ID_PUEMOS) {
-            it.copy(
-                checkState = ComponentCheckState.UP_TO_DATE,
-                message = "Bundled APK extension; updated via application releases.",
-                lastChecked = now,
-            )
-        }
+        checkUpdate(ID_UBLOCK, channel)
+        checkUpdate(ID_PUEMOS, channel)
     }
 
     fun applyUpdate(id: String, channel: UpdatePreference = UpdatePreference.STABLE) {
-        if (id == ID_UBLOCK || id == ID_PUEMOS) {
-            updateState(id) {
-                it.copy(
-                    updateState = ComponentUpdateState.UPDATE_SUCCESS,
-                    checkState = ComponentCheckState.UP_TO_DATE,
-                    message = "Bundled APK extension; updated via application releases.",
-                    error = null,
-                )
-            }
-            return
-        }
 
         val generation = updateGenerations.compute(id) { _, v -> (v ?: 0L) + 1L }!!
         activeUpdateJobs[id]?.cancel()
@@ -388,6 +434,112 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                                 }
                             }
                         }
+                        ID_UBLOCK -> {
+                            val updater = SecureComponentUpdater(context)
+                            val current = _components.value[id]
+                            val targetVer = current?.latestVersion?.takeIf { it.isNotBlank() }
+                                ?: fetchLatestGithubRelease("gorhill", "uBlock")
+                            val cleanTarget = cleanVersionString(targetVer)
+                            val downloadUrl = "https://github.com/gorhill/uBlock/releases/download/$cleanTarget/uBlock0_$cleanTarget.firefox.signed.xpi"
+
+                            updateState(id) {
+                                it.copy(
+                                    updateState = ComponentUpdateState.DOWNLOADING,
+                                    lifecycleState = ComponentLifecycleState.DOWNLOADING,
+                                    message = "Downloading uBlock Origin v$cleanTarget...",
+                                )
+                            }
+
+                            val updateResult = updater.updateExtension(
+                                componentId = ID_UBLOCK,
+                                candidateVersion = cleanTarget,
+                                installedVersion = current?.installedVersion ?: "1.74.0",
+                                downloadUrl = downloadUrl,
+                            )
+
+                            if (updateGenerations[id] != generation) return@withTimeout
+
+                            if (updateResult.isSuccess) {
+                                val postVersion = updateResult.getOrThrow()
+                                val cleanPostVersion = cleanVersionString(postVersion)
+                                prefs.edit().putString(KEY_UBLOCK_VER, postVersion).apply()
+                                updateState(id) {
+                                    it.copy(
+                                        updateState = ComponentUpdateState.UPDATE_SUCCESS,
+                                        lifecycleState = ComponentLifecycleState.UPDATED,
+                                        checkState = ComponentCheckState.UP_TO_DATE,
+                                        installedVersion = postVersion,
+                                        latestVersion = cleanPostVersion,
+                                        message = "Updated successfully to v$cleanPostVersion",
+                                        error = null,
+                                    )
+                                }
+                            } else {
+                                val failureReason = updateResult.exceptionOrNull()?.message ?: "Update failed"
+                                Log.e(TAG, "uBlock secure update failed: $failureReason")
+                                updateState(id) {
+                                    it.copy(
+                                        updateState = ComponentUpdateState.UPDATE_FAILED,
+                                        lifecycleState = ComponentLifecycleState.FAILED,
+                                        error = failureReason.take(80),
+                                        message = "Update failed: ${failureReason.take(80)}",
+                                    )
+                                }
+                            }
+                        }
+                        ID_PUEMOS -> {
+                            val updater = SecureComponentUpdater(context)
+                            val current = _components.value[id]
+                            val targetVer = current?.latestVersion?.takeIf { it.isNotBlank() }
+                                ?: fetchLatestGithubRelease("puemos", "hls-downloader")
+                            val cleanTarget = cleanVersionString(targetVer)
+                            val downloadUrl = "https://github.com/puemos/hls-downloader/releases/download/v$cleanTarget/extension-mv2-firefox.xpi"
+
+                            updateState(id) {
+                                it.copy(
+                                    updateState = ComponentUpdateState.DOWNLOADING,
+                                    lifecycleState = ComponentLifecycleState.DOWNLOADING,
+                                    message = "Downloading Puemos v$cleanTarget...",
+                                )
+                            }
+
+                            val updateResult = updater.updateExtension(
+                                componentId = ID_PUEMOS,
+                                candidateVersion = cleanTarget,
+                                installedVersion = current?.installedVersion ?: "1.0.0",
+                                downloadUrl = downloadUrl,
+                            )
+
+                            if (updateGenerations[id] != generation) return@withTimeout
+
+                            if (updateResult.isSuccess) {
+                                val postVersion = updateResult.getOrThrow()
+                                val cleanPostVersion = cleanVersionString(postVersion)
+                                prefs.edit().putString(KEY_PUEMOS_VER, postVersion).apply()
+                                updateState(id) {
+                                    it.copy(
+                                        updateState = ComponentUpdateState.UPDATE_SUCCESS,
+                                        lifecycleState = ComponentLifecycleState.UPDATED,
+                                        checkState = ComponentCheckState.UP_TO_DATE,
+                                        installedVersion = postVersion,
+                                        latestVersion = cleanPostVersion,
+                                        message = "Updated successfully to v$cleanPostVersion",
+                                        error = null,
+                                    )
+                                }
+                            } else {
+                                val failureReason = updateResult.exceptionOrNull()?.message ?: "Update failed"
+                                Log.e(TAG, "Puemos secure update failed: $failureReason")
+                                updateState(id) {
+                                    it.copy(
+                                        updateState = ComponentUpdateState.UPDATE_FAILED,
+                                        lifecycleState = ComponentLifecycleState.FAILED,
+                                        error = failureReason.take(80),
+                                        message = "Update failed: ${failureReason.take(80)}",
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             } catch (ce: CancellationException) {
@@ -450,6 +602,11 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 200 -> {
                     val jsonStr = conn.inputStream.bufferedReader().readText()
                     val json = JSONObject(jsonStr)
+                    val isPrerelease = json.optBoolean("prerelease", false)
+                    val isDraft = json.optBoolean("draft", false)
+                    if (isPrerelease || isDraft) {
+                        throw IOException("Release in $owner/$repo is marked as prerelease or draft")
+                    }
                     val tag = json.optString("tag_name").removePrefix("v").trim()
                     if (tag.isBlank()) throw IOException("Empty tag_name in release")
                     releaseCache[cacheKey] = ReleaseCacheEntry(tag, now)

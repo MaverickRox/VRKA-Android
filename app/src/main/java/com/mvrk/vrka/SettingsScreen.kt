@@ -218,12 +218,11 @@ internal fun SettingsScreen(
         VrkaSectionContainer {
             componentMap.values.forEachIndexed { index, comp ->
                 if (index > 0) VrkaDivider()
-                val isBundled = comp.id == ComponentUpdateManager.ID_UBLOCK || comp.id == ComponentUpdateManager.ID_PUEMOS
                 val cleanInstalled = ComponentUpdateManager.cleanVersionString(comp.installedVersion)
                 val displayVer = if (cleanInstalled.startsWith("v")) cleanInstalled else "v$cleanInstalled"
                 VrkaSettingRow(
                     title = comp.name,
-                    subtitle = if (isBundled) "Installed: $displayVer (Bundled)" else "Installed: $displayVer",
+                    subtitle = "Installed: $displayVer",
                     isSubtitleMono = true,
                 ) {
                     Row(
@@ -231,9 +230,6 @@ internal fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         when {
-                            isBundled -> {
-                                VrkaStatusBadge("Bundled", VrkaTokens.AccentLight, isMonospace = true)
-                            }
                             comp.isUpdating -> {
                                 val updateLabel = when (comp.updateState) {
                                     ComponentUpdateState.DOWNLOADING -> "Downloading"
