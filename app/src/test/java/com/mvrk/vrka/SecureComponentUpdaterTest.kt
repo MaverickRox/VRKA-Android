@@ -859,4 +859,192 @@ class SecureComponentUpdaterTest {
         )
         assertTrue("Manifest signature must verify successfully using explicit provider", valid)
     }
+
+    private fun createMockXpi(
+        id: String,
+        version: String,
+        minGecko: String = "115.0",
+        hasSignature: Boolean = true,
+    ): ByteArray {
+        val baos = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(baos).use { zos ->
+            zos.putNextEntry(java.util.zip.ZipEntry("manifest.json"))
+            val manifestContent = """
+            {
+              "manifest_version": 2,
+              "name": "Extension",
+              "version": "$version",
+              "browser_specific_settings": {
+                "gecko": {
+                  "id": "$id",
+                  "strict_min_version": "$minGecko"
+                }
+              }
+            }
+            """.trimIndent()
+            zos.write(manifestContent.toByteArray())
+            zos.closeEntry()
+
+            if (hasSignature) {
+                zos.putNextEntry(java.util.zip.ZipEntry("META-INF/mozilla.rsa"))
+                zos.write("sig".toByteArray())
+                zos.closeEntry()
+                zos.putNextEntry(java.util.zip.ZipEntry("META-INF/mozilla.sf"))
+                zos.write("sf".toByteArray())
+                zos.closeEntry()
+                zos.putNextEntry(java.util.zip.ZipEntry("META-INF/manifest.mf"))
+                zos.write("mf".toByteArray())
+                zos.closeEntry()
+            }
+        }
+        return baos.toByteArray()
+    }
+
+    @Test
+    fun test31_ValidateXpiArchiveAcceptsExactUblockId() {
+        val updater = SecureComponentUpdater()
+        val tempXpi = tempFolder.newFile("ublock_test.xpi")
+        tempXpi.writeBytes(createMockXpi(id = SecureComponentUpdater.UBLOCK_EXTENSION_ID, version = "1.74.0"))
+
+        val manifest = updater.validateXpiArchive(
+            xpiFile = tempXpi,
+            expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+            expectedVersion = "1.74.0"
+        )
+        assertEquals(SecureComponentUpdater.UBLOCK_EXTENSION_ID, manifest.id)
+        assertEquals("1.74.0", manifest.version)
+    }
+
+    @Test
+    fun test32_ValidateXpiArchiveRejectsUblockLiteOrIncorrectId() {
+        val updater = SecureComponentUpdater()
+        val tempXpi = tempFolder.newFile("ubol_test.xpi")
+        tempXpi.writeBytes(createMockXpi(id = "uBOLiteRedux@raymondhill.net", version = "1.74.0"))
+
+        try {
+            updater.validateXpiArchive(
+                xpiFile = tempXpi,
+                expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                expectedVersion = "1.74.0"
+            )
+            fail("Must reject uBOLite or non-matching ID")
+        } catch (e: SecurityException) {
+            assertTrue(e.message!!.contains("rejected") || e.message!!.contains("Extension ID mismatch"))
+        }
+    }
+
+    @Test
+    fun test33_ValidateXpiArchiveAcceptsExactPuemosId() {
+        val updater = SecureComponentUpdater()
+        val tempXpi = tempFolder.newFile("puemos_test.xpi")
+        tempXpi.writeBytes(createMockXpi(id = SecureComponentUpdater.PUEMOS_EXTENSION_ID, version = "5.5.0"))
+
+        val manifest = updater.validateXpiArchive(
+            xpiFile = tempXpi,
+            expectedId = SecureComponentUpdater.PUEMOS_EXTENSION_ID,
+            expectedVersion = "5.5.0"
+        )
+        assertEquals(SecureComponentUpdater.PUEMOS_EXTENSION_ID, manifest.id)
+        assertEquals("5.5.0", manifest.version)
+    }
+
+    @Test
+    fun test34_ValidateXpiArchiveRejectsIncorrectPuemosId() {
+        val updater = SecureComponentUpdater()
+        val tempXpi = tempFolder.newFile("fake_puemos.xpi")
+        tempXpi.writeBytes(createMockXpi(id = "other-hls-downloader@puemos.org", version = "5.5.0"))
+
+        try {
+            updater.validateXpiArchive(
+                xpiFile = tempXpi,
+                expectedId = SecureComponentUpdater.PUEMOS_EXTENSION_ID,
+                expectedVersion = "5.5.0"
+            )
+            fail("Must reject non-matching Puemos ID")
+        } catch (e: SecurityException) {
+            assertTrue(e.message!!.contains("Extension ID mismatch"))
+        }
+    }
+
+    @Test
+    fun test35_ValidateXpiArchiveRejectsMissingMozillaSignature() {
+        val updater = SecureComponentUpdater()
+        val tempXpi = tempFolder.newFile("unsigned.xpi")
+        tempXpi.writeBytes(
+            createMockXpi(
+                id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                version = "1.74.0",
+                hasSignature = false
+            )
+        )
+
+        try {
+            updater.validateXpiArchive(
+                xpiFile = tempXpi,
+                expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                expectedVersion = "1.74.0"
+            )
+            fail("Must reject XPI missing Mozilla signature")
+        } catch (e: SecurityException) {
+            assertTrue(e.message!!.contains("missing Mozilla signature"))
+        }
+    }
+
+    @Test
+    fun test36_ValidateXpiArchiveDynamicGeckoCompatibility() {
+        val updater = SecureComponentUpdater()
+        val tempXpi = tempFolder.newFile("incompatible_gecko.xpi")
+        // Require Gecko 999.0 which is greater than installed 153.0
+        tempXpi.writeBytes(
+            createMockXpi(
+                id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                version = "1.74.0",
+                minGecko = "999.0"
+            )
+        )
+
+        try {
+            updater.validateXpiArchive(
+                xpiFile = tempXpi,
+                expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                expectedVersion = "1.74.0"
+            )
+            fail("Must reject XPI incompatible with installed GeckoView version")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message!!.contains("requires GeckoView min version 999.0"))
+        }
+    }
+
+    @Test
+    fun test37_UpdateExtensionEnforcesAssetNamingRules() = runBlocking {
+        val updater = SecureComponentUpdater()
+
+        // 1. uBlock rejecting non-official signed XPI name
+        val badUblock = updater.updateExtension(
+            componentId = ComponentUpdateManager.ID_UBLOCK,
+            candidateVersion = "1.74.0",
+            installedVersion = "1.0.0",
+            downloadUrl = "https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.zip",
+        )
+        assertTrue(badUblock.isFailure)
+        assertTrue(badUblock.exceptionOrNull() is SecurityException)
+        assertTrue(
+            badUblock.exceptionOrNull()!!.message!!.contains("Incompatible asset rejected") ||
+            badUblock.exceptionOrNull()!!.message!!.contains("does not match allowlist")
+        )
+
+        // 2. Puemos rejecting non-firefox XPI name
+        val badPuemos = updater.updateExtension(
+            componentId = ComponentUpdateManager.ID_PUEMOS,
+            candidateVersion = "5.5.0",
+            installedVersion = "1.0.0",
+            downloadUrl = "https://github.com/puemos/hls-downloader/releases/download/v5.5.0/extension-mv3-chrome.zip",
+        )
+        assertTrue(badPuemos.isFailure)
+        assertTrue(badPuemos.exceptionOrNull() is SecurityException)
+        assertTrue(
+            badPuemos.exceptionOrNull()!!.message!!.contains("Incompatible asset rejected") ||
+            badPuemos.exceptionOrNull()!!.message!!.contains("does not match allowlist")
+        )
+    }
 }

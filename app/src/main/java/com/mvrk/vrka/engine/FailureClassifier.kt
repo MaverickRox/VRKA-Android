@@ -8,10 +8,37 @@ package com.mvrk.vrka.engine
  * Failure categories for download error taxonomy.
  */
 enum class FailureCategory(val value: String) {
+    /** Media resolution or extraction succeeded */
+    SUCCESS("success"),
+
+    /** Extractor/parser failed to understand or extract page media; browser fallback eligible */
+    BROWSER_RECOVERABLE("browser_recoverable"),
+
+    /** Genuine login / sign-in / authentication required */
+    AUTH_REQUIRED("auth_required"),
+
+    /** Network unavailable / DNS resolution failure / connection timeout */
+    NETWORK_ERROR("network_error"),
+
+    /** TLS / SSL certificate / security handshake failure */
+    TLS_ERROR("tls_error"),
+
+    /** User cancelled the download operation */
+    CANCELLED("cancelled"),
+
+    /** Storage full / disk write / filesystem error */
+    STORAGE_ERROR("storage_error"),
+
+    /** Extraction succeeded but downstream transfer / FFmpeg processing failed */
+    POST_EXTRACTION_ERROR("post_extraction_error"),
+
+    /** Internal application exception / unexpected runtime error */
+    INTERNAL_ERROR("internal_error"),
+
     /** Cloudflare / bot challenge / turnstile / captcha */
     CLOUDFLARE("cloudflare"),
 
-    /** Login / sign-in / cookie / authentication required */
+    /** Cookie database error / session cookies needed */
     COOKIES("cookies"),
 
     /** URL or signature has expired */
@@ -29,7 +56,7 @@ enum class FailureCategory(val value: String) {
     /** curl_cffi / impersonation not available */
     IMPERSONATION("impersonation"),
 
-    /** Network / connection / read timeout */
+    /** Legacy alias for network timeout */
     TIMEOUT("timeout"),
 
     /** Unclassified / unknown error */
@@ -42,12 +69,21 @@ enum class FailureCategory(val value: String) {
 val TERMINAL_DIRECT_CATEGORIES = setOf(
     FailureCategory.DRM,
     FailureCategory.IMPERSONATION,
+    FailureCategory.NETWORK_ERROR,
+    FailureCategory.TLS_ERROR,
+    FailureCategory.CANCELLED,
+    FailureCategory.STORAGE_ERROR,
+    FailureCategory.POST_EXTRACTION_ERROR,
+    FailureCategory.INTERNAL_ERROR,
+    FailureCategory.AUTH_REQUIRED,
+    FailureCategory.TIMEOUT,
 )
 
 /**
  * Categories eligible for browser fallback recovery.
  */
 val BROWSER_RECOVERABLE_DIRECT_CATEGORIES = setOf(
+    FailureCategory.BROWSER_RECOVERABLE,
     FailureCategory.CLOUDFLARE,
     FailureCategory.COOKIES,
     FailureCategory.EXPIRED,
@@ -76,26 +112,81 @@ val GENERIC_EXTRACTOR_FETCH_MARKERS = listOf(
 fun classifyDownloadError(errorMessage: String): FailureCategory {
     val lower = errorMessage.lowercase()
 
-    // DRM (terminal — never fallback)
-    if (containsAny(lower, "drm protected", "protected by drm", "digital rights management")) {
+    // 1. User cancellation
+    if (containsAny(lower, "cancellationexception", "cancelled by user", "operation cancelled", "download cancelled", "task cancelled", "cancelled")) {
+        return FailureCategory.CANCELLED
+    }
+
+    // 2. Storage / filesystem errors
+    if (containsAny(lower, "no space left on device", "insufficient storage", "disk full", "storage error", "enospc", "permission denied (filesystem)")) {
+        return FailureCategory.STORAGE_ERROR
+    }
+
+    // 3. Post-extraction / FFmpeg / remuxing failures
+    if (containsAny(lower, "ffmpeg error", "ffmpeg execution failed", "postprocessing: ffmpeg", "ffmpeg failed", "postprocessing failed", "conversion failed")) {
+        return FailureCategory.POST_EXTRACTION_ERROR
+    }
+
+    // 4. Internal application exceptions / programming errors
+    if (containsAny(lower, "nullpointerexception", "illegalstateexception", "indexoutofboundsexception", "internal application error", "internal error")) {
+        return FailureCategory.INTERNAL_ERROR
+    }
+
+    // 5. DRM (terminal — never fallback)
+    if (containsAny(lower, "drm protected", "protected by drm", "digital rights management", "widevine", "fairplay")) {
         return FailureCategory.DRM
     }
 
-    // Cloudflare / bot detection (browser-recoverable)
-    if (containsAny(lower, "cloudflare", "cf-chl-", "just a moment...", "just a moment", "attention required")) {
-        return FailureCategory.CLOUDFLARE
-    }
-
-    // Impersonation failure (terminal — never fallback)
+    // 6. Impersonation failure (terminal — never fallback)
     if (containsAny(lower, "impersonate", "curl_cffi", "unsupported impersonation target")) {
         return FailureCategory.IMPERSONATION
     }
 
-    // Cookie / authentication (browser-recoverable)
+    // 7. TLS / security handshake failure
+    if (containsAny(lower, "certificate verify failed", "tls certificate error", "ssl: cert_has_expired", "sslv3_alert_handshake_failure", "tls handshake failure", "certificate error", "ssl error")) {
+        return FailureCategory.TLS_ERROR
+    }
+
+    // 8. DNS / Network / Connection timeout errors
+    if (containsAny(lower, "name or service not known", "failed to resolve", "getaddrinfo failed", "dns error", "unknown host", "name_not_resolved", "network is unreachable")) {
+        return FailureCategory.NETWORK_ERROR
+    }
+    if (containsAny(lower, "timed out", "timeout", "read operation timed out", "connection timed out", "connect timeout")) {
+        return FailureCategory.NETWORK_ERROR
+    }
+
+    // 9. Cloudflare / bot detection (browser-recoverable)
+    if (containsAny(lower, "cloudflare", "cf-chl-", "just a moment...", "just a moment", "attention required")) {
+        return FailureCategory.CLOUDFLARE
+    }
+
+    // 10. Extractor / Parser / Client-side player failure (browser-recoverable)
+    // Common generic yt-dlp extractor failures where direct parser cannot understand page or player
+    if (containsAny(lower,
+            "unable to extract flashvars",
+            "unable to extract player",
+            "unable to extract embed",
+            "unable to extract video",
+            "unable to extract media",
+            "unable to extract formats",
+            "failed to extract",
+            "failed to parse player data",
+            "failed to parse player",
+            "failed to parse json",
+            "failed to parse webpage data",
+            "failed to parse webpage",
+            "unable to parse webpage",
+            "no video formats found",
+            "kvs",
+            "client-side player",
+            "embedded-player",
+            "embedded player")) {
+        return FailureCategory.BROWSER_RECOVERABLE
+    }
+
+    // 11. Cookie database errors
     if (containsAny(lower,
             "cookies-from-browser",
-            "sign in to confirm",
-            "login required",
             "could not find chrome",
             "could not find edge",
             "could not find firefox",
@@ -113,22 +204,28 @@ fun classifyDownloadError(errorMessage: String): FailureCategory {
         return FailureCategory.COOKIES
     }
 
-    // Expired URL / token (browser-recoverable)
+    // 12. Genuine authentication failure
+    if (containsAny(lower,
+            "authentication required",
+            "login required",
+            "sign in to confirm",
+            "account required",
+            "this video is private",
+            "private video")) {
+        return FailureCategory.AUTH_REQUIRED
+    }
+
+    // 13. Expired URL / token (browser-recoverable)
     if (containsAny(lower, "url has expired", "expired url", "signature has expired")) {
         return FailureCategory.EXPIRED
     }
 
-    // Timeout (direct terminal — not browser-recoverable)
-    if (containsAny(lower, "timed out", "timeout", "read operation timed out")) {
-        return FailureCategory.TIMEOUT
-    }
-
-    // Unsupported URL (Desktop generic extractor fetch markers distinguish real page from invalid URL)
+    // 14. Unsupported URL (Desktop generic extractor fetch markers distinguish real page from invalid URL)
     if (containsAny(lower, "unsupported url", "no suitable extractor", "not a valid url")) {
         return FailureCategory.UNSUPPORTED
     }
 
-    // HTTP error / network rejection (browser-recoverable)
+    // 15. HTTP error / network rejection (browser-recoverable)
     if (containsAny(lower, "http error", "403 forbidden", "unable to download webpage", "connection reset")) {
         return FailureCategory.HTTP
     }
@@ -142,18 +239,34 @@ fun classifyDownloadError(errorMessage: String): FailureCategory {
 fun formatDownloadError(errorMessage: String): Pair<FailureCategory, String> {
     val category = classifyDownloadError(errorMessage)
     val guidance = when (category) {
+        FailureCategory.SUCCESS ->
+            "Download completed successfully."
         FailureCategory.DRM ->
             "This media appears to be DRM-protected. VRKA will not bypass DRM; use a lawful non-DRM source."
         FailureCategory.CLOUDFLARE ->
             "The site returned a Cloudflare verification response. Browser impersonation, cookies, or the on-demand verification window may help."
         FailureCategory.IMPERSONATION ->
             "The selected browser impersonation target is unavailable in this yt-dlp build."
+        FailureCategory.BROWSER_RECOVERABLE ->
+            "yt-dlp could not read the site's player. VRKA will try the browser fallback."
+        FailureCategory.AUTH_REQUIRED ->
+            "The site requires an authenticated browser session or account login."
         FailureCategory.COOKIES ->
             "The site appears to require an authenticated browser session or valid cookies."
+        FailureCategory.NETWORK_ERROR, FailureCategory.TIMEOUT ->
+            "The site did not respond in time or network is unreachable. Check the connection and try again."
+        FailureCategory.TLS_ERROR ->
+            "TLS/security validation failed. Check system date/time and certificates."
+        FailureCategory.CANCELLED ->
+            "Download was cancelled."
+        FailureCategory.STORAGE_ERROR ->
+            "Insufficient storage space or filesystem error. Free up space and try again."
+        FailureCategory.POST_EXTRACTION_ERROR ->
+            "Media extraction succeeded, but subsequent processing or file assembly failed."
+        FailureCategory.INTERNAL_ERROR ->
+            "An internal application error occurred."
         FailureCategory.EXPIRED ->
             "The media address appears to have expired. Refresh the page and try again."
-        FailureCategory.TIMEOUT ->
-            "The site did not respond in time. Check the connection and try again."
         FailureCategory.UNSUPPORTED ->
             "This address is not supported by the active yt-dlp build."
         FailureCategory.HTTP ->
@@ -234,7 +347,7 @@ fun isFailureBrowserRecoverable(
     // When direct yt-dlp cannot safely acquire media due to authentication/bot-check walls
     // (COOKIES) or HTTP access restrictions, fallback is allowed.
     if (isYtdlpNativeTarget(targetUrl)) {
-        return category in listOf(FailureCategory.COOKIES, FailureCategory.CLOUDFLARE, FailureCategory.HTTP)
+        return category in listOf(FailureCategory.COOKIES, FailureCategory.CLOUDFLARE, FailureCategory.HTTP, FailureCategory.BROWSER_RECOVERABLE)
     }
 
     // Browser-recoverable categories

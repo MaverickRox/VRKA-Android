@@ -34,8 +34,8 @@ class FailureClassifierTest {
 
     @Test
     fun `classifies cookie and auth errors`() {
-        assertEquals(FailureCategory.COOKIES, classifyDownloadError("Sign in to confirm your age"))
-        assertEquals(FailureCategory.COOKIES, classifyDownloadError("Login required to view this video"))
+        assertEquals(FailureCategory.AUTH_REQUIRED, classifyDownloadError("Sign in to confirm your age"))
+        assertEquals(FailureCategory.AUTH_REQUIRED, classifyDownloadError("Login required to view this video"))
         assertEquals(FailureCategory.COOKIES, classifyDownloadError("could not copy chrome cookie database"))
         assertEquals(FailureCategory.COOKIES, classifyDownloadError("no useful cookies found in browser session"))
     }
@@ -49,9 +49,9 @@ class FailureClassifierTest {
 
     @Test
     fun `classifies timeout errors`() {
-        assertEquals(FailureCategory.TIMEOUT, classifyDownloadError("The connection timed out"))
-        assertEquals(FailureCategory.TIMEOUT, classifyDownloadError("Read operation timed out"))
-        assertEquals(FailureCategory.TIMEOUT, classifyDownloadError("Connection timeout"))
+        assertEquals(FailureCategory.NETWORK_ERROR, classifyDownloadError("The connection timed out"))
+        assertEquals(FailureCategory.NETWORK_ERROR, classifyDownloadError("Read operation timed out"))
+        assertEquals(FailureCategory.NETWORK_ERROR, classifyDownloadError("Connection timeout"))
     }
 
     @Test
@@ -262,5 +262,157 @@ class FailureClassifierTest {
         val reason = classifyNativeReplayFailure("HTTP Error 404: Not Found")
         assertEquals(NativeReplayFailureReason.HTTP_CLIENT_ERROR, reason)
         assertFalse(isEligibleForGeckoTransport(reason, isBrowserDerivedCandidate = true))
+    }
+
+    // --- 16 Required Explicit Test Cases ---
+
+    @Test
+    fun `Case 01 - Unable to extract flashvars results in BROWSER_RECOVERABLE`() {
+        val err = "ERROR: [generic] Unable to extract flashvars; please report this issue on [private URL]"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.BROWSER_RECOVERABLE, category)
+        assertTrue(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 02 - KVS player identification followed by flashvars failure results in BROWSER_RECOVERABLE`() {
+        val err = "ERROR: [kvs] Unable to extract flashvars"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.BROWSER_RECOVERABLE, category)
+        assertTrue(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 03 - Generic player parsing failure results in BROWSER_RECOVERABLE`() {
+        val err = "ERROR: Failed to parse player data"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.BROWSER_RECOVERABLE, category)
+        assertTrue(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 04 - Generic embedded-player extraction failure results in BROWSER_RECOVERABLE`() {
+        val err = "ERROR: embedded-player extraction failed"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.BROWSER_RECOVERABLE, category)
+        assertTrue(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 05 - Generic webpage parser failure results in BROWSER_RECOVERABLE`() {
+        val err = "ERROR: Failed to parse webpage data: No video formats found"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.BROWSER_RECOVERABLE, category)
+        assertTrue(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 06 - DNS failure results in NETWORK_ERROR`() {
+        val err = "ERROR: <urlopen error [Errno -2] Name or service not known>"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.NETWORK_ERROR, category)
+        assertFalse(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 07 - Connection timeout results in NETWORK_ERROR`() {
+        val err = "ERROR: The read operation timed out"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.NETWORK_ERROR, category)
+        assertFalse(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 08 - TLS certificate failure results in TLS_ERROR`() {
+        val err = "ERROR: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.TLS_ERROR, category)
+        assertFalse(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 09 - User cancellation results in CANCELLED`() {
+        val err = "Operation cancelled by user"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.CANCELLED, category)
+        assertFalse(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 10 - Storage failure results in STORAGE_ERROR`() {
+        val err = "IOException: No space left on device"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.STORAGE_ERROR, category)
+        assertFalse(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 11 - FFmpeg failure after successful extraction results in POST_EXTRACTION_ERROR`() {
+        val err = "ffmpeg error: conversion failed with exit code 1"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.POST_EXTRACTION_ERROR, category)
+        assertFalse(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 12 - Genuine authentication failure results in AUTH_REQUIRED`() {
+        val err = "ERROR: Sign in to confirm your age"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.AUTH_REQUIRED, category)
+        assertFalse(isFailureBrowserRecoverable(category, errorMessage = err, targetUrl = "https://example.com/video"))
+    }
+
+    @Test
+    fun `Case 13 - Internal programming exception results in INTERNAL_ERROR`() {
+        val err = "java.lang.NullPointerException: parameter cannot be null"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.INTERNAL_ERROR, category)
+        assertFalse(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 14 - Unknown unrelated error results in UNKNOWN`() {
+        val err = "some unrecognized arbitrary failure"
+        val category = classifyDownloadError(err)
+        assertEquals(FailureCategory.UNKNOWN, category)
+        assertFalse(isFailureBrowserRecoverable(category, errorMessage = err))
+    }
+
+    @Test
+    fun `Case 15 - Existing 123AV browser fallback path remains valid`() {
+        val cfError = "ERROR: [generic] Got HTTP Error 403 caused by Cloudflare anti-bot challenge"
+        val (cat1, rec1) = classifyAndCheckRecoverable(
+            errorMessage = cfError,
+            targetUrl = "https://123av.com/en/v/snos-313-uncensored-leaked",
+        )
+        assertEquals(FailureCategory.CLOUDFLARE, cat1)
+        assertTrue("123AV Cloudflare challenge must remain browser-recoverable", rec1)
+
+        val httpError = "HTTP Error 403: Forbidden"
+        val (cat2, rec2) = classifyAndCheckRecoverable(
+            errorMessage = httpError,
+            targetUrl = "https://123av.com/en/v/snos-313-uncensored-leaked",
+        )
+        assertEquals(FailureCategory.HTTP, cat2)
+        assertTrue("123AV HTTP 403 must remain browser-recoverable", rec2)
+    }
+
+    @Test
+    fun `Case 16 - Fallback loop protection prevents recursive fallback activation`() {
+        // When media URL is already resolved (after browser fallback handoff),
+        // subsequent failure must NEVER be browser-recoverable.
+        val failureAfterHandoff = isFailureBrowserRecoverable(
+            category = FailureCategory.BROWSER_RECOVERABLE,
+            errorMessage = "Stream disconnected",
+            hasResolvedMediaUrl = true,
+        )
+        assertFalse("Resolved media cannot trigger browser fallback again", failureAfterHandoff)
+
+        val failureAfterTransferStarted = isFailureBrowserRecoverable(
+            category = FailureCategory.BROWSER_RECOVERABLE,
+            errorMessage = "HTTP Error 403",
+            hasTransferStarted = true,
+        )
+        assertFalse("Started transfer cannot trigger browser fallback again", failureAfterTransferStarted)
     }
 }

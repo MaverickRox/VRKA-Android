@@ -409,7 +409,7 @@ class VrkaDownloadManager(
                             }
                             is FallbackResult.Failed -> {
                                 Log.e("VRKA", "Browser fallback failed: ${result.reason}")
-                                failure = RuntimeException(result.reason)
+                                failure = RuntimeException(result.reason.ifBlank { "Browser fallback could not find a media stream" })
                             }
                             is FallbackResult.Cancelled -> {
                                 // Cancellation handled below
@@ -432,10 +432,16 @@ class VrkaDownloadManager(
             Log.e("VRKA", "Download processing for $jobId failed: ${error.message}", error)
             if (!isCancelled(jobId)) {
                 val failureMsg = safeError(error)
+                val fallbackFailed = currentStage == "Browser Fallback" || failureMsg.contains("browser fallback", ignoreCase = true)
+                val failureDetail = if (fallbackFailed) {
+                    "Browser fallback could not find a media stream"
+                } else {
+                    "Download failed"
+                }
                 update(
                     jobId,
                     state = JobState.FAILED,
-                    detail = "Download failed",
+                    detail = failureDetail,
                     error = failureMsg,
                     persist = true,
                 )
@@ -445,7 +451,11 @@ class VrkaDownloadManager(
                 } else {
                     currentStage
                 }
-                val categoryName = classifyDownloadError(error.message.orEmpty()).name
+                val categoryName = if (fallbackFailed) {
+                    FailureCategory.BROWSER_RECOVERABLE.name
+                } else {
+                    classifyDownloadError(error.message.orEmpty()).name
+                }
                 val tailOutput = (error as? DownloadExecutionException)?.outputTail?.takeLast(30)?.joinToString("\n")
                     ?: error.message.orEmpty().take(2000)
                 diagnosticStore.record(

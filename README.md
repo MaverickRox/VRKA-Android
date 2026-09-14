@@ -128,10 +128,14 @@ VRKA Android includes a dedicated in-app application self-update mechanism desig
 VRKA Android maintains an independent, cryptographically authenticated updater for external engine binaries (`yt-dlp`):
 
 - **OpenPGP Detached Signature Verification**: Verifies release manifests (`SHA2-256SUMS`) against the pinned upstream trust anchor (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`) before any binary is accepted.
-- **Explicit BouncyCastle Provider Resolution (v4.5.2)**: Instantiates and supplies an explicit `BouncyCastleProvider` directly to `JcaPGPContentVerifierBuilderProvider` and `JcaKeyFingerprintCalculator`, preventing platform security provider interception on Android.
-- **R8 Minification Compatibility (v4.5.2)**: Includes targeted ProGuard/R8 keep rules (`-keep class org.bouncycastle.** { *; }`), ensuring reflection lookup tables are preserved and resolving the `NoSuchAlgorithmException: no such algorithm: S` issue on fresh minified installs.
+- **Explicit BouncyCastle Provider Resolution**: Instantiates and supplies an explicit `BouncyCastleProvider` directly to `JcaPGPContentVerifierBuilderProvider` and `JcaKeyFingerprintCalculator`, preventing platform security provider interception on Android.
+- **R8 Minification Compatibility**: Includes targeted ProGuard/R8 keep rules (`-keep class org.bouncycastle.** { *; }`), ensuring reflection lookup tables are preserved and resolving the `NoSuchAlgorithmException: no such algorithm: S` issue on fresh minified installs.
 - **SHA-256 Digest Validation**: Enforces exact SHA-256 checksum matching against the authenticated manifest before binary replacement.
 - **Transactional Staging & Rollback**: Stages downloads in temporary storage, creates a verified backup of the active component, performs atomic file moves (with safe copy-and-fsync fallback), verifies post-update execution (`--version`), and automatically rolls back if verification fails.
+- **Independent Component Updaters (v4.5.3)**:
+  - **uBlock Origin**: Directly updates the full `uBlock0@raymondhill.net` extension from official signed Firefox XPIs (`uBlock0_<version>.firefox.signed.xpi`). Archives are preserved byte-for-byte in private app storage without directory extraction, validated in-place for Mozilla signatures (`META-INF/mozilla.rsa`), dynamically checked for GeckoView version compatibility, installed via GeckoView's WebExtension API, and verified active via runtime read-back. Strictly rejects `uBlock Origin Lite`.
+  - **Puemos**: Directly updates the upstream `{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}` component from official Firefox MV2 XPIs (`extension-mv2-firefox.xpi`). Updates maintain byte-for-byte integrity, verify Mozilla signatures and GeckoView compatibility, and perform runtime read-back verification. The internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) remains decoupled as a bundled asset.
+  - **Lifecycle States & Zero False Success**: Components transition through strict state machine stages (`CHECKING`, `DOWNLOADING`, `VERIFYING`, `INSTALLING`, `VERIFYING_INSTALL`, `UPDATED`, `FAILED`, `ROLLED_BACK`). UI displays "Updated" only after successful runtime verification. On any failure, the previous known-good version is preserved and restored.
 
 ---
 
@@ -227,7 +231,7 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-*(Note: Official GitHub release binaries are verified and published as `VRKA-Android-v4.5.2.apk`)*
+*(Note: Official GitHub release binaries are verified and published as `VRKA-Android-v4.5.3.apk`)*
 
 ---
 
@@ -251,21 +255,21 @@ To ensure Android system update continuity (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`
    ```
 4. Generate release checksum:
    ```bash
-   sha256sum VRKA-Android-v4.5.2.apk > SHA256SUMS
+   sha256sum VRKA-Android-v4.5.3.apk > SHA256SUMS
    ```
 
 ---
 
 ## Installation
 
-1. Download `VRKA-Android-v4.5.2.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
+1. Download `VRKA-Android-v4.5.3.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
-   (Get-FileHash .\VRKA-Android-v4.5.2.apk -Algorithm SHA256).Hash
+   (Get-FileHash .\VRKA-Android-v4.5.3.apk -Algorithm SHA256).Hash
    ```
 3. Install on your Android device:
    ```bash
-   adb install -r VRKA-Android-v4.5.2.apk
+   adb install -r VRKA-Android-v4.5.3.apk
    ```
 
 ---

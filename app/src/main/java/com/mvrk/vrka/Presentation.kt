@@ -37,11 +37,13 @@ internal fun friendlyFailureTitle(job: DownloadJob): String {
         "resolve host" in text || "name_not_resolved" in text || "dns" in text ||
             "network is unreachable" in text || "connection timed out" in text ->
             "Couldn’t reach this site"
-        "sign in" in text || "login" in text || "private" in text || "forbidden" in text ||
-            "http error 403" in text -> "Sign-in may be required"
-        "browser fallback closed" in text -> "Browser session closed"
-        "requested format" in text || "no video formats" in text ||
+        "browser fallback could not find" in text || "could not find a media stream" in text ||
+            "requested format" in text || "no video formats" in text ||
             "no downloadable" in text -> "Couldn’t find a downloadable format"
+        "sign in to confirm" in text || "login required" in text || "account required" in text ||
+            "authentication required" in text || "private video" in text || "video is private" in text ->
+            "Sign-in may be required"
+        "browser fallback closed" in text -> "Browser session closed"
         else -> "Download failed"
     }
 }
