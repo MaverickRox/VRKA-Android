@@ -4,7 +4,7 @@
   <p><strong>Native Android media downloader and passive web stream discovery.</strong></p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v4.5.2-8B5CF6?style=flat-square" alt="Release" /></a>
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v4.5.3-8B5CF6?style=flat-square" alt="Release" /></a>
     <a href="https://github.com/MaverickRox/VRKA-Android/releases"><img src="https://img.shields.io/badge/platform-Android%208.0+%20%7C%20arm64--v8a-blue?style=flat-square" alt="Platform" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green?style=flat-square" alt="License" /></a>
     <a href="https://github.com/MaverickRox/VRKA"><img src="https://img.shields.io/badge/origin-VRKA%20Desktop-purple?style=flat-square" alt="Desktop Origin" /></a>
@@ -12,7 +12,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v4.5.2)</b></a> •
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v4.5.3)</b></a> •
     <a href="#screenshots">Screenshots</a> •
     <a href="#architecture">Architecture</a> •
     <a href="#build-instructions">Build Guide</a> •
@@ -102,40 +102,35 @@ Designed for local, on-device processing without an application analytics servic
 - **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation. Updated via application releases.
 - **Passive Stream Discovery**: The integrated `Puemos` WebExtension intercepts network traffic to observe and rank media manifests (`.m3u8` playlists, `.mpd` DASH manifests, direct segments). Updated via application releases.
 - **Local On-Device Diagnostics**: On-device diagnostic failure logging in Settings with stage attribution, terminal trace viewer, secret-sanitized reporting, and one-tap clipboard export.
-- **In-App Component Updates**: Cryptographically authenticated `yt-dlp` updates verified against pinned release signatures (OpenPGP issuer fingerprint and detached signature verification with explicit BouncyCastle provider resolution and R8 compatibility), transactional staging, atomic filesystem move where supported (ext4/f2fs with fallback to safe replace and fsync), post-update execution verification, and automatic rollback to the verified prior component on failure.
-- **In-App Application Self-Update**: Lightweight, secure in-app update checker querying GitHub Releases with a 24-hour background rate-limiting gate, manual on-demand checks from Settings, semantic version comparison, strict APK asset selection (`VRKA-Android-vX.Y.Z.apk`), HTTPS-only per-hop redirect verification against approved GitHub release hosts, and secure PackageInstaller handoff via Android FileProvider.
+- **In-App Component Updates**: VRKA checks for component updates in the background. `yt-dlp` updates are verified with upstream OpenPGP signatures, while `uBlock Origin` and `Puemos` are updated directly from signed Firefox XPIs. Operations run through WorkManager to survive app backgrounding.
+- **In-App Application Self-Update**: Secure in-app update checker querying GitHub Releases with a 24-hour rate limit gate, manual checks from Settings, semantic version comparison, APK asset verification (`VRKA-Android-vX.Y.Z.apk`), HTTPS redirect validation, and installation via Android FileProvider.
 - **Browser Session Clearing**: Dedicated storage clearing for the GeckoView fallback runtime under Settings to purge cached cookies and site data without affecting application history or preferences.
 - **Liquid Glass Design System**: Floating capsule navigation with hardware-accelerated `RenderEffect` backdrop blur across AMOLED Black and Light modes.
 
 ### In-App Application Self-Update
 
-VRKA Android includes a dedicated in-app application self-update mechanism designed for secure, friction-free updates directly from official GitHub releases:
+VRKA Android includes an in-app update checker for updates from official GitHub releases:
 
-- **GitHub Releases Integration**: Periodically queries the official VRKA Android GitHub Releases repository (`/repos/MaverickRox/VRKA-Android/releases/latest`) for new application releases.
-- **24-Hour Automatic Gate**: Automatic startup update checks are rate-limited to run at most once every 24 hours (`86,400,000 ms`), preventing unnecessary background network traffic and avoiding GitHub API rate limits.
-- **Manual Check Bypass**: A dedicated `[Check for Updates]` button in the Settings "About" card bypasses the 24-hour rate limit and triggers an immediate update check with live feedback.
-- **Non-Blocking Startup**: Startup update checks execute asynchronously on a background thread (`Dispatchers.IO`) and fail silently during offline, network timeout, or rate-limited conditions, guaranteeing zero interruption to application launch.
-- **Semantic Version Comparison**: Evaluates releases using formal numeric segment comparison (`SemanticVersion`), ensuring proper ordering across multi-digit versions (e.g., `4.5.9 < 4.5.10`, `4.9.0 < 5.0.0`).
-- **Strict APK Asset Naming**: Requires the exact release naming pattern `^VRKA-Android-v\d+\.\d+\.\d+\.apk$` matching `VRKA-Android-v$version.apk`. Arbitrary APKs, non-matching version numbers, and non-APK assets are strictly rejected.
-- **HTTPS-Only Networking & Approved Host Validation**: Enforces HTTPS across both release metadata querying and APK binary streaming. Validates destination hosts against approved GitHub release and asset hosts (`api.github.com`, `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, `raw.githubusercontent.com`, `*.githubusercontent.com`).
-- **Per-Hop Redirect Validation**: Explicitly validates each HTTP redirect (`conn.instanceFollowRedirects = false`), immediately rejecting protocol downgrades (HTTPS to HTTP) and redirects to arbitrary or look-alike external hosts.
-- **Redirect Hop Limit**: Enforces a strict limit of at most 5 redirect hops before aborting with an `IOException`.
-- **FileProvider Installation**: Release APKs are streamed directly into private internal app cache (`cacheDir/updates/update.apk`) and handed off to Android's `PackageInstaller` via `FileProvider` (`com.mvrk.vrka.fileprovider`) with temporary read URI permissions. Validates `canRequestPackageInstalls()` on Android 8.0+ before prompting installation.
-- **Separation from Component Updates**: The application self-updater operates strictly independently from the native `yt-dlp` component updater (`SecureComponentUpdater`), which maintains its own pinned OpenPGP verification pipeline.
+- **GitHub Releases Integration**: Periodically checks the official repository (`/repos/MaverickRox/VRKA-Android/releases/latest`) for new releases.
+- **24-Hour Automatic Gate**: Automatic startup checks run at most once every 24 hours to reduce network traffic.
+- **Manual Check Bypass**: The `[Check for Updates]` button in Settings bypasses the 24-hour interval to check immediately.
+- **Non-Blocking Startup**: Checks run in the background without slowing down app startup.
+- **Semantic Version Comparison**: Uses numeric segment comparison (`SemanticVersion`) so multi-digit versions sort correctly.
+- **Strict APK Asset Naming**: Requires the exact release naming pattern `VRKA-Android-v$version.apk`.
+- **HTTPS-Only Networking & Host Validation**: Streams metadata and APK files over HTTPS from approved GitHub release hosts.
+- **Redirect Validation**: Validates redirect targets and limits redirect hops to at most 5.
+- **FileProvider Installation**: APKs are saved to private app cache and handed off to Android's `PackageInstaller` via `FileProvider`.
+- **Persistent Downloads**: Downloads run through WorkManager so they continue even if the app is backgrounded.
 
-### In-App Component Updates (yt-dlp Engine)
+### In-App Component Updates
 
-VRKA Android maintains an independent, cryptographically authenticated updater for external engine binaries (`yt-dlp`):
+VRKA Android independently manages and updates its core media and filtering components:
 
-- **OpenPGP Detached Signature Verification**: Verifies release manifests (`SHA2-256SUMS`) against the pinned upstream trust anchor (`AC0CBBE6848D6A873464AF4E57CF65933B5A7581`) before any binary is accepted.
-- **Explicit BouncyCastle Provider Resolution**: Instantiates and supplies an explicit `BouncyCastleProvider` directly to `JcaPGPContentVerifierBuilderProvider` and `JcaKeyFingerprintCalculator`, preventing platform security provider interception on Android.
-- **R8 Minification Compatibility**: Includes targeted ProGuard/R8 keep rules (`-keep class org.bouncycastle.** { *; }`), ensuring reflection lookup tables are preserved and resolving the `NoSuchAlgorithmException: no such algorithm: S` issue on fresh minified installs.
-- **SHA-256 Digest Validation**: Enforces exact SHA-256 checksum matching against the authenticated manifest before binary replacement.
-- **Transactional Staging & Rollback**: Stages downloads in temporary storage, creates a verified backup of the active component, performs atomic file moves (with safe copy-and-fsync fallback), verifies post-update execution (`--version`), and automatically rolls back if verification fails.
-- **Independent Component Updaters (v4.5.3)**:
-  - **uBlock Origin**: Directly updates the full `uBlock0@raymondhill.net` extension from official signed Firefox XPIs (`uBlock0_<version>.firefox.signed.xpi`). Archives are preserved byte-for-byte in private app storage without directory extraction, validated in-place for Mozilla signatures (`META-INF/mozilla.rsa`), dynamically checked for GeckoView version compatibility, installed via GeckoView's WebExtension API, and verified active via runtime read-back. Strictly rejects `uBlock Origin Lite`.
-  - **Puemos**: Directly updates the upstream `{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}` component from official Firefox MV2 XPIs (`extension-mv2-firefox.xpi`). Updates maintain byte-for-byte integrity, verify Mozilla signatures and GeckoView compatibility, and perform runtime read-back verification. The internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) remains decoupled as a bundled asset.
-  - **Lifecycle States & Zero False Success**: Components transition through strict state machine stages (`CHECKING`, `DOWNLOADING`, `VERIFYING`, `INSTALLING`, `VERIFYING_INSTALL`, `UPDATED`, `FAILED`, `ROLLED_BACK`). UI displays "Updated" only after successful runtime verification. On any failure, the previous known-good version is preserved and restored.
+- **yt-dlp Engine (v2026.08.19)**: Bundled binary in `res/raw/ytdlp`. Background updates verify release manifests against pinned OpenPGP detached signatures and SHA-256 checksums. Updates stage in temporary files and roll back automatically if verification fails.
+- **uBlock Origin (v1.74.0)**: Bundled as an intact signed Firefox XPI (`uBlock0@raymondhill.net`) in `assets/extensions/ublock.xpi`. Pre-install checks confirm extension ID, GeckoView compatibility, and Mozilla signature metadata (`META-INF/mozilla.rsa`), with cryptographic signature verification enforced by GeckoView during installation.
+- **Puemos (v5.5.0)**: Bundled as an intact signed Firefox XPI (`{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}`) in `assets/extensions/puemos.xpi`. Updates verify extension ID, GeckoView compatibility, and signature metadata. The internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) remains bundled separately.
+- **Persistent Background Execution**: Component updates use WorkManager to survive Activity recreation and backgrounding.
+- **Concurrency & Spam Protection**: Only one update operation runs per component at a time. Rapid button taps are de-duplicated without freezing the UI.
 
 ---
 

@@ -916,10 +916,10 @@ class SecureComponentUpdaterTest {
     }
 
     @Test
-    fun test32_ValidateXpiArchiveRejectsUblockLiteOrIncorrectId() {
+    fun test32_ValidateXpiArchiveRejectsNonMatchingExtensionId() {
         val updater = SecureComponentUpdater()
-        val tempXpi = tempFolder.newFile("ubol_test.xpi")
-        tempXpi.writeBytes(createMockXpi(id = "uBOLiteRedux@raymondhill.net", version = "1.74.0"))
+        val tempXpi = tempFolder.newFile("invalid_id_test.xpi")
+        tempXpi.writeBytes(createMockXpi(id = "disallowed-extension@example.com", version = "1.74.0"))
 
         try {
             updater.validateXpiArchive(
@@ -927,9 +927,9 @@ class SecureComponentUpdaterTest {
                 expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
                 expectedVersion = "1.74.0"
             )
-            fail("Must reject uBOLite or non-matching ID")
+            fail("Must reject non-matching extension ID")
         } catch (e: SecurityException) {
-            assertTrue(e.message!!.contains("rejected") || e.message!!.contains("Extension ID mismatch"))
+            assertTrue(e.message!!.contains("Extension ID mismatch"))
         }
     }
 

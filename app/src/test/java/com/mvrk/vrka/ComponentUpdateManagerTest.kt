@@ -481,12 +481,12 @@ class ComponentUpdateManagerTest {
     // --- ISOLATION TESTS ---
 
     @Test
-    fun testIsolationYtdlpFailureDoesNotBreakPuemosOrUbol() {
+    fun testIsolationYtdlpFailureDoesNotBreakPuemosOrUblock() {
         val initialMap = mapOf(
             ComponentUpdateManager.ID_YTDLP to ComponentStatus(
                 id = ComponentUpdateManager.ID_YTDLP,
                 name = "yt-dlp Engine",
-                installedVersion = "2026.06.30",
+                installedVersion = "2026.08.19",
                 updateState = ComponentUpdateState.UPDATE_FAILED,
                 error = "Network timeout on yt-dlp",
             ),
@@ -500,7 +500,7 @@ class ComponentUpdateManagerTest {
             ComponentUpdateManager.ID_PUEMOS to ComponentStatus(
                 id = ComponentUpdateManager.ID_PUEMOS,
                 name = "Puemos",
-                installedVersion = "1.0.0",
+                installedVersion = "5.5.0",
                 checkState = ComponentCheckState.UP_TO_DATE,
                 updateState = ComponentUpdateState.UPDATE_IDLE,
             ),
@@ -512,16 +512,16 @@ class ComponentUpdateManagerTest {
         assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_UBLOCK]?.checkState)
         assertEquals("1.74.0", initialMap[ComponentUpdateManager.ID_UBLOCK]?.installedVersion)
         assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_PUEMOS]?.checkState)
-        assertEquals("1.0.0", initialMap[ComponentUpdateManager.ID_PUEMOS]?.installedVersion)
+        assertEquals("5.5.0", initialMap[ComponentUpdateManager.ID_PUEMOS]?.installedVersion)
     }
 
     @Test
-    fun testIsolationUbolFailureDoesNotBreakYtdlpOrPuemos() {
+    fun testIsolationUblockFailureDoesNotBreakYtdlpOrPuemos() {
         val initialMap = mapOf(
             ComponentUpdateManager.ID_YTDLP to ComponentStatus(
                 id = ComponentUpdateManager.ID_YTDLP,
                 name = "yt-dlp Engine",
-                installedVersion = "2026.06.30",
+                installedVersion = "2026.08.19",
                 checkState = ComponentCheckState.UP_TO_DATE,
                 updateState = ComponentUpdateState.UPDATE_IDLE,
             ),
@@ -535,7 +535,7 @@ class ComponentUpdateManagerTest {
             ComponentUpdateManager.ID_PUEMOS to ComponentStatus(
                 id = ComponentUpdateManager.ID_PUEMOS,
                 name = "Puemos",
-                installedVersion = "1.0.0",
+                installedVersion = "5.5.0",
                 checkState = ComponentCheckState.UP_TO_DATE,
                 updateState = ComponentUpdateState.UPDATE_IDLE,
             ),
@@ -548,12 +548,12 @@ class ComponentUpdateManagerTest {
     }
 
     @Test
-    fun testIsolationPuemosFailureDoesNotBreakYtdlpOrUbol() {
+    fun testIsolationPuemosFailureDoesNotBreakYtdlpOrUblock() {
         val initialMap = mapOf(
             ComponentUpdateManager.ID_YTDLP to ComponentStatus(
                 id = ComponentUpdateManager.ID_YTDLP,
                 name = "yt-dlp Engine",
-                installedVersion = "2026.06.30",
+                installedVersion = "2026.08.19",
                 checkState = ComponentCheckState.UP_TO_DATE,
                 updateState = ComponentUpdateState.UPDATE_IDLE,
             ),
@@ -567,14 +567,14 @@ class ComponentUpdateManagerTest {
             ComponentUpdateManager.ID_PUEMOS to ComponentStatus(
                 id = ComponentUpdateManager.ID_PUEMOS,
                 name = "Puemos",
-                installedVersion = "1.0.0",
+                installedVersion = "5.5.0",
                 updateState = ComponentUpdateState.UPDATE_FAILED,
                 error = "Puemos verification failed",
             ),
         )
 
         assertEquals(ComponentUpdateState.UPDATE_FAILED, initialMap[ComponentUpdateManager.ID_PUEMOS]?.updateState)
-        assertEquals("1.0.0", initialMap[ComponentUpdateManager.ID_PUEMOS]?.installedVersion)
+        assertEquals("5.5.0", initialMap[ComponentUpdateManager.ID_PUEMOS]?.installedVersion)
         assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_YTDLP]?.checkState)
         assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_UBLOCK]?.checkState)
     }
