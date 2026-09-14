@@ -8,7 +8,7 @@
 - Candidate APK: `release/VRKA-Android-1.0.0-arm64-v8a.apk`.
 - Candidate SHA-256: `B3E19AAAD9E997679A8B9A91286E10DF3E1343E617AB9082AE1A36D8459BADAF`.
 - Candidate size: 55,400,698 bytes.
-- Device: CPH2447, Android API 36, serial `897f6ce5`.
+- Device: OnePlus 11, Android API 36.
 - Runtime: yt-dlp `2026.07.04` with youtubedl-android 0.18.1 and its FFmpeg package.
 
 The candidate build passed JUnit, Debug Kotlin compile, Release Kotlin compile, lint-vital, R8, resource shrinking, signing, and release assembly.
@@ -102,7 +102,7 @@ The final report does not convert an unrun physical test into a pass.
 ## Final product polish pass
 
 - PASS: JUnit, lint-vital, R8, resource shrinking, signing validation, and release assembly completed.
-- PASS: The exact final APK installed on device `897f6ce5`.
+- PASS: The exact final APK installed on physical OnePlus 11 hardware.
 - PASS: The app reported version 1.0.0, version code 1, target SDK 36, and ARM64 ABI.
 - PASS: Light, Dark charcoal, and Dark with AMOLED black rendered correctly.
 - PASS: AMOLED remained checked but disabled and de-emphasized in Light.
@@ -143,7 +143,7 @@ The final report does not convert an unrun physical test into a pass.
 - **Architecture**: `arm64-v8a`
 - **Signing Fingerprint**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa` (Canonical Lineage)
 - **APK SHA-256**: `c8587dafb5ad262cb7e49449b7be16409642a5fd5f615584c1f0ca2bed42dc07`
-- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+- **Target Device**: OnePlus 11 5G (Android 16)
 
 ### Test Matrix
 
@@ -180,7 +180,7 @@ The final report does not convert an unrun physical test into a pass.
   - **SHA-256**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa` (Canonical Lineage)
   - **SHA-1**: `7758980f74a503684bf1a187994e447823d19d7c`
 - **APK SHA-256**: `b447477cf4a0c9a4db473c1d5dc38381956c0092b75060d6000aed6a5edf2ffb`
-- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+- **Target Device**: OnePlus 11 5G (Android 16)
 
 ### Test Matrix
 
@@ -192,7 +192,7 @@ The final report does not convert an unrun physical test into a pass.
 | **AUT-15** | Automated | Untrusted Key & Keyring Cryptographic Rejection | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Generates in-memory RSA OpenPGP key; asserts rejection against pinned key ID and trust anchor. |
 | **AUT-16** | Automated | Fresh Install Failure Cleanup & Rollback | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest`: Validates rollback restores active binary on verification failure and cleans up target on fresh install failure. |
 | **AUT-17** | Automated | Full Offline Test Suite (151 tests) | JUnit (Offline) | **PASS** | 151 unit tests passed with 0 failures in 12s via `gradlew testDebugUnitTest --offline`. |
-| **PHY-06** | Physical Device | In-Place Upgrade Compatibility (4.0.2 to 4.0.3) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch. |
+| **PHY-06** | Physical Device | In-Place Upgrade Compatibility (4.0.2 to 4.0.3) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (Android 16) succeeded with zero signature mismatch. |
 | **PHY-07** | Physical Device | Version Reporting in UI | Physical UI | **PASS** | Settings screen About card displays `VRKA v4.0.3` matching `versionName = "4.0.3"`. |
 | **PHY-08** | Physical Device | Browser Session Clearing & State Isolation | Physical UI | **PASS** | "Clear Session" action verified on device; active settings, queue, and preferences preserved. |
 | **PHY-09** | Physical Device | Download Engine & Diagnostic Attribution | Physical UI / Logcat | **PASS** | Download lifecycle and error categorization verified; diagnostics cleanly attributed and persisted. |
@@ -211,7 +211,7 @@ The final report does not convert an unrun physical test into a pass.
   - **SHA-256**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa` (Canonical Lineage)
   - **SHA-1**: `7758980f74a503684bf1a187994e447823d19d7c`
 - **APK SHA-256**: `e8b7074aac3001f1374656c87d30a86a31f9852b8158dd32d9a0b4bcbfd2ad8c`
-- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+- **Target Device**: OnePlus 11 5G (Android 16)
 
 ### Test Matrix
 
@@ -224,7 +224,7 @@ The final report does not convert an unrun physical test into a pass.
 | **AUT-22** | Automated | WAV Postprocessing Thumbnail Omission | JUnit (Offline) | **PASS** | `DownloadRequestFactoryTest`: Confirms `--embed-thumbnail` is conditionally omitted for WAV requests to prevent yt-dlp postprocessing failure. |
 | **AUT-23** | Automated | Storage Access Framework Save Location Modes | JUnit (Offline) | **PASS** | `SaveLocationTest`: Verifies Remember Location persistable URI handling and Ask Every Time interactive prompt behavior. |
 | **AUT-24** | Automated | Full Offline Test Suite (171 tests across 15 suites) | JUnit (Offline) | **PASS** | 171 unit tests passed with 0 failures, 0 errors, 0 skipped in 10s via `gradlew testDebugUnitTest --offline`. |
-| **PHY-10** | Physical Device | In-Place Upgrade Compatibility (4.0.3 to 4.5) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch. |
+| **PHY-10** | Physical Device | In-Place Upgrade Compatibility (4.0.3 to 4.5) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (Android 16) succeeded with zero signature mismatch. |
 | **PHY-11** | Physical Device | Version & Typography UI Reporting | Physical UI | **PASS** | Settings screen About card displays `VRKA v4.5 By MVRK`; font preference toggle switches cleanly between VRKA Font and System Font. |
 | **PHY-12** | Physical Device | Save Location Selection & Persistence | Physical UI | **PASS** | Settings toggle between "Remember Location" and "Ask Every Time" updates UI and persists selection in DataStore. |
 | **PHY-13** | Physical Device | Physical MP3 Audio Extraction & Metadata Verification | Physical UI / FFprobe | **PASS** | Downloaded Big Buck Bunny MP3 at 320 kbps (26,983,272 bytes); ffprobe verified MPEG audio layer 3, 320 kbps, embedded front cover art, and ID3 tags. |
@@ -246,7 +246,7 @@ The final report does not convert an unrun physical test into a pass.
   - **SHA-1**: `7758980f74a503684bf1a187994e447823d19d7c`
   - **MD5**: `679d325009a63433f444e333bafe96a5`
 - **APK SHA-256**: `5ad6eef20b5843cf726bad2f60993e7a98248aad171212a642bd95f4201ba594`
-- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+- **Target Device**: OnePlus 11 5G (Android 16)
 
 ### Test Matrix
 
@@ -262,7 +262,7 @@ The final report does not convert an unrun physical test into a pass.
 | **PHY-17** | Physical Device | Download Location Modal Prompt & Settings | Physical UI | **PASS** | Clean modal prompt on first download attempt displaying `Downloads/VRKA` with `[Choose Location]` and checkbox; Settings card with destination, `[Change]`, `[Reset]`, and `[Use selected]` vs `[Ask every time]` without jargon. |
 | **PHY-18** | Physical Device | Physical Native Opus Stream Copy & Verification | `connectedDebugAndroidTest` / FFprobe | **PASS** | `VrkaDownloadTest#testDownloadOpusStreamCopyOnDevice`: Downloaded `Big_Buck_Bunny_4K.webm.360p.vp9.opus` (6,850,532 bytes). FFprobe verified native Opus stream copy (48000 Hz, 5.1 surround, 86 kb/s) without re-encoding. |
 | **PHY-19** | Physical Device | Physical MP3 Audio Pipeline | `connectedDebugAndroidTest` | **PASS** | `VrkaDownloadTest#testDownloadPipelineOnDevice`: Successfully downloaded and converted audio pipeline to MP3 on physical device. |
-| **PHY-20** | Physical Device | In-Place Upgrade Compatibility (4.5 to 4.5.1) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch against canonical lineage. |
+| **PHY-20** | Physical Device | In-Place Upgrade Compatibility (4.5 to 4.5.1) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (Android 16) succeeded with zero signature mismatch against canonical lineage. |
 | **PHY-21** | Physical Device | In-App Application Updater Execution & 24h Gating | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G: live release check queries GitHub API over HTTPS, correctly identifies app as up-to-date (`v4.5.1`), and logs `VRKA-AppUpdater: Skipping background update check; within 24h gate` on subsequent launches. |
 
 ---
@@ -281,7 +281,7 @@ The final report does not convert an unrun physical test into a pass.
   - **MD5**: `679d325009a63433f444e333bafe96a5`
 - **APK Size**: 154,866,257 bytes
 - **APK SHA-256**: `468df24d3d0d123f386e8acdf1fcadda7e726950b387394024b418d5db575996`
-- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+- **Target Device**: OnePlus 11 5G (Android 16)
 
 ### Test Matrix
 
@@ -290,8 +290,8 @@ The final report does not convert an unrun physical test into a pass.
 | **AUT-31** | Automated | OpenPGP Provider & Algorithm Coverage | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test29_EnsureBouncyCastleProviderSuppliesRequiredAlgorithms`: Validates bundled `BouncyCastleProvider` exposes SHA-256, SHA-512, SHA256withRSA, and SHA512withRSA. |
 | **AUT-32** | Automated | Manifest Signature Verification with Bundled Provider | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test30_VerifyManifestSignatureUsesBundledProviderDirectly`: Validates authentic manifest signature verification against pinned public key using explicit bundled provider. |
 | **AUT-33** | Automated | Full Test Suite (192 tests across 17 suites) | JUnit (Offline) | **PASS** | 192 unit tests passed with 0 failures, 0 errors, 0 skipped in 30s via `gradlew testDebugUnitTest`. |
-| **PHY-22** | Physical Device | In-Place Upgrade Compatibility (4.5.1 to 4.5.2) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch against canonical lineage. |
-| **PHY-23** | Physical Device | yt-dlp Engine Update & OpenPGP Verification on Android 16 | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G (`897f6ce5`): Fetched and verified manifest for `yt-dlp-nightly-builds@2026.08.30.232658`; OpenPGP signature successfully verified against pinned key `AC0CBBE6848D6A873464AF4E57CF65933B5A7581`; SHA-256 checksum verified; post-update execution succeeded; UI updated to `v2026.08.30.232658` without `NoSuchAlgorithmException: no such algorithm: S`. |
+| **PHY-22** | Physical Device | In-Place Upgrade Compatibility (4.5.1 to 4.5.2) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (Android 16) succeeded with zero signature mismatch against canonical lineage. |
+| **PHY-23** | Physical Device | yt-dlp Engine Update & OpenPGP Verification on Android 16 | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G: Fetched and verified manifest for `yt-dlp-nightly-builds@2026.08.30.232658`; OpenPGP signature successfully verified against pinned key `AC0CBBE6848D6A873464AF4E57CF65933B5A7581`; SHA-256 checksum verified; post-update execution succeeded; UI updated to `v2026.08.30.232658` without `NoSuchAlgorithmException: no such algorithm: S`. |
 
 ---
 
@@ -309,19 +309,19 @@ The final report does not convert an unrun physical test into a pass.
   - **MD5**: `679d325009a63433f444e333bafe96a5`
 - **APK Size**: 165,995,076 bytes
 - **APK SHA-256**: `8f7b76c060ebf38069817e18960cd1f8f5fcfbbd92b114877ae4431ca36610fc`
-- **Target Device**: OnePlus 11 5G (`CPH2447`, Android 16, serial `897f6ce5`)
+- **Target Device**: OnePlus 11 5G (Android 16)
 
 ### Test Matrix
 
 | ID | Category | Test Case | Method | Result | Evidence / Details |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **AUT-34** | Automated | Generic Browser Fallback Classification | JUnit (Offline) | **PASS** | `FailureClassifierTest`: Verified generic recognition of Cloudflare anti-bot, JavaScript execution walls, and HTML challenge pages as `BROWSER_RECOVERABLE` without site-specific or domain-specific hardcoding. |
-| **AUT-35** | Automated | uBlock Origin Signed XPI Integrity & Allowlisting | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test31-test32`: Enforces exact extension ID `uBlock0@raymondhill.net`; rejects non-matching IDs; verifies Mozilla digital signature metadata entries (`META-INF/mozilla.rsa`); performs dynamic GeckoView compatibility verification. |
-| **AUT-36** | Automated | Puemos MV2 XPI Integrity & Bridge Isolation | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test33-test34`: Enforces exact upstream Puemos ID `{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}` from `puemos/hls-downloader`; verifies Mozilla digital signature metadata; keeps internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) decoupled as bundled asset. |
+| **AUT-35** | Automated | uBlock Origin Signed XPI Integrity & Allowlisting | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test31-test32`: Enforces exact extension ID `uBlock0@raymondhill.net`; rejects non-matching IDs; verifies presence of Mozilla signature metadata entries (`META-INF/mozilla.rsa`); performs dynamic GeckoView compatibility verification. |
+| **AUT-36** | Automated | Puemos MV2 XPI Integrity & Bridge Isolation | JUnit (Offline) | **PASS** | `SecureComponentUpdaterTest#test33-test34`: Enforces exact upstream Puemos ID `{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}` from `puemos/hls-downloader`; verifies presence of Mozilla signature metadata entries; keeps internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) decoupled as bundled asset. |
 | **AUT-37** | Automated | Transactional Staging, Rollback & State Machine | JUnit (Offline) | **PASS** | `ComponentUpdateManagerTest`: Verified atomic move, active version backup, rollback preservation of existing component on validation failure, and strict lifecycle states preventing premature "Updated" signals. |
 | **AUT-38** | Automated | Full Test Suite | JUnit (Offline) | **PASS** | Complete unit test suite passed: 237 tests executed, 237 passed, 0 failures, 0 skipped via `gradlew testDebugUnitTest`. |
-| **PHY-24** | Physical Device | In-Place Upgrade Compatibility (4.5.2 to 4.5.3) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (`CPH2447`, Android 16) succeeded with zero signature mismatch against canonical lineage. |
-| **PHY-25** | Physical Device | Physical Browser Fallback E2E Execution | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G (`897f6ce5`): Ultrathots direct extraction failed with generic Cloudflare HTML challenge; automatically transitioned to browser fallback; GeckoView sandbox captured media candidate; produced 169 MB playable MP4. |
-| **PHY-26** | Physical Device | Independent Component Update & Runtime Verification | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G (`897f6ce5`): Check All Updates queried `puemos/hls-downloader` and `gorhill/uBlock` over HTTPS without 404; validated without extraction; installed into GeckoView; verified live runtime version reporting (`yt-dlp v2026.08.19`, `uBlock Origin v1.74.0`, `Puemos v5.5.0`); UI transitioned to `Updated`. |
+| **PHY-24** | Physical Device | In-Place Upgrade Compatibility (4.5.2 to 4.5.3) | `adb install -r` | **PASS** | Streamed install on OnePlus 11 5G (Android 16) succeeded with zero signature mismatch against canonical lineage. |
+| **PHY-25** | Physical Device | Physical Browser Fallback E2E Execution | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G: Ultrathots direct extraction failed with generic Cloudflare HTML challenge; automatically transitioned to browser fallback; GeckoView sandbox captured media candidate; produced 169 MB playable MP4. |
+| **PHY-26** | Physical Device | Independent Component Update & Runtime Verification | Physical UI / Logcat | **PASS** | Verified on OnePlus 11 5G: Check All Updates queried `puemos/hls-downloader` and `gorhill/uBlock` over HTTPS without 404; validated without extraction; installed into GeckoView; verified live runtime version reporting (`yt-dlp v2026.08.19`, `uBlock Origin v1.74.0`, `Puemos v5.5.0`); UI transitioned to `Updated`. |
 
 

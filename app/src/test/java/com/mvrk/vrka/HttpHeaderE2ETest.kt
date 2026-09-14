@@ -101,7 +101,7 @@ class HttpHeaderE2ETest {
             origin = "https://publisher.example.com",
             customHeaders = mapOf(
                 "X-Forwarded-For" to "203.0.113.195",
-                "X-Device-Id" to "oneplus-cph2447-01",
+                "X-Device-Id" to "test-device-client-01",
                 "User-Agent" to "CustomVRKA/4.5.1",
             ),
             resolvedHeaders = mapOf(
@@ -126,7 +126,7 @@ class HttpHeaderE2ETest {
             "Referer:https://publisher.example.com/stream",
             "Origin:https://publisher.example.com",
             "X-Forwarded-For:203.0.113.195",
-            "X-Device-Id:oneplus-cph2447-01",
+            "X-Device-Id:test-device-client-01",
             "User-Agent:CustomVRKA/4.5.1",
             "Cookie:auth_token=super_secret_session_token",
             "Authorization:Bearer access_token_xyz",
