@@ -392,8 +392,8 @@ class SecureComponentUpdater(
      * Inspects an XPI archive in-place without directory extraction.
      * Verifies manifest integrity, extension ID allowlist, version, dynamic GeckoView
      * compatibility, and the presence of Mozilla Add-ons (AMO) signature metadata files
-     * (META-INF/mozilla.rsa, META-INF/mozilla.sf). Full cryptographic signature verification
-     * is executed by the GeckoView WebExtension engine during installation.
+     * (META-INF/mozilla.rsa, META-INF/mozilla.sf). The XPI is kept intact and installed
+     * through GeckoView.
      */
     fun validateXpiArchive(
         xpiFile: File,
@@ -480,7 +480,7 @@ class SecureComponentUpdater(
     }
 
     /**
-     * Executes a cryptographically verified and transactional extension update (uBlock Origin or Puemos).
+     * Executes a verified and transactional extension update (uBlock Origin or Puemos).
      *
      * Verification chain:
      * 1. Downgrade prevention: candidateVersion must be strictly newer than installedVersion.
@@ -488,7 +488,7 @@ class SecureComponentUpdater(
      * 3. HTTPS-only transport with strict redirect validation (only approved hosts).
      * 4. SHA-256 checksum verification against expected hash (if supplied).
      * 5. In-place archive validation without extracting: reads manifest.json, enforces exact ID,
-     *    checks dynamic GeckoView compatibility, verifies Mozilla signature files.
+     *    checks dynamic GeckoView compatibility, confirms required Mozilla signature metadata.
      * 6. Transactional staging: downloads to .download.tmp, backs up active XPI to .backup.tmp,
      *    and atomically moves verified XPI into active storage.
      * 7. Runtime installation and verification via GeckoView WebExtension controller with automatic
