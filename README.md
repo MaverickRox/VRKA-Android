@@ -127,8 +127,8 @@ VRKA Android includes an in-app update checker for updates from official GitHub 
 VRKA Android independently manages and updates its core media and filtering components:
 
 - **yt-dlp Engine (v2026.08.19)**: Bundled binary in `res/raw/ytdlp`. Background updates verify release manifests against pinned OpenPGP detached signatures and SHA-256 checksums. Updates stage in temporary files and roll back automatically if verification fails.
-- **uBlock Origin (v1.74.0)**: Bundled as an intact signed Firefox XPI (`uBlock0@raymondhill.net`) in `assets/extensions/ublock.xpi`. Pre-install checks confirm extension ID, GeckoView compatibility, and Mozilla signature metadata (`META-INF/mozilla.rsa`), with cryptographic signature verification enforced by GeckoView during installation.
-- **Puemos (v5.5.0)**: Bundled as an intact signed Firefox XPI (`{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}`) in `assets/extensions/puemos.xpi`. Updates verify extension ID, GeckoView compatibility, and signature metadata. The internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) remains bundled separately.
+- **uBlock Origin (v1.74.0)**: Bundled as an intact signed Firefox XPI (`uBlock0@raymondhill.net`) in `assets/extensions/ublock.xpi`. Pre-install checks confirm the extension ID, GeckoView compatibility, and required Mozilla signature metadata. The XPI is installed through GeckoView without extracting or repacking it.
+- **Puemos (v5.5.0)**: Bundled as an intact signed Firefox XPI (`{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}`) in `assets/extensions/puemos.xpi`. Pre-install checks confirm the extension ID, GeckoView compatibility, and required Mozilla signature metadata. The XPI is installed through GeckoView without extracting or repacking it. The internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) remains bundled separately.
 - **Persistent Background Execution**: Component updates use WorkManager to survive Activity recreation and backgrounding.
 - **Concurrency & Spam Protection**: Only one update operation runs per component at a time. Rapid button taps are de-duplicated without freezing the UI.
 
