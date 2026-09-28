@@ -1,0 +1,10 @@
+- Updated bundled yt-dlp to 2026.08.19.
+- Updated bundled uBlock Origin to 1.74.0 (gorhill/uBlock official signed WebExtension).
+- Updated bundled Puemos to 5.5.0 (puemos/hls-downloader official WebExtension).
+- Improved component update handling with authoritative batch state machine.
+- Prevented duplicate update operations from repeated button presses (single-flight batchMutex guard).
+- Added persistent background update operations via Android WorkManager for process-death survival.
+- Added 24-hour startup update check gate with non-blocking Combined Dialog.
+- Added persistent app updater background download handling.
+- Improved runtime verification of installed WebExtensions by querying the live GeckoView WebExtensionController.
+- Updated documentation and release information to reflect verified components.
