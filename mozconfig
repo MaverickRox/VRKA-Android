@@ -1,0 +1,20 @@
+# Mozilla build configuration for GeckoView in VRKA Android
+# Used by F-Droid source builds to build GeckoView arm64-v8a from MozFennec source
+
+ac_add_options --enable-project=mobile/android
+ac_add_options --target=aarch64-linux-android
+ac_add_options --host=x86_64-unknown-linux-gnu
+ac_add_options --with-android-ndk="$ANDROID_NDK"
+ac_add_options --with-android-sdk="$ANDROID_SDK_ROOT"
+ac_add_options --with-java-bin-path="/usr/lib/jvm/java-17-openjdk-amd64/bin"
+ac_add_options --without-wasm-sandboxed-libraries
+ac_add_options --enable-release
+ac_add_options --enable-update-channel=release
+ac_add_options --disable-debug
+ac_add_options --disable-tests
+ac_add_options --disable-crashreporter
+ac_add_options --disable-updater
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj
+mk_add_options MOZILLA_OFFICIAL=1
+export MOZILLA_OFFICIAL=1
+export MOZ_BUILD_DATE=20260810162159
