@@ -1,0 +1,13 @@
+VRKA Android is a native media downloader and passive web stream discovery application for Android devices.
+
+Built with Jetpack Compose, Kotlin Coroutines, and local processing, VRKA delivers direct media processing powered by yt-dlp and FFmpeg, combined with an isolated Mozilla GeckoView browser fallback engine featuring integrated uBlock Origin content filtering and Puemos stream inspection.
+
+Key Features:
+- Direct Extraction & Download: Powered by yt-dlp and FFmpeg (arm64-v8a), supporting video and audio stream extraction, quality and resolution selection (Best, 4K, 1440p, 1080p, 720p), 60 FPS preference, subtitle embedding, and audio extraction (MP3, Opus with native stream copy remuxing, and 16-bit PCM WAV).
+- Custom HTTP Headers: Dedicated Referer and Origin customization with RFC 7230 token validation and CRLF injection protection.
+- Sensitive Data Redaction: Multi-tier protection masking authorization tokens, cookies, and secret headers across logs, diagnostics, and on-device history.
+- Passive Browser Fallback: Embedded Mozilla GeckoView session activates when direct extraction encounters anti-bot challenges or client-side player scripts.
+- Content Filtering: Integrated uBlock Origin WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation.
+- Passive Stream Discovery: Integrated Puemos WebExtension intercepts network traffic to observe and rank media manifests (.m3u8 playlists, .mpd manifests).
+- Local On-Device Processing: No application telemetry, no cloud tracking, and all operations executed locally on your device.
+- Cryptographically Verified Updates: Core components (yt-dlp, uBlock Origin, Puemos) are user-controlled and cryptographically verified against pinned OpenPGP signatures and checksums.
