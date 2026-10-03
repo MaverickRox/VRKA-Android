@@ -580,50 +580,33 @@ class ComponentUpdateManagerTest {
     }
 
     @Test
-    fun testBundledStableBaselineConstants() {
-        assertEquals("2026.08.19", ComponentUpdateManager.DEFAULT_YTDLP_VER)
-        assertEquals("1.74.0", ComponentUpdateManager.DEFAULT_UBLOCK_VER)
-        assertEquals("5.5.0", ComponentUpdateManager.DEFAULT_PUEMOS_VER)
-    }
-
-    @Test
-    fun testYtDlp20260819Comparisons() {
-        // v4.5.3 baseline is 2026.08.19
-        val baseline = "2026.08.19"
-        // Old 2026.06.30 is strictly older
+    fun testYtDlpVersionOrderingUsesReleaseNumbers() {
+        val baseline = "2026.09.01"
         assertTrue(ComponentUpdateManager.isNewerVersion(baseline, "2026.06.30"))
-        // Baseline is not newer than itself
         assertFalse(ComponentUpdateManager.isNewerVersion(baseline, baseline))
         assertFalse(ComponentUpdateManager.isNewerVersion("v$baseline", baseline))
-        // Future release is newer
-        assertTrue(ComponentUpdateManager.isNewerVersion("2026.08.30", baseline))
-        assertTrue(ComponentUpdateManager.isNewerVersion("v2026.08.30.232658", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("2026.09.30", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("v2026.09.30.232658", baseline))
     }
 
     @Test
-    fun testPuemos550Comparisons() {
-        // v4.5.3 baseline is 5.5.0
-        val baseline = "5.5.0"
-        // Old 1.0.0 is strictly older
+    fun testExtensionVersionOrderingUsesReleaseNumbers() {
+        val baseline = "5.6.0"
         assertTrue(ComponentUpdateManager.isNewerVersion(baseline, "1.0.0"))
-        assertTrue(ComponentUpdateManager.isNewerVersion(baseline, "5.4.0"))
-        // Baseline is not newer than itself
+        assertTrue(ComponentUpdateManager.isNewerVersion(baseline, "5.5.0"))
         assertFalse(ComponentUpdateManager.isNewerVersion(baseline, baseline))
         assertFalse(ComponentUpdateManager.isNewerVersion("v$baseline", baseline))
-        // Future release is newer
-        assertTrue(ComponentUpdateManager.isNewerVersion("5.5.1", baseline))
-        assertTrue(ComponentUpdateManager.isNewerVersion("5.6.0", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("5.7.0", baseline))
         assertTrue(ComponentUpdateManager.isNewerVersion("6.0.0", baseline))
     }
 
     @Test
-    fun testUBlock1740Comparisons() {
-        // v4.5.3 baseline is 1.74.0
-        val baseline = "1.74.0"
+    fun testComponentVersionOrderingHandlesPatchReleases() {
+        val baseline = "1.80.0"
         assertFalse(ComponentUpdateManager.isNewerVersion(baseline, baseline))
-        assertFalse(ComponentUpdateManager.isNewerVersion("1.73.0", baseline))
-        assertTrue(ComponentUpdateManager.isNewerVersion("1.74.1", baseline))
-        assertTrue(ComponentUpdateManager.isNewerVersion("1.75.0", baseline))
+        assertFalse(ComponentUpdateManager.isNewerVersion("1.79.0", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("1.80.1", baseline))
+        assertTrue(ComponentUpdateManager.isNewerVersion("1.81.0", baseline))
     }
 
     @Test

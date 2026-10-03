@@ -6,7 +6,37 @@
 const seenCandidates = new Map();
 const requestHeadersMap = new Map();
 const urlHeadersMap = new Map();
-let lastObservedUserAgent = "";
+const FIXED_CAPTURE_HEADERS = new Set([
+    "user-agent", "referer", "origin", "range", "cookie", "authorization",
+    "accept", "accept-language", "x-requested-with"
+]);
+const FORBIDDEN_CAPTURE_HEADERS = new Set([
+    "host", "content-length", "connection", "proxy-authorization", "proxy-connection",
+    "set-cookie", "transfer-encoding", "upgrade"
+]);
+
+function isCaptureHeader(name) {
+    const lower = name.toLowerCase();
+    return (FIXED_CAPTURE_HEADERS.has(lower) || lower.startsWith("x-")) &&
+        !FORBIDDEN_CAPTURE_HEADERS.has(lower) && !lower.startsWith("x-moz-") &&
+        !lower.startsWith("x-forwarded-");
+}
+
+function canonicalHeaderName(name) {
+    const lower = name.toLowerCase();
+    const known = {
+        "user-agent": "User-Agent",
+        "referer": "Referer",
+        "origin": "Origin",
+        "range": "Range",
+        "cookie": "Cookie",
+        "authorization": "Authorization",
+        "accept": "Accept",
+        "accept-language": "Accept-Language",
+        "x-requested-with": "X-Requested-With"
+    };
+    return known[lower] || name;
+}
 
 function isAdOrNuisanceUrl(url) {
     if (!url) return 0;
@@ -28,7 +58,10 @@ function sendCandidateToNative(candidate) {
     
     // Normalize URL
     const url = candidate.url.trim();
-    if (!url.startsWith("http://") && !url.startsWith("https://")) return;
+    try {
+        const parsed = new URL(url);
+        if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.hostname || parsed.username || parsed.password) return;
+    } catch (e) { return; }
     
     // Ignore static image, font, and script assets
     const lower = url.toLowerCase();
@@ -50,6 +83,13 @@ function sendCandidateToNative(candidate) {
     if (seenCandidates.size > 250) {
         for (const [k, t] of seenCandidates.entries()) {
             if (now - t > 60000) seenCandidates.delete(k);
+        }
+        // Age pruning alone is not a hard bound when a page emits many unique URLs
+        // inside one minute. Drop the oldest insertion(s) to cap retained state.
+        while (seenCandidates.size > 250) {
+            const oldestKey = seenCandidates.keys().next().value;
+            if (oldestKey === undefined) break;
+            seenCandidates.delete(oldestKey);
         }
     }
 
@@ -87,32 +127,37 @@ browser.webRequest.onBeforeSendHeaders.addListener(
         if (details.requestHeaders) {
             for (const h of details.requestHeaders) {
                 const name = h.name.toLowerCase();
-                if (["user-agent", "referer", "origin", "range", "cookie"].includes(name)) {
-                    headers[h.name] = h.value;
-                    if (name === "user-agent" && h.value) {
-                        lastObservedUserAgent = h.value;
-                    }
+                const value = typeof h.value === "string" ? h.value : "";
+                if (isCaptureHeader(name) && value.length > 0 && value.length <= 8192 &&
+                    !/[\r\n\u0000]/.test(value) && Object.keys(headers).length < 32) {
+                    headers[canonicalHeaderName(h.name)] = value;
                 }
             }
         }
         requestHeadersMap.set(details.requestId, { url: details.url, headers });
-        if (requestHeadersMap.size > 150) {
+        if (requestHeadersMap.size > 64) {
             const firstKey = requestHeadersMap.keys().next().value;
             requestHeadersMap.delete(firstKey);
         }
         
         // Also cache by URL and Origin for correlation with DOM events
-        urlHeadersMap.set(details.url, headers);
+        const domHeaders = {};
+        for (const [name, value] of Object.entries(headers)) {
+            if (["user-agent", "referer", "origin"].includes(name.toLowerCase())) {
+                domHeaders[canonicalHeaderName(name)] = value;
+            }
+        }
+        urlHeadersMap.set(details.url, domHeaders);
         try {
             const parsed = new URL(details.url);
-            urlHeadersMap.set(parsed.origin, headers);
+            urlHeadersMap.set(parsed.origin, domHeaders);
         } catch (e) {}
-        if (urlHeadersMap.size > 200) {
+        if (urlHeadersMap.size > 96) {
             const firstKey = urlHeadersMap.keys().next().value;
             urlHeadersMap.delete(firstKey);
         }
     },
-    { urls: ["<all_urls>"] },
+    { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other"] },
     ["requestHeaders"]
 );
 
@@ -146,7 +191,6 @@ browser.webRequest.onHeadersReceived.addListener(
             lowerUrl.includes("format=m3u8")
         ) {
             detectedKind = "HLS";
-            parseHlsPlaylist(url, headers);
         } else if (
             contentType.includes("application/dash+xml") ||
             lowerUrl.includes(".mpd")
@@ -223,77 +267,15 @@ browser.webRequest.onHeadersReceived.addListener(
                 nuisanceScore: nuisanceScore
             });
         }
+        if (![301, 302, 303, 307, 308].includes(details.statusCode)) {
+            requestHeadersMap.delete(details.requestId);
+        }
     },
-    { urls: ["<all_urls>"] },
+    { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other"] },
     ["responseHeaders"]
 );
 
-// 3. Parse HLS master playlists for stream qualities (Puemos technique)
-async function parseHlsPlaylist(playlistUrl, headers) {
-    try {
-        const resp = await fetch(playlistUrl, {
-            headers: {
-                "User-Agent": headers["User-Agent"] || navigator.userAgent,
-                "Referer": headers["Referer"] || playlistUrl
-            }
-        });
-        if (!resp.ok) return;
-        const text = await resp.text();
-        if (!text.includes("#EXTM3U")) return;
-
-        const adNuisance = isAdOrNuisanceUrl(playlistUrl);
-        const isMasterPrimary = adNuisance === 0;
-
-        // First emit the master playlist itself as a top-ranked candidate
-        sendCandidateToNative({
-            url: playlistUrl,
-            pageUrl: headers["Referer"] || playlistUrl,
-            title: "Master Playlist",
-            kind: "HLS",
-            resolution: "",
-            mimeType: "application/vnd.apple.mpegurl",
-            headers: headers,
-            source: "network",
-            userStarted: adNuisance === 0,
-            primaryPlayer: isMasterPrimary,
-            playing: true,
-            nuisanceScore: adNuisance
-        });
-
-        const lines = text.split("\n");
-        let currentResolution = "";
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (line.startsWith("#EXT-X-STREAM-INF:")) {
-                const resMatch = line.match(/RESOLUTION=(\d+x\d+)/i);
-                currentResolution = resMatch ? resMatch[1] : "";
-            } else if (line && !line.startsWith("#")) {
-                let variantUrl = line;
-                if (!variantUrl.startsWith("http://") && !variantUrl.startsWith("https://")) {
-                    variantUrl = new URL(variantUrl, playlistUrl).href;
-                }
-                sendCandidateToNative({
-                    url: variantUrl,
-                    pageUrl: playlistUrl,
-                    title: currentResolution ? `${currentResolution} Variant` : "HLS Stream",
-                    kind: "HLS",
-                    resolution: currentResolution,
-                    mimeType: "application/vnd.apple.mpegurl",
-                    headers: headers,
-                    source: "playlist",
-                    userStarted: adNuisance === 0,
-                    primaryPlayer: false,
-                    playing: true,
-                    nuisanceScore: adNuisance
-                });
-                currentResolution = "";
-            }
-        }
-    } catch (e) {}
-}
-
-// 4. Handle messages from Content Scripts
+// 3. Handle messages from Content Scripts
 browser.runtime.onMessage.addListener((msg, sender) => {
     if (msg && msg.type === "DOM_PLAYER_ACTIVE") {
         activeDomPlayer = {
@@ -322,9 +304,6 @@ browser.runtime.onMessage.addListener((msg, sender) => {
             } catch (e) {}
         }
         headers = headers ? Object.assign({}, headers) : {};
-        if (!headers["User-Agent"] && lastObservedUserAgent) {
-            headers["User-Agent"] = lastObservedUserAgent;
-        }
         const effectivePageUrl = sender.tab ? sender.tab.url : msg.pageUrl;
         if (!headers["Referer"] && effectivePageUrl) {
             headers["Referer"] = effectivePageUrl;

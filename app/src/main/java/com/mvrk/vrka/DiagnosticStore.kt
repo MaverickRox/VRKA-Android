@@ -34,16 +34,16 @@ data class DiagnosticEntry(
         appendLine("--- VRKA DIAGNOSTIC REPORT ---")
         appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(timestamp))}")
         appendLine("Job ID: $jobId")
-        appendLine("Title: $title")
+        appendLine("Title: ${DiagnosticStore.sanitizeText(title).take(200)}")
         appendLine("Stage: $stage")
         appendLine("Category: $failureCategory")
         appendLine("Quality: $quality")
         appendLine("Method: $acquisitionMethod")
-        appendLine("URL: $url")
-        appendLine("Summary: $summary")
+        appendLine("URL: ${DiagnosticStore.sanitizeUrl(url)}")
+        appendLine("Summary: ${DiagnosticStore.sanitizeText(summary)}")
         if (detail.isNotBlank()) {
             appendLine("Details:")
-            appendLine(detail)
+            appendLine(DiagnosticStore.sanitizeText(detail))
         }
         appendLine("------------------------------")
     }
@@ -67,11 +67,7 @@ class DiagnosticStore(
     }
 
     suspend fun record(entry: DiagnosticEntry) {
-        val sanitized = entry.copy(
-            url = sanitizeUrl(entry.url),
-            summary = sanitizeText(entry.summary).take(MAX_SUMMARY_LENGTH),
-            detail = sanitizeText(entry.detail).take(MAX_DETAIL_LENGTH),
-        )
+        val sanitized = sanitizeEntry(entry)
         mutex.withLock {
             val current = loadFromDisk()
             val updated = (listOf(sanitized) + current.filterNot { it.id == sanitized.id })
@@ -94,6 +90,9 @@ class DiagnosticStore(
         mutex.withLock {
             val loaded = loadFromDisk()
             _entries.value = loaded
+            // Rewrite legacy diagnostic files after sanitization so redacted URLs and
+            // secrets do not remain recoverable in the persisted JSON.
+            if (file.exists()) saveToDisk(loaded)
         }
     }
 
@@ -126,10 +125,16 @@ class DiagnosticStore(
             list.sortedByDescending { it.timestamp }.take(MAX_ENTRIES)
         }.getOrNull()
 
-        if (androidParsed != null && androidParsed.isNotEmpty()) return androidParsed
-
-        return parseEntriesFallback(text)
+        val loaded = androidParsed ?: parseEntriesFallback(text)
+        return loaded.map(::sanitizeEntry).sortedByDescending { it.timestamp }.take(MAX_ENTRIES)
     }
+
+    private fun sanitizeEntry(entry: DiagnosticEntry): DiagnosticEntry = entry.copy(
+        title = sanitizeText(entry.title).take(200),
+        url = sanitizeUrl(entry.url),
+        summary = sanitizeText(entry.summary).take(MAX_SUMMARY_LENGTH),
+        detail = sanitizeText(entry.detail).take(MAX_DETAIL_LENGTH),
+    )
 
     private fun parseEntriesFallback(text: String): List<DiagnosticEntry> {
         val entries = mutableListOf<DiagnosticEntry>()
@@ -244,10 +249,8 @@ class DiagnosticStore(
         const val MAX_DETAIL_LENGTH = 4000
         private const val FILE_NAME = "diagnostics.json"
 
-        private val SENSITIVE_QUERY_PARAMS = setOf(
-            "token", "key", "sig", "signature", "auth", "session",
-            "pass", "secret", "expires", "access_token", "refresh_token",
-            "code", "client_secret", "id_token",
+        private val SAFE_QUERY_PARAMS = setOf(
+            "v", "quality", "itag", "format", "width", "height", "fps", "type", "mime",
         )
 
         private val SECRET_PATTERNS = listOf(
@@ -260,29 +263,31 @@ class DiagnosticStore(
         fun sanitizeUrl(rawUrl: String): String {
             if (rawUrl.isBlank()) return ""
             return runCatching {
-                val trimmed = rawUrl.trim()
-                val queryIndex = trimmed.indexOf('?')
-                if (queryIndex < 0) return@runCatching trimmed
-                val base = trimmed.substring(0, queryIndex)
-                val query = trimmed.substring(queryIndex + 1)
+                val uri = java.net.URI(rawUrl.trim())
+                val scheme = uri.scheme?.lowercase(java.util.Locale.ROOT)
+                    ?.takeIf { it == "http" || it == "https" }
+                    ?: return@runCatching "[private URL]"
+                var host = uri.host?.lowercase(java.util.Locale.ROOT)
+                    ?.takeIf(String::isNotBlank)
+                    ?: return@runCatching "[private URL]"
+                if (':' in host && !host.startsWith("[")) host = "[$host]"
+                val port = uri.port.takeIf { it in 1..65535 && it != (if (scheme == "https") 443 else 80) }
+                    ?.let { ":$it" }.orEmpty()
+                val safeOrigin = "$scheme://$host$port"
+                val query = uri.rawQuery ?: return@runCatching "$safeOrigin/[redacted path]"
                 val pairs = query.split('&').map { pair ->
                     val eq = pair.indexOf('=')
                     if (eq < 0) {
                         val key = pair.lowercase()
-                        if (SENSITIVE_QUERY_PARAMS.any { key.contains(it) }) "$pair=[REDACTED]" else pair
+                        if (key in SAFE_QUERY_PARAMS) pair else "$pair=[REDACTED]"
                     } else {
                         val key = pair.substring(0, eq)
-                        val value = pair.substring(eq + 1)
                         val lowerKey = key.lowercase()
-                        if (SENSITIVE_QUERY_PARAMS.any { lowerKey.contains(it) }) {
-                            "$key=[REDACTED]"
-                        } else {
-                            "$key=$value"
-                        }
+                        if (lowerKey in SAFE_QUERY_PARAMS) pair else "$key=[REDACTED]"
                     }
                 }
-                "$base?${pairs.joinToString("&")}"
-            }.getOrDefault(rawUrl.take(250))
+                "$safeOrigin/[redacted path]?${pairs.joinToString("&")}"
+            }.getOrDefault("[private URL]")
         }
 
         fun sanitizeText(text: String): String {
@@ -300,7 +305,7 @@ class DiagnosticStore(
                     }
                 }
             }
-            return sanitized
+            return sanitized.replace(Regex("(?i)https?://[^\\s\\\"'<>]+"), "[private URL]")
         }
     }
 }

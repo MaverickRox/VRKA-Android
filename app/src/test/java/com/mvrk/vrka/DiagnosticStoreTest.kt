@@ -19,16 +19,20 @@ class DiagnosticStoreTest {
 
     @Test
     fun urlSanitizationRedactsSensitiveQueryParams() {
-        val sensitiveUrl = "https://example.com/video?v=12345&token=secret_token_abc&key=api_key_xyz&signature=sig_123&quality=hd"
+        val sensitiveUrl = "https://example.com/private/signed/token_path_secret?v=12345&token=secret_token_abc&key=api_key_xyz&signature=sig_123&quality=hd&x-amz-credential=aws_secret"
         val sanitized = DiagnosticStore.sanitizeUrl(sensitiveUrl)
+        assertTrue(sanitized.contains("https://example.com/[redacted path]"))
+        assertFalse(sanitized.contains("token_path_secret"))
         assertTrue(sanitized.contains("v=12345"))
         assertTrue(sanitized.contains("quality=hd"))
         assertTrue(sanitized.contains("token=[REDACTED]"))
         assertTrue(sanitized.contains("key=[REDACTED]"))
         assertTrue(sanitized.contains("signature=[REDACTED]"))
+        assertTrue(sanitized.contains("x-amz-credential=[REDACTED]"))
         assertFalse(sanitized.contains("secret_token_abc"))
         assertFalse(sanitized.contains("api_key_xyz"))
         assertFalse(sanitized.contains("sig_123"))
+        assertFalse(sanitized.contains("aws_secret"))
     }
 
     @Test
@@ -41,6 +45,25 @@ class DiagnosticStoreTest {
         assertFalse(sanitized.contains("dXNlcjpwYXNz"))
         assertFalse(sanitized.contains("sensitive_api_key_999"))
         assertTrue(sanitized.contains("[REDACTED]"))
+        val urlSanitized = DiagnosticStore.sanitizeText("Referer: https://private.example/watch?session=secret-value")
+        assertFalse(urlSanitized.contains("private.example"))
+        assertFalse(urlSanitized.contains("secret-value"))
+    }
+
+    @Test
+    fun loadingRewritesLegacyDiagnosticUrlsWithoutTheirPathsOrSecrets() = runBlocking {
+        val file = java.io.File(tempFolder.root, "diagnostics.json")
+        file.writeText(
+            """[{"id":"legacy","timestamp":1,"jobId":"job","title":"title","stage":"transfer","failureCategory":"HTTP","summary":"failure","detail":"","url":"https://cdn.example/path/auth-secret?token=query-secret","quality":"","acquisitionMethod":"Native yt-dlp"}]""",
+        )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        DiagnosticStore(tempFolder.root, scope)
+        kotlinx.coroutines.delay(150)
+
+        val persisted = file.readText()
+        assertTrue(persisted.contains("https://cdn.example/[redacted path]"))
+        assertFalse(persisted.contains("auth-secret"))
+        assertFalse(persisted.contains("query-secret"))
     }
 
     @Test

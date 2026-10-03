@@ -48,9 +48,18 @@ internal fun SettingsScreen(
     val updateManager = remember { ComponentUpdateManager.getInstance(context) }
     val componentMap by updateManager.components.collectAsStateWithLifecycle()
     val batchState by updateManager.batchState.collectAsStateWithLifecycle()
+    val geckoManager = remember { GeckoRuntimeManager.getInstance(context) }
+    val geckoReady by geckoManager.isReady.collectAsStateWithLifecycle()
+    val uBlockActive by geckoManager.uBlockActive.collectAsStateWithLifecycle()
+    val mediaDetectorActive by geckoManager.mediaDetectorActive.collectAsStateWithLifecycle()
     val appUpdateManager = remember { com.mvrk.vrka.update.AppUpdateManager.getInstance(context, repository) }
     val appUpdateState by appUpdateManager.checkState.collectAsStateWithLifecycle()
     var manualCheckRequested by remember { mutableStateOf(false) }
+    var showTemplateEditor by remember { mutableStateOf(false) }
+    var editingTemplateId by remember { mutableStateOf<String?>(null) }
+    var templateName by remember { mutableStateOf("") }
+    var templateArgumentText by remember { mutableStateOf("") }
+    var templateError by remember { mutableStateOf("") }
 
     LaunchedEffect(appUpdateState) {
         if (manualCheckRequested) {
@@ -152,6 +161,291 @@ internal fun SettingsScreen(
             )
         }
 
+        SettingsHeading("Downloads & Concurrency")
+        var showConcurrentWarningDialog by remember { mutableStateOf(false) }
+        VrkaSectionContainer {
+            VrkaSettingRow(
+                title = "Concurrent Downloads",
+                subtitle = if (settings.concurrentDownloadsEnabled) {
+                    "Enabled (up to ${settings.maxConcurrentDownloads} downloads processed in parallel)"
+                } else {
+                    "Disabled (downloads processed sequentially one by one)"
+                },
+            ) {
+                Switch(
+                    checked = settings.concurrentDownloadsEnabled,
+                    onCheckedChange = { enable ->
+                        if (enable) {
+                            showConcurrentWarningDialog = true
+                        } else {
+                            scope.launch { repository.setConcurrentDownloadsEnabled(false) }
+                        }
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = VrkaTokens.Accent,
+                    ),
+                )
+            }
+
+            if (settings.concurrentDownloadsEnabled) {
+                Spacer(Modifier.height(8.dp))
+                VrkaDivider()
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Maximum simultaneous downloads",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                            fontWeight = FontWeight.SemiBold,
+                            color = VrkaTokens.TextPrimary,
+                        )
+                        Text(
+                            text = "Active parallel workers (2 to 4)",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                            color = VrkaTokens.TextTertiary,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(2, 3, 4).forEach { count ->
+                            VrkaChip(
+                                selected = settings.maxConcurrentDownloads == count,
+                                onClick = {
+                                    scope.launch { repository.setMaxConcurrentDownloads(count) }
+                                },
+                                label = count.toString(),
+                                isMonospace = true,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = "Running multiple downloads simultaneously uses more CPU, memory, network bandwidth, storage I/O, and battery power. Disabled by default for stability.",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                color = VrkaTokens.TextTertiary,
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+            )
+        }
+
+        if (showConcurrentWarningDialog) {
+            AlertDialog(
+                onDismissRequest = { showConcurrentWarningDialog = false },
+                title = {
+                    Text(
+                        text = "Enable Concurrent Downloads?",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Running multiple downloads simultaneously uses more CPU, memory, network bandwidth, storage I/O, battery power, and device thermal capacity. Higher concurrency can increase overall resource usage.\n\nAre you sure you want to enable concurrent downloads?",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showConcurrentWarningDialog = false
+                            scope.launch { repository.setConcurrentDownloadsEnabled(true) }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = VrkaTokens.Accent),
+                    ) {
+                        Text("Enable")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showConcurrentWarningDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
+
+        SettingsHeading("Compatibility & Custom Commands")
+        VrkaSectionContainer {
+            VrkaSettingRow(
+                title = "H.264 Compatibility Mode",
+                subtitle = if (settings.h264CompatibilityMode) {
+                    "Convert non-H.264 video after download; existing H.264 is copied"
+                } else {
+                    "Off by default; preserve the source codec"
+                },
+            ) {
+                Switch(
+                    checked = settings.h264CompatibilityMode,
+                    onCheckedChange = { scope.launch { repository.setH264CompatibilityMode(it) } },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = VrkaTokens.Accent,
+                    ),
+                )
+            }
+            Text(
+                "H.264 conversion can take significantly more time and use extra battery, CPU, and temporary storage. VRKA checks the downloaded codec and skips conversion when it is already H.264.",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                color = VrkaTokens.TextTertiary,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            )
+
+            VrkaDivider()
+            Spacer(Modifier.height(8.dp))
+            VrkaSettingRow(
+                title = "Custom yt-dlp Commands",
+                subtitle = if (settings.customCommandMode) {
+                    "Enabled • new downloads use the selected template"
+                } else {
+                    "Disabled • normal VRKA download options are used"
+                },
+            ) {
+                Switch(
+                    checked = settings.customCommandMode,
+                    onCheckedChange = { scope.launch { repository.setCustomCommandMode(it) } },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = VrkaTokens.Accent,
+                    ),
+                )
+            }
+            Text(
+                "Templates are argument lists, not shell commands. VRKA controls the staging path. A failed eligible custom attempt can still use Browser Fallback, which uses its standard yt-dlp handoff and ignores the template. Unsafe output paths, shell hooks, and credential-bearing headers are blocked.",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                color = VrkaTokens.TextTertiary,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            )
+
+            settings.customCommandTemplates.forEach { template ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { scope.launch { repository.selectCustomCommandTemplate(template.id) } }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = template.id == settings.selectedCustomCommandTemplateId,
+                        onClick = { scope.launch { repository.selectCustomCommandTemplate(template.id) } },
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(template.name, style = MaterialTheme.typography.bodyMedium, color = VrkaTokens.TextPrimary)
+                        Text(
+                            template.arguments.joinToString(" "),
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                            color = VrkaTokens.TextTertiary,
+                        )
+                    }
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                VrkaOutlinedButton(
+                    text = "Add Template",
+                    onClick = {
+                        editingTemplateId = null
+                        templateName = ""
+                        templateArgumentText = ""
+                        templateError = ""
+                        showTemplateEditor = true
+                    },
+                    height = 48.dp,
+                )
+                val selectedTemplate = settings.customCommandTemplates.firstOrNull {
+                    it.id == settings.selectedCustomCommandTemplateId
+                }
+                VrkaOutlinedButton(
+                    text = "Edit",
+                    onClick = {
+                        selectedTemplate?.let { template ->
+                            editingTemplateId = template.id
+                            templateName = template.name
+                            templateArgumentText = template.arguments.joinToString(" ") { argument ->
+                                if (argument.any { it.isWhitespace() }) "\"${argument.replace("\\", "\\\\").replace("\"", "\\\"")}\"" else argument
+                            }
+                            templateError = ""
+                            showTemplateEditor = true
+                        }
+                    },
+                    enabled = selectedTemplate != null,
+                    height = 48.dp,
+                )
+                VrkaOutlinedButton(
+                    text = "Delete",
+                    onClick = {
+                        selectedTemplate?.let { template ->
+                            scope.launch { repository.deleteCustomCommandTemplate(template.id) }
+                        }
+                    },
+                    enabled = selectedTemplate != null,
+                    height = 48.dp,
+                    contentColor = VrkaTokens.Destructive,
+                    borderColor = VrkaTokens.Destructive,
+                )
+            }
+        }
+
+        if (showTemplateEditor) {
+            AlertDialog(
+                onDismissRequest = { showTemplateEditor = false },
+                title = { Text(if (editingTemplateId == null) "New yt-dlp Template" else "Edit yt-dlp Template") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = templateName,
+                            onValueChange = { templateName = it.take(80) },
+                            label = { Text("Template name") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = templateArgumentText,
+                            onValueChange = { templateArgumentText = it.take(CustomCommandPolicy.MAX_TEMPLATE_CHARS) },
+                            label = { Text("yt-dlp arguments") },
+                            placeholder = { Text("--no-playlist --embed-metadata") },
+                            minLines = 3,
+                            maxLines = 7,
+                        )
+                        if (templateError.isNotBlank()) {
+                            Text(templateError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val parsed = runCatching { CustomCommandPolicy.parseArgumentLine(templateArgumentText) }
+                        if (parsed.isFailure) {
+                            templateError = parsed.exceptionOrNull()?.message.orEmpty()
+                        } else {
+                            val template = YtDlpCommandTemplate(
+                                id = editingTemplateId ?: java.util.UUID.randomUUID().toString(),
+                                name = templateName.trim(),
+                                arguments = parsed.getOrThrow(),
+                            )
+                            templateError = CustomCommandPolicy.validateTemplate(template.name, template.arguments).orEmpty()
+                            if (templateError.isBlank()) {
+                                scope.launch {
+                                    repository.saveCustomCommandTemplate(template)
+                                    showTemplateEditor = false
+                                }
+                            }
+                        }
+                    }) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showTemplateEditor = false }) { Text("Cancel") }
+                },
+            )
+        }
+
         SettingsHeading("Appearance")
         VrkaSectionContainer {
             Text(
@@ -208,7 +502,7 @@ internal fun SettingsScreen(
 
         SettingsHeading("Components & Updates")
         Text(
-            "Independently managed runtime and filter components.",
+            "Installed version references and update checks for yt-dlp and bundled browser extensions.",
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
             color = VrkaTokens.TextSecondary,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
@@ -219,66 +513,51 @@ internal fun SettingsScreen(
         VrkaSectionContainer {
             componentMap.values.forEachIndexed { index, comp ->
                 if (index > 0) VrkaDivider()
-                val cleanInstalled = ComponentUpdateManager.cleanVersionString(comp.installedVersion)
-                val displayVer = when {
-                    cleanInstalled.equals("Unknown", ignoreCase = true) || cleanInstalled.isBlank() -> "Unknown"
-                    cleanInstalled.startsWith("v") -> cleanInstalled
-                    else -> "v$cleanInstalled"
+                val displayVer = ComponentStatusPresentation.versionLabel(comp.installedVersion)
+                val componentStatus = ComponentStatusPresentation.from(comp)
+                val roleDescription = when (comp.id) {
+                    ComponentUpdateManager.ID_YTDLP -> "Downloader used for normal jobs and Browser Fallback transfers"
+                    ComponentUpdateManager.ID_UBLOCK -> "Browser privacy filter used during Browser Fallback"
+                    ComponentUpdateManager.ID_PUEMOS -> "Bundled, update-managed extension; not used for media transfer"
+                    else -> "Bundled component"
                 }
                 VrkaSettingRow(
                     title = comp.name,
-                    subtitle = "Installed: $displayVer",
-                    isSubtitleMono = true,
+                    subtitle = "$roleDescription\nVersion reported: $displayVer",
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        val statusColor = when (componentStatus.tone) {
+                            ComponentStatusTone.SUCCESS -> VrkaTokens.Success
+                            ComponentStatusTone.WARNING -> VrkaTokens.Warning
+                            ComponentStatusTone.ERROR -> VrkaTokens.Error
+                            ComponentStatusTone.ACCENT -> VrkaTokens.AccentLight
+                            ComponentStatusTone.NEUTRAL -> VrkaTokens.TextTertiary
+                        }
+                        VrkaStatusBadge(componentStatus.label, statusColor, isMonospace = true)
                         when {
-                            comp.isUpdating -> {
-                                val updateLabel = when (comp.updateState) {
-                                    ComponentUpdateState.DOWNLOADING -> "Downloading"
-                                    ComponentUpdateState.VERIFYING -> "Verifying"
-                                    ComponentUpdateState.INSTALLING -> "Installing"
-                                    else -> "Updating"
-                                }
-                                VrkaStatusBadge(updateLabel, VrkaTokens.Warning, isMonospace = true)
-                            }
-                            comp.isChecking -> {
-                                VrkaStatusBadge("Checking", VrkaTokens.AccentLight, isMonospace = true)
-                            }
-                            comp.updateState == ComponentUpdateState.UPDATE_SUCCESS -> {
-                                VrkaStatusBadge("Updated", VrkaTokens.Success, isMonospace = true)
-                            }
-                            comp.updateState == ComponentUpdateState.UPDATE_FAILED -> {
-                                VrkaStatusBadge("Failed", VrkaTokens.Error, isMonospace = true)
+                            comp.updateState == ComponentUpdateState.UPDATE_FAILED ||
+                                comp.checkState == ComponentCheckState.CHECK_FAILED -> {
                                 VrkaOutlinedButton(
                                     text = "Retry",
-                                    onClick = { updateManager.applyUpdate(comp.id, settings.updatePreference) },
-                                    height = 32.dp,
+                                    onClick = {
+                                        if (comp.updateState == ComponentUpdateState.UPDATE_FAILED) {
+                                            updateManager.applyUpdate(comp.id, settings.updatePreference)
+                                        } else {
+                                            updateManager.checkUpdate(comp.id, settings.updatePreference)
+                                        }
+                                    },
+                                    height = 48.dp,
                                 )
                             }
                             comp.checkState == ComponentCheckState.UPDATE_AVAILABLE -> {
-                                VrkaStatusBadge("v${comp.latestVersion}", VrkaTokens.AccentLight, isMonospace = true)
                                 VrkaOutlinedButton(
                                     text = "Update",
                                     onClick = { updateManager.applyUpdate(comp.id, settings.updatePreference) },
-                                    height = 32.dp,
+                                    height = 48.dp,
                                 )
-                            }
-                            comp.checkState == ComponentCheckState.CHECK_FAILED -> {
-                                VrkaStatusBadge("Error", VrkaTokens.Error, isMonospace = true)
-                                VrkaOutlinedButton(
-                                    text = "Retry",
-                                    onClick = { updateManager.checkUpdate(comp.id, settings.updatePreference) },
-                                    height = 32.dp,
-                                )
-                            }
-                            comp.checkState == ComponentCheckState.UP_TO_DATE -> {
-                                VrkaStatusBadge("Ready", VrkaTokens.Success, isMonospace = true)
-                            }
-                            else -> {
-                                VrkaStatusBadge("Ready", VrkaTokens.Success, isMonospace = true)
                             }
                         }
                     }
@@ -325,7 +604,7 @@ internal fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "yt-dlp",
+                    "yt-dlp update channel",
                     style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
                     fontWeight = FontWeight.SemiBold,
                     color = VrkaTokens.TextPrimary,
@@ -352,27 +631,39 @@ internal fun SettingsScreen(
         VrkaSectionContainer {
             VrkaSettingRow(
                 title = "Browser Engine",
-                subtitle = "Mozilla GeckoView 153.0 (arm64-v8a)",
+                subtitle = "GeckoView ${BuildConfig.GECKOVIEW_VERSION} • arm64-v8a",
             ) {
-                VrkaStatusBadge("Bundled", VrkaTokens.AccentLight, isMonospace = true)
+                VrkaStatusBadge(
+                    if (geckoReady) "Initialized" else "Bundled",
+                    if (geckoReady) VrkaTokens.Success else VrkaTokens.AccentLight,
+                    isMonospace = true,
+                )
             }
 
             VrkaDivider()
 
             VrkaSettingRow(
                 title = "Ad & Tracker Blocking",
-                subtitle = "uBlock Origin",
+                subtitle = "uBlock Origin • Browser Fallback privacy filter",
             ) {
-                VrkaStatusBadge("Active", VrkaTokens.Success, isMonospace = true)
+                VrkaStatusBadge(
+                    if (uBlockActive) "Active" else "Not started",
+                    if (uBlockActive) VrkaTokens.Success else VrkaTokens.TextTertiary,
+                    isMonospace = true,
+                )
             }
 
             VrkaDivider()
 
             VrkaSettingRow(
                 title = "Media Detection",
-                subtitle = "Puemos HLS Discovery",
+                subtitle = "WebExtension • direct media, HLS and DASH discovery",
             ) {
-                VrkaStatusBadge("Active", VrkaTokens.Success, isMonospace = true)
+                VrkaStatusBadge(
+                    if (mediaDetectorActive) "Active" else "Not started",
+                    if (mediaDetectorActive) VrkaTokens.Success else VrkaTokens.TextTertiary,
+                    isMonospace = true,
+                )
             }
 
             VrkaDivider()
@@ -383,7 +674,7 @@ internal fun SettingsScreen(
 
             VrkaSettingRow(
                 title = "Browser Session",
-                subtitle = clearSessionMessage ?: "Cookies, cached storage, and active auth sessions",
+                subtitle = clearSessionMessage ?: "Task-scoped private fallback session. Clear GeckoView cookies, site storage, auth sessions, caches and discovered candidates.",
             ) {
                 VrkaOutlinedButton(
                     text = if (isClearingSession) "Clearing..." else "Clear Session",
@@ -398,7 +689,7 @@ internal fun SettingsScreen(
                     onDismissRequest = { showClearDialog = false },
                     title = {
                         Text(
-                            "Clear Browser Session?",
+                            "Clear Browser Data?",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = VrkaTokens.TextPrimary,
@@ -406,7 +697,7 @@ internal fun SettingsScreen(
                     },
                     text = {
                         Text(
-                            "Removes cookies and site data used by the browser fallback. Download history and app settings are not affected.",
+                            "Clears GeckoView cookies, DOM storage, auth sessions, site data, all caches, and in-memory discovered candidates. It does not cancel an active fallback. Download history, queue and app settings are not affected.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = VrkaTokens.TextSecondary,
                         )
@@ -434,19 +725,6 @@ internal fun SettingsScreen(
                     containerColor = VrkaTokens.SurfaceCard,
                 )
             }
-        }
-
-        SettingsHeading("Concurrency")
-        VrkaSectionContainer {
-            Text(
-                "One active job at a time; additional jobs wait in the queue to optimize performance and prevent thermal throttling.",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = VrkaMonoFamily,
-                    lineHeight = 18.sp,
-                ),
-                color = VrkaTokens.TextSecondary,
-                modifier = Modifier.padding(vertical = 8.dp),
-            )
         }
 
         SettingsHeading("Diagnostics")

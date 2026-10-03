@@ -138,6 +138,9 @@ class GeckoWebExecutorTransport(
         // Inject validated headers
         request.headers.forEach { (key, value) ->
             val lower = key.lowercase()
+            if (lower == "referer" && value.isNotBlank()) {
+                builder.referrer(value)
+            }
             if (value.isNotBlank() && lower !in DISALLOWED_HEADERS && HeaderValidation.isValidHeaderName(key)) {
                 builder.addHeader(key, value)
             }
@@ -262,11 +265,6 @@ class GeckoWebExecutorTransport(
     }
 
     private fun sanitizeUrlForLogging(url: String): String {
-        return try {
-            val uri = java.net.URI(url)
-            "${uri.scheme}://${uri.host}${uri.path}"
-        } catch (_: Throwable) {
-            url.substringBefore('?')
-        }
+        return com.mvrk.vrka.DiagnosticStore.sanitizeUrl(url)
     }
 }

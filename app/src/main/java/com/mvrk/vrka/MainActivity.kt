@@ -9,13 +9,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
     private val openQueueRequests = MutableStateFlow(0L)
+    private val sharedUrls = MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
         enableEdgeToEdge()
         setContent {
-            VrkaRoot(vrkaApplication.downloads, openQueueRequests)
+            VrkaRoot(vrkaApplication.downloads, openQueueRequests, sharedUrls)
         }
     }
 
@@ -26,23 +27,39 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(EXTRA_OPEN_QUEUE, false) == true) {
+        if (intent == null) return
+        if (intent.getBooleanExtra(EXTRA_OPEN_QUEUE, false)) {
             openQueueRequests.value = System.currentTimeMillis()
             intent.removeExtra(EXTRA_OPEN_QUEUE)
         }
-        val urlToEnqueue = intent?.getStringExtra(EXTRA_URL)
-            ?: (if (intent?.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT) else null)
-            ?: (if (intent?.action == Intent.ACTION_VIEW) intent.dataString else null)
-        if (!urlToEnqueue.isNullOrBlank()) {
-            vrkaApplication.downloads.enqueue(DownloadRequest(url = urlToEnqueue.trim()))
-            openQueueRequests.value = System.currentTimeMillis()
-            intent?.removeExtra(EXTRA_URL)
+
+        val rawText = when (intent.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_VIEW -> intent.dataString
+            else -> intent.getStringExtra(EXTRA_URL)
+        }
+
+        val extracted = UrlExtractor.extractUrl(rawText)
+        if (!extracted.isNullOrBlank()) {
+            sharedUrls.value = extracted
+            intent.removeExtra(EXTRA_URL)
+            intent.removeExtra(Intent.EXTRA_TEXT)
         }
     }
 
     companion object {
         const val EXTRA_OPEN_QUEUE = "com.mvrk.vrka.OPEN_QUEUE"
         const val EXTRA_URL = "com.mvrk.vrka.URL"
+    }
+}
+
+object UrlExtractor {
+    private val URL_REGEX = Regex("""https?://[^\s]+""", RegexOption.IGNORE_CASE)
+
+    fun extractUrl(text: String?): String? {
+        if (text.isNullOrBlank()) return null
+        val match = URL_REGEX.find(text.trim())?.value ?: return null
+        return match.trimEnd('.', ',', ';', '!', '?', ')', ']', '"', '\'')
     }
 }
 

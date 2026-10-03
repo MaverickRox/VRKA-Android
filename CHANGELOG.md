@@ -2,6 +2,28 @@
 
 All notable changes to VRKA Android are documented in this file.
 
+## [5.0] - 2026-10-03
+
+### Added
+- Optional H.264 Compatibility Mode converts local staged video only when the downloaded video is not H.264, then validates output before publication.
+- Named Custom yt-dlp argument templates for normal queued download attempts.
+
+### Fixed
+- Eligible failures from a custom yt-dlp attempt can now enter the existing Browser Fallback flow. The fallback transfer clears custom template/header state and uses the standard yt-dlp request.
+- Custom-template Delete now uses the same aligned, 48dp outlined control as Add and Edit and the destructive app color.
+- Quality, audio format, bitrate, and mode selections are persisted when the user changes them.
+
+### Changed
+- Settings now distinguishes yt-dlp transfer, browser discovery, uBlock filtering, and Puemos component roles.
+- Component versions are displayed as reported by runtime/package/update state; unverified components no longer appear Ready or Up to date.
+- Browser media detection is described as direct media, HLS, and DASH discovery.
+- Browser-session clearing text now matches the GeckoView clear flags and in-memory candidate cleanup.
+- Subtitle text states that subtitle acquisition applies to the normal yt-dlp path; Browser Fallback does not currently fetch subtitles.
+- Removed the obsolete stored ad-blocking toggle; uBlock remains enabled by fallback runtime behavior.
+
+### Security
+- Browser Fallback transfer construction retains the public page URL and drops custom template, custom argument, and user-defined header state before handoff.
+
 ## [4.5.3] - 2026-09-14
 
 ### Changed

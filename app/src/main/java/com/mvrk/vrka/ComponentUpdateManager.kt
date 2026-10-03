@@ -102,18 +102,21 @@ data class ComponentStatus(
 ) {
     val isChecking: Boolean get() = checkState == ComponentCheckState.CHECKING ||
         lifecycleState == ComponentLifecycleState.CHECKING
-    val isUpdating: Boolean get() = updateState in setOf(
-        ComponentUpdateState.DOWNLOADING,
-        ComponentUpdateState.VERIFYING,
-        ComponentUpdateState.INSTALLING,
-    ) || lifecycleState in setOf(
-        ComponentLifecycleState.DOWNLOADING,
-        ComponentLifecycleState.VERIFYING,
-        ComponentLifecycleState.STAGING,
-        ComponentLifecycleState.INSTALLING,
-        ComponentLifecycleState.VERIFYING_INSTALL,
-        ComponentLifecycleState.ROLLING_BACK,
-    )
+    val isUpdating: Boolean get() = (
+        updateState in setOf(
+            ComponentUpdateState.DOWNLOADING,
+            ComponentUpdateState.VERIFYING,
+            ComponentUpdateState.INSTALLING,
+        ) || lifecycleState in setOf(
+            ComponentLifecycleState.DOWNLOADING,
+            ComponentLifecycleState.VERIFYING,
+            ComponentLifecycleState.STAGING,
+            ComponentLifecycleState.INSTALLING,
+            ComponentLifecycleState.VERIFYING_INSTALL,
+            ComponentLifecycleState.ROLLING_BACK,
+        )
+    ) && updateState != ComponentUpdateState.UPDATE_SUCCESS &&
+        lifecycleState !in setOf(ComponentLifecycleState.UP_TO_DATE, ComponentLifecycleState.UPDATED)
 }
 
 class ComponentUpdateManager private constructor(private val context: Context) {
@@ -162,7 +165,19 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         val ytdlVer = ytdlPrefs.getString("dlpVersionName", null)
             ?: ytdlPrefs.getString("dlpVersion", null)
         if (!ytdlVer.isNullOrBlank()) return ytdlVer.removePrefix("yt-dlp ").trim()
-        return DEFAULT_YTDLP_VER
+        return "Unknown"
+    }
+
+    private fun readXpiManifestVersion(file: java.io.File): String? {
+        return runCatching {
+            java.util.zip.ZipFile(file).use { zip ->
+                val entry = zip.getEntry("manifest.json") ?: return@runCatching null
+                zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).use { reader ->
+                    val json = org.json.JSONObject(reader.readText())
+                    json.optString("version").trim().takeIf { it.isNotBlank() }
+                }
+            }
+        }.getOrNull()
     }
 
     private suspend fun getInstalledUBlockVersion(): String {
@@ -172,7 +187,27 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             prefs.edit().putString(KEY_UBLOCK_VER, runtimeVer).apply()
             return runtimeVer
         }
-        // If GeckoView extension cannot be queried, fail closed or report "Unknown", never assume bundled version.
+        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
+        if (ublockXpi.exists() && ublockXpi.length() > 0L) {
+            val fileVer = readXpiManifestVersion(ublockXpi)
+            if (!fileVer.isNullOrBlank()) {
+                prefs.edit().putString(KEY_UBLOCK_VER, fileVer).apply()
+                return fileVer
+            }
+        }
+        geckoManager?.seedBundledExtensionsIfMissing()
+        if (ublockXpi.exists() && ublockXpi.length() > 0L) {
+            val fileVer = readXpiManifestVersion(ublockXpi)
+            if (!fileVer.isNullOrBlank()) {
+                prefs.edit().putString(KEY_UBLOCK_VER, fileVer).apply()
+                return fileVer
+            }
+        }
+        val prefVer = prefs.getString(KEY_UBLOCK_VER, null)
+        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) {
+            return prefVer
+        }
         return "Unknown"
     }
 
@@ -183,7 +218,27 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             prefs.edit().putString(KEY_PUEMOS_VER, runtimeVer).apply()
             return runtimeVer
         }
-        // If GeckoView extension cannot be queried, fail closed or report "Unknown", never assume bundled version.
+        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+        val puemosXpi = java.io.File(xpiDir, "puemos.xpi")
+        if (puemosXpi.exists() && puemosXpi.length() > 0L) {
+            val fileVer = readXpiManifestVersion(puemosXpi)
+            if (!fileVer.isNullOrBlank()) {
+                prefs.edit().putString(KEY_PUEMOS_VER, fileVer).apply()
+                return fileVer
+            }
+        }
+        geckoManager?.seedBundledExtensionsIfMissing()
+        if (puemosXpi.exists() && puemosXpi.length() > 0L) {
+            val fileVer = readXpiManifestVersion(puemosXpi)
+            if (!fileVer.isNullOrBlank()) {
+                prefs.edit().putString(KEY_PUEMOS_VER, fileVer).apply()
+                return fileVer
+            }
+        }
+        val prefVer = prefs.getString(KEY_PUEMOS_VER, null)
+        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) {
+            return prefVer
+        }
         return "Unknown"
     }
 
@@ -191,21 +246,18 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         mapOf(
             ID_YTDLP to ComponentStatus(
                 id = ID_YTDLP,
-                name = "yt-dlp Engine",
+                name = "yt-dlp",
                 installedVersion = getInstalledYtDlpVersion(),
-                message = "Ready",
             ),
             ID_UBLOCK to ComponentStatus(
                 id = ID_UBLOCK,
                 name = "uBlock Origin",
-                installedVersion = prefs.getString(KEY_UBLOCK_VER, null) ?: "Unknown",
-                message = "Ready",
+                installedVersion = prefs.getString(KEY_UBLOCK_VER, null)?.takeIf { !it.equals("Unknown", ignoreCase = true) } ?: "Unknown",
             ),
             ID_PUEMOS to ComponentStatus(
                 id = ID_PUEMOS,
                 name = "Puemos",
-                installedVersion = prefs.getString(KEY_PUEMOS_VER, null) ?: "Unknown",
-                message = "Ready",
+                installedVersion = prefs.getString(KEY_PUEMOS_VER, null)?.takeIf { !it.equals("Unknown", ignoreCase = true) } ?: "Unknown",
             ),
         ),
     )
@@ -231,9 +283,26 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             val ublockVer = getInstalledUBlockVersion()
             val puemosVer = getInstalledPuemosVersion()
 
-            updateState(ID_YTDLP) { it.copy(installedVersion = ytdlpVer) }
-            updateState(ID_UBLOCK) { it.copy(installedVersion = ublockVer) }
-            updateState(ID_PUEMOS) { it.copy(installedVersion = puemosVer) }
+            listOf(
+                ID_YTDLP to ytdlpVer,
+                ID_UBLOCK to ublockVer,
+                ID_PUEMOS to puemosVer,
+            ).forEach { (id, ver) ->
+                val clean = cleanVersionString(ver)
+                updateState(id) { current ->
+                    if (current.latestVersion != null && current.latestVersion == clean && current.lastChecked > 0L) {
+                        current.copy(
+                            installedVersion = ver,
+                            updateState = ComponentUpdateState.UPDATE_IDLE,
+                            lifecycleState = ComponentLifecycleState.UP_TO_DATE,
+                            checkState = ComponentCheckState.UP_TO_DATE,
+                            message = if (current.message.isBlank() || current.message.startsWith("Updating")) "Up to date (v$clean)" else current.message,
+                        )
+                    } else {
+                        current.copy(installedVersion = ver)
+                    }
+                }
+            }
         }
     }
 
@@ -272,11 +341,21 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                                 }
                                 updateState(compId) {
                                     it.copy(
+                                        lifecycleState = ComponentLifecycleState.UPDATED,
                                         updateState = ComponentUpdateState.UPDATE_SUCCESS,
                                         checkState = ComponentCheckState.UP_TO_DATE,
                                         installedVersion = verifiedVer,
                                         latestVersion = cleanVer,
                                         message = "Updated successfully to v$cleanVer",
+                                        error = null,
+                                    )
+                                }
+                            } else {
+                                updateState(compId) {
+                                    it.copy(
+                                        lifecycleState = ComponentLifecycleState.UPDATED,
+                                        updateState = ComponentUpdateState.UPDATE_SUCCESS,
+                                        checkState = ComponentCheckState.UP_TO_DATE,
                                         error = null,
                                     )
                                 }
@@ -291,6 +370,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                             val error = workInfo.outputData.getString(ComponentUpdateWorker.KEY_ERROR) ?: "Update failed"
                             updateState(compId) {
                                 it.copy(
+                                    lifecycleState = ComponentLifecycleState.FAILED,
                                     updateState = ComponentUpdateState.UPDATE_FAILED,
                                     error = error,
                                     message = "Update failed: $error",
@@ -305,9 +385,15 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                         WorkInfo.State.CANCELLED -> {
                             updateState(compId) {
                                 it.copy(
+                                    lifecycleState = ComponentLifecycleState.UNKNOWN,
                                     updateState = ComponentUpdateState.UPDATE_IDLE,
                                     message = "Update cancelled",
                                 )
+                            }
+                            if (_batchState.value == BatchOperationState.UPDATING &&
+                                _components.value.values.none { it.isUpdating }
+                            ) {
+                                _batchState.value = BatchOperationState.CANCELLED
                             }
                         }
                         else -> Unit
@@ -319,7 +405,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
     fun onChannelChanged(preference: UpdatePreference) {
         // Cancel in-flight yt-dlp check and update state cleanly, clearing any old failed state
-        activeCheckJobs[ID_YTDLP]?.cancel()
+        activeCheckJobs.remove(ID_YTDLP)?.cancel()
         checkGenerations.compute(ID_YTDLP) { _, v -> (v ?: 0L) + 1L }
         updateState(ID_YTDLP) {
             it.copy(
@@ -446,7 +532,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                     is IOException -> e.message ?: "Network error"
                     else -> e.message?.take(60) ?: "Unknown error"
                 }
-                Log.e(TAG, "Failed checking update for $id: $errMsg", e)
                 updateState(id) {
                     it.copy(
                         checkState = ComponentCheckState.CHECK_FAILED,
@@ -459,6 +544,19 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         } finally {
             if (checkGenerations[id] == generation) {
                 activeCheckJobs.remove(id)
+                updateState(id) { current ->
+                    if (current.checkState == ComponentCheckState.CHECKING) {
+                        current.copy(
+                            checkState = ComponentCheckState.CHECK_IDLE,
+                            message = "Ready to check",
+                            error = null,
+                        )
+                    } else {
+                        current
+                    }
+                }
+            } else {
+                activeCheckJobs.computeIfPresent(id) { _, j -> if (j.isCompleted) null else j }
             }
         }
     }
@@ -698,10 +796,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         const val ID_YTDLP = "ytdlp"
         const val ID_UBLOCK = "ublock"
         const val ID_PUEMOS = "puemos"
-
-        const val DEFAULT_YTDLP_VER = "2026.08.19"
-        const val DEFAULT_UBLOCK_VER = "1.74.0"
-        const val DEFAULT_PUEMOS_VER = "5.5.0"
 
         private const val KEY_YTDLP_VER = "ver_ytdlp"
         private const val KEY_UBLOCK_VER = "ver_ublock"

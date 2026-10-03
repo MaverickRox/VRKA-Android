@@ -7,7 +7,9 @@
 package com.mvrk.vrka.engine
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
+import com.mvrk.vrka.HeaderValidation
 import com.mvrk.vrka.GeckoRuntimeManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +86,7 @@ class FallbackEngine(
     /** Cancel the fallback operation. Thread-safe. */
     fun cancel() {
         cancelled.set(true)
+        cleanup()
     }
 
     /**
@@ -107,6 +110,7 @@ class FallbackEngine(
 
     private suspend fun doExecute(): FallbackResult {
         checkCancelled()
+        val fallbackStartMs = SystemClock.elapsedRealtime()
 
         // Phase 1: Initialize GeckoView and verify extensions via deterministic readiness gate
         transition(EngineDownloadState.BROWSER_STARTING)
@@ -115,7 +119,9 @@ class FallbackEngine(
         // Semantic readiness gate: Fallback must NOT navigate to the target URL until the
         // required uBlock and Media Detector initialization has completed and permissions
         // in private browsing are active.
+        val extensionGateStartMs = SystemClock.elapsedRealtime()
         val extensionsReady = runtimeManager.ensureExtensionsReady(timeoutMs = 15000L)
+        Log.i(TAG, "Fallback extension gate completed in ${SystemClock.elapsedRealtime() - extensionGateStartMs}ms (ready=$extensionsReady)")
         if (!extensionsReady || !runtimeManager.uBlockActive.value) {
             transition(EngineDownloadState.FAILED)
             return FallbackResult.Failed(
@@ -125,6 +131,7 @@ class FallbackEngine(
         checkCancelled()
 
         // Phase 2: Create task-scoped session and navigate
+        val sessionOpenStartMs = SystemClock.elapsedRealtime()
         val geckoSession = withContext(Dispatchers.Main) {
             val newSession = GeckoSession(
                 GeckoSessionSettings.Builder()
@@ -138,6 +145,7 @@ class FallbackEngine(
             _activeSession.value = newSession
             newSession
         }
+        Log.i(TAG, "Fallback GeckoSession opened in ${SystemClock.elapsedRealtime() - sessionOpenStartMs}ms")
         checkCancelled()
 
         transition(EngineDownloadState.BROWSER_WAITING_FOR_MEDIA)
@@ -146,6 +154,7 @@ class FallbackEngine(
         withContext(Dispatchers.Main) {
             geckoSession.loadUri(targetUrl)
         }
+        Log.i(TAG, "Fallback navigation dispatched at +${SystemClock.elapsedRealtime() - fallbackStartMs}ms")
 
         // Phase 3: Bounded observation loop
         val observationStart = System.nanoTime() / 1_000_000_000.0
@@ -176,6 +185,7 @@ class FallbackEngine(
 
             if (firstCandidateSeen == null) {
                 firstCandidateSeen = now
+                Log.i(TAG, "First media candidate observed at +${SystemClock.elapsedRealtime() - fallbackStartMs}ms")
             }
 
             // Desktop parity guard: if the store only contains sidebar live-widget media (numeric stream ID cams),
@@ -202,7 +212,7 @@ class FallbackEngine(
             if (decision.selectedCandidateId != null) {
                 // Clear winner — proceed to handoff
                 Log.i(TAG, "Selected candidate ${decision.selectedCandidateId}: ${decision.explanation}")
-                return attemptHandoff(decision.selectedCandidateId, now)
+                return attemptHandoff(decision.selectedCandidateId, now, fallbackStartMs)
             }
 
             if (decision.waitSeconds > 0 && stabilizationElapsed < config.stabilizationWaitSeconds && elapsed2 < maxWaitSeconds) {
@@ -210,11 +220,12 @@ class FallbackEngine(
                 continue
             }
 
-            // Stabilization window finished — take the best available candidate
-            if (decision.ranked.isNotEmpty()) {
-                val bestId = decision.ranked[0].candidateId
-                Log.i(TAG, "Stabilization window completed (${"%.1f".format(stabilizationElapsed)}s); selecting top ranked candidate $bestId (score ${decision.ranked[0].score})")
-                return attemptHandoff(bestId, now)
+            // Stabilization window finished — take the best available candidate with viable score
+            val viableCandidates = decision.ranked.filter { it.score >= 20.0 }
+            if (viableCandidates.isNotEmpty() && stabilizationElapsed >= config.stabilizationWaitSeconds) {
+                val bestId = viableCandidates[0].candidateId
+                Log.i(TAG, "Stabilization window completed (${"%.1f".format(stabilizationElapsed)}s); selecting top ranked candidate $bestId (score ${viableCandidates[0].score})")
+                return attemptHandoff(bestId, now, fallbackStartMs)
             }
 
             if (elapsed2 > maxWaitSeconds) {
@@ -238,6 +249,7 @@ class FallbackEngine(
     private suspend fun attemptHandoff(
         initialCandidateId: String,
         now: Double,
+        fallbackStartMs: Long,
     ): FallbackResult {
         checkCancelled()
 
@@ -256,11 +268,12 @@ class FallbackEngine(
             val candidate = store.get(candidateId) ?: continue
             store.select(candidateId)
 
+            val candidateHost = runCatching { java.net.URI(candidate.currentUrl).host }.getOrNull().orEmpty()
             Log.i(TAG, """
                 [AUDIT] Candidate Handoff Attempt ${attempt + 1}:
                 - Task ID: $taskId
                 - Candidate ID: $candidateId
-                - URL: ${candidate.currentUrl}
+                - Host: $candidateHost
                 - Kind: ${candidate.kind}
                 - Content Type: ${candidate.contentType}
                 - Dimensions: ${candidate.width ?: "?"}x${candidate.height ?: "?"}
@@ -272,11 +285,13 @@ class FallbackEngine(
 
             transition(EngineDownloadState.HANDOFF_PREPARING)
             val bundle = buildHandoffBundle(candidate)
+            Log.i(TAG, "Browser candidate handoff prepared at +${SystemClock.elapsedRealtime() - fallbackStartMs}ms (origin=${HeaderValidation.originOf(bundle.mediaUrl).orEmpty()})")
 
             transition(EngineDownloadState.HANDOFF_VALIDATING)
 
             // Probe candidate with yt-dlp --simulate (getInfo)
             val probeOk = validateCandidateProbe(bundle)
+            Log.i(TAG, "Browser candidate handoff probe completed at +${SystemClock.elapsedRealtime() - fallbackStartMs}ms (ok=$probeOk)")
             if (probeOk) {
                 store.markHandoff(candidateId, success = true)
                 transition(EngineDownloadState.DOWNLOADER_RESUMED)
@@ -350,7 +365,7 @@ class FallbackEngine(
             com.yausername.youtubedl_android.YoutubeDL.getInstance().getInfo(request)
             true
         } catch (e: Exception) {
-            Log.w(TAG, "Candidate probe failed: ${e.message?.take(120)}")
+            Log.w(TAG, "Candidate probe failed (${e.javaClass.simpleName})")
             false
         }
     }
@@ -363,7 +378,14 @@ class FallbackEngine(
         val ua = if (!candidateUa.isNullOrBlank()) candidateUa else com.mvrk.vrka.DownloadRequestFactory.DESKTOP_USER_AGENT
         val candidateReferer = candidate.requiredHeaders.entries.firstOrNull { it.key.equals("Referer", true) }?.value
         val ref = if (!candidateReferer.isNullOrBlank()) candidateReferer else targetUrl
-        val origin = extractOrigin(targetUrl)
+        val origin = candidate.requiredHeaders.entries.firstOrNull { it.key.equals("Origin", true) }?.value.orEmpty()
+        val withheldHeaderCount = candidate.requiredHeaders.keys.count { name ->
+            !HeaderValidation.isAllowedSessionHeader(name) &&
+                (HeaderValidation.isSensitiveHeader(name) || name.startsWith("x-", ignoreCase = true))
+        }
+        if (withheldHeaderCount > 0) {
+            Log.i(TAG, "Withheld $withheldHeaderCount browser credential/custom header(s) that cannot be safely scoped by yt-dlp")
+        }
 
         return HandoffBundle(
             taskId = taskId,
@@ -373,12 +395,13 @@ class FallbackEngine(
             userAgent = ua,
             referer = ref,
             origin = origin,
-            cookies = emptyList(), // Handled via Cookie header for now
+            cookies = emptyList(), // yt-dlp applies its input-domain scope to a Cookie header.
             headers = buildTransferHeaders(candidate, ua, ref, origin),
             expectedContentTypes = listOf(candidate.contentType),
             observedStatus = 0,
             observedContentType = candidate.responseContentType,
             expectedDurationSeconds = candidate.durationSeconds ?: 0.0,
+            withheldHeaderCount = withheldHeaderCount,
         )
     }
 
@@ -396,10 +419,14 @@ class FallbackEngine(
             put("Referer", referer)
             if (origin.isNotBlank()) put("Origin", origin)
 
-            // Add other essential headers from the observation
+            // Preserve sanitized, observed request headers for this media candidate.
             candidate.requiredHeaders.forEach { (key, value) ->
-                if (key.equals("Cookie", true) || key.equals("Range", true)) {
-                    put(key, value)
+                if (HeaderValidation.isAllowedSessionHeader(key) &&
+                    HeaderValidation.isValidHeaderName(key) &&
+                    HeaderValidation.validateHeaderValue(value) is com.mvrk.vrka.HeaderValidationResult.Valid &&
+                    !key.equals("Range", true)
+                ) {
+                    put(HeaderValidation.canonicalHeaderName(key), value.trim())
                 }
             }
         }
@@ -443,7 +470,7 @@ class FallbackEngine(
                 uri: String
             ): GeckoResult<GeckoSession>? {
                 // Block popups (Desktop: NewWindowRequested.Handled = true — suppress popup without altering main session)
-                Log.d(TAG, "Suppressed popup request for: $uri")
+                Log.d(TAG, "Suppressed popup request for host=${safeHost(uri)}")
                 return GeckoResult.fromValue(null)
             }
 
@@ -452,7 +479,7 @@ class FallbackEngine(
                 uri: String?,
                 error: WebRequestError
             ): GeckoResult<String>? {
-                Log.w(TAG, "Fallback page load error: ${error.code} for $uri")
+                Log.w(TAG, "Fallback page load error: ${error.code}, host=${uri?.let { safeHost(it) }.orEmpty()}")
                 return GeckoResult.fromValue(null)
             }
         }
@@ -530,6 +557,9 @@ class FallbackEngine(
         }
     }
 
+    private fun safeHost(url: String): String =
+        runCatching { java.net.URI(url).host }.getOrNull()?.take(253) ?: "unknown"
+
     private fun transition(target: EngineDownloadState) {
         try {
             stateMachine.transition(target)
@@ -544,18 +574,7 @@ class FallbackEngine(
     }
 
     fun dismiss() {
-        try {
-            _activeSession.value = null
-            val s = session
-            session = null
-            if (s != null) {
-                CoroutineScope(Dispatchers.Main).launch {
-                    try { s.close() } catch (_: Exception) {}
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Dismiss session error for task $taskId: ${e.message}")
-        }
+        cleanup()
     }
 
     fun cleanup() {
@@ -564,9 +583,12 @@ class FallbackEngine(
             val s = session
             session = null
             if (s != null) {
-                // Close on main thread
-                kotlinx.coroutines.runBlocking(Dispatchers.Main) {
+                if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
                     try { s.close() } catch (_: Exception) {}
+                } else {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        try { s.close() } catch (_: Exception) {}
+                    }
                 }
             }
             store.clear()

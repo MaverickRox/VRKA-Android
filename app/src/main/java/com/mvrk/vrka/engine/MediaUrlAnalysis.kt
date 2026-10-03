@@ -37,6 +37,10 @@ private val SEGMENT_SEQUENCE_RE = Regex(
     """[_.-]\d{1,8}_[A-Za-z0-9]+_[A-Za-z0-9]""",
     RegexOption.IGNORE_CASE,
 )
+private val SEGMENT_RANGE_RE = Regex(
+    """(?:^|[/_.-])\d{2,8}[-_]\d{2,8}(?:[_.-]|$)""",
+    RegexOption.IGNORE_CASE,
+)
 
 // Generic master playlist stems
 private val GENERIC_MASTER_STEMS = setOf("master", "playlist", "manifest", "index")
@@ -92,17 +96,27 @@ fun mediaKind(url: String, contentType: String = ""): CandidateKind {
  * Uses suffix matching and regex heuristics.
  */
 fun isSegment(url: String, contentType: String = ""): Boolean {
-    val path = try {
-        URI(url).path?.lowercase() ?: ""
+    val uri = try {
+        URI(url)
     } catch (_: Exception) { return false }
+    val path = uri.path?.lowercase() ?: ""
     val filename = path.substringAfterLast("/")
     val stem = if ("." in filename) filename.substringBeforeLast(".") else filename
+
+    // Standalone manifest paths are playlists, not segments
+    if (path.endsWith(".m3u8") || path.endsWith(".mpd")) return false
+    if (GENERIC_MASTER_STEMS.any { path.contains("/$it/") } &&
+        !SEGMENT_SUFFIXES.any { path.endsWith(it) } &&
+        !SEGMENT_RANGE_RE.containsMatchIn(stem)) {
+        return false
+    }
 
     return SEGMENT_SUFFIXES.any { path.endsWith(it) } ||
             SEGMENT_PATH_RE.containsMatchIn(path) ||
             SEGMENT_CODEC_RE.containsMatchIn(path) ||
             SEGMENT_INIT_RE.containsMatchIn(path) ||
-            SEGMENT_SEQUENCE_RE.containsMatchIn(stem)
+            SEGMENT_SEQUENCE_RE.containsMatchIn(stem) ||
+            SEGMENT_RANGE_RE.containsMatchIn(stem)
 }
 
 /**
@@ -110,12 +124,22 @@ fun isSegment(url: String, contentType: String = ""): Boolean {
  * Preferring the master lets the downloader choose the best available quality instead of a fixed rendition.
  */
 fun isMasterManifest(url: String): Boolean {
-    val path = try {
-        URI(url).path ?: ""
+    val uri = try {
+        URI(url)
     } catch (_: Exception) { return false }
+    val path = uri.path?.lowercase() ?: ""
+    val query = uri.query?.lowercase() ?: ""
+
+    // Child renditions/variants specify explicit rendition/variant parameters
+    if (query.contains("rendition=") || query.contains("variant=")) {
+        return false
+    }
+
     val filename = path.substringAfterLast("/")
-    val stem = if ("." in filename) filename.substringBeforeLast(".").lowercase() else filename.lowercase()
-    return stem in GENERIC_MASTER_STEMS
+    val stem = if ("." in filename) filename.substringBeforeLast(".") else filename
+    return stem in GENERIC_MASTER_STEMS ||
+            GENERIC_MASTER_STEMS.any { path.contains("/$it/") } ||
+            path.endsWith("/master") || path.endsWith("/playlist")
 }
 
 /**

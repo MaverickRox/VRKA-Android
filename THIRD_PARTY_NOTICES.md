@@ -5,7 +5,7 @@ VRKA Android incorporates open-source libraries, engines, and extensions in full
 ---
 
 ### 1. Mozilla GeckoView
-- **Project**: Mozilla GeckoView (`org.mozilla.geckoview:geckoview-arm64-v8a:153.0`)
+- **Project**: Mozilla GeckoView (`org.mozilla.geckoview:geckoview-arm64-v8a:156.0.20260921121718`)
 - **License**: Mozilla Public License 2.0 (MPL 2.0)
 - **Source**: https://hg.mozilla.org/mozilla-central/
 
@@ -15,14 +15,15 @@ VRKA Android incorporates open-source libraries, engines, and extensions in full
 - **License**: GNU General Public License v3.0 (GPLv3)
 - **Source**: https://github.com/gorhill/uBlock
 
-### 3. Puemos HLS Downloader
-- **Project**: HLS Downloader (`puemos/hls-downloader` v5.5.0)
+### 3. Puemos browser extension
+- **Project**: HLS Downloader (`puemos/hls-downloader`; bundled and update-managed extension)
 - **Author**: Puemos
 - **License**: MIT License
 - **Source**: https://github.com/puemos/hls-downloader
+- **Role**: Browser component only. VRKA's media-detector WebExtension performs Browser Fallback discovery; yt-dlp performs the transfer.
 
 ### 4. yt-dlp / youtubedl-android
-- **Project**: yt-dlp & youtubedl-android (`io.github.junkfood02.youtubedl-android:library:0.18.1`)
+- **Project**: yt-dlp & youtubedl-android (`io.github.junkfood02.youtubedl-android:library:0.18.1`; yt-dlp runtime version is reported dynamically)
 - **License**: The Unlicense / Apache-2.0
 - **Source**: https://github.com/yt-dlp/yt-dlp
 

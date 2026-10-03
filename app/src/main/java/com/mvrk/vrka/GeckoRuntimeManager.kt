@@ -2,6 +2,7 @@ package com.mvrk.vrka
 
 import android.content.Context
 import android.util.Log
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +35,9 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
 
     private val _uBlockActive = MutableStateFlow(false)
     val uBlockActive: StateFlow<Boolean> = _uBlockActive.asStateFlow()
+
+    private val _puemosActive = MutableStateFlow(false)
+    val puemosActive: StateFlow<Boolean> = _puemosActive.asStateFlow()
 
     private val _mediaDetectorActive = MutableStateFlow(false)
     val mediaDetectorActive: StateFlow<Boolean> = _mediaDetectorActive.asStateFlow()
@@ -119,10 +123,11 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                 runCatching {
                     withTimeout(timeoutMs) {
                         val controller = runtime.webExtensionController
-                        seedBundledExtensionsIfMissing()
+                        // Fallback needs only uBlock's XPI; Puemos is an independent browser
+                        // extension and must not add first-use copy work to this gate.
+                        seedUblockIfMissing()
                         val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
                         val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
-                        val puemosXpi = java.io.File(xpiDir, "puemos.xpi")
 
                         // 1. Install & Register Media Detector WebExtension (internal bridge)
                         if (!_mediaDetectorActive.value) {
@@ -155,17 +160,6 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                             _uBlockActive.value = true
                         }
 
-                        // 3. Register Puemos WebExtension from intact XPI
-                        if (puemosXpi.exists() && puemosXpi.length() > 0L) {
-                            runCatching {
-                                ensurePromptDelegate(controller)
-                                val puemos = installExtensionInternal(controller, "file://${puemosXpi.absolutePath}", PUEMOS_ID)
-                                if (puemos != null) {
-                                    controller.setAllowedInPrivateBrowsing(puemos, true).awaitResult()
-                                    Log.i(TAG, "Puemos active and allowed in private browsing: ${puemos.id}")
-                                }
-                            }
-                        }
                         true
                     }
                 }.getOrElse { error ->
@@ -264,6 +258,8 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
 
         if (expectedId == UBLOCK_ID) {
             _uBlockActive.value = true
+        } else if (expectedId == PUEMOS_ID) {
+            _puemosActive.value = true
         }
         Log.i(TAG, "WebExtension verified active in GeckoView: $actualId v$actualVersion")
         confirmedExt
@@ -293,7 +289,11 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                     val restored = installExtensionInternal(controller, "file://${targetXpi.absolutePath}", extensionId)
                     if (restored != null) {
                         controller.setAllowedInPrivateBrowsing(restored, true).awaitResult()
-                        if (extensionId == UBLOCK_ID) _uBlockActive.value = true
+                        if (extensionId == UBLOCK_ID) {
+                            _uBlockActive.value = true
+                        } else if (extensionId == PUEMOS_ID) {
+                            _puemosActive.value = true
+                        }
                     }
                 }
             }
@@ -304,26 +304,24 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
     }
 
     fun seedBundledExtensionsIfMissing() {
+        seedBundledExtensionIfMissing("ublock.xpi")
+        seedBundledExtensionIfMissing("puemos.xpi")
+    }
+
+    private fun seedUblockIfMissing() {
+        seedBundledExtensionIfMissing("ublock.xpi")
+    }
+
+    private fun seedBundledExtensionIfMissing(assetName: String) {
         val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
         if (!xpiDir.exists()) xpiDir.mkdirs()
-
-        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
-        if (!ublockXpi.exists() || ublockXpi.length() == 0L) {
+        val targetXpi = java.io.File(xpiDir, assetName)
+        if (!targetXpi.exists() || targetXpi.length() == 0L) {
             runCatching {
-                context.assets.open("extensions/ublock.xpi").use { input ->
-                    ublockXpi.outputStream().use { output -> input.copyTo(output) }
+                context.assets.open("extensions/$assetName").use { input ->
+                    targetXpi.outputStream().use { output -> input.copyTo(output) }
                 }
-                Log.i(TAG, "Seeded bundled ublock.xpi (${ublockXpi.length()} bytes)")
-            }
-        }
-
-        val puemosXpi = java.io.File(xpiDir, "puemos.xpi")
-        if (!puemosXpi.exists() || puemosXpi.length() == 0L) {
-            runCatching {
-                context.assets.open("extensions/puemos.xpi").use { input ->
-                    puemosXpi.outputStream().use { output -> input.copyTo(output) }
-                }
-                Log.i(TAG, "Seeded bundled puemos.xpi (${puemosXpi.length()} bytes)")
+                Log.i(TAG, "Seeded bundled $assetName (${targetXpi.length()} bytes)")
             }
         }
     }

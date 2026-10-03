@@ -38,9 +38,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,17 +53,31 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun HomeScreen(
     settings: AppSettings,
+    repository: SettingsRepository,
     runtime: RuntimeStatus,
     modifier: Modifier = Modifier,
+    initialUrl: String? = null,
+    onInitialUrlConsumed: () -> Unit = {},
     onEnqueue: (DownloadRequest) -> Unit,
     onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var url by remember { mutableStateOf("") }
+    val streamCoordinator = remember { StreamSelectionCoordinator() }
+
+    LaunchedEffect(initialUrl) {
+        if (!initialUrl.isNullOrBlank()) {
+            url = initialUrl
+            onInitialUrlConsumed()
+        }
+    }
+
     var mode by remember { mutableStateOf(settings.defaultMode) }
     var quality by remember { mutableStateOf(settings.defaultQuality) }
     var prefer60Fps by remember { mutableStateOf(false) }
@@ -244,7 +260,10 @@ internal fun HomeScreen(
             VrkaSegmentedControl(
                 items = MediaMode.entries,
                 selectedItem = mode,
-                onItemSelected = { mode = it },
+                onItemSelected = {
+                    mode = it
+                    scope.launch { repository.setDefaults(it, quality, audioFormat, bitrate) }
+                },
                 label = { it.label },
                 isMonospace = true,
                 modifier = Modifier.padding(top = 8.dp),
@@ -276,7 +295,11 @@ internal fun HomeScreen(
                         }
                         VrkaChip(
                             selected = quality == item,
-                            onClick = { quality = item },
+                            onClick = {
+                                quality = item
+                                scope.launch { repository.setDefaults(mode, item, audioFormat, bitrate) }
+                                streamCoordinator.requestQuality(item)
+                            },
                             label = chipLabel,
                             isMonospace = true,
                         )
@@ -297,7 +320,10 @@ internal fun HomeScreen(
                     AudioFormat.entries.forEach { item ->
                         VrkaChip(
                             selected = audioFormat == item,
-                            onClick = { audioFormat = item },
+                            onClick = {
+                                audioFormat = item
+                                scope.launch { repository.setDefaults(mode, quality, item, bitrate) }
+                            },
                             label = item.label.substringBefore(" ("),
                             isMonospace = true,
                         )
@@ -320,7 +346,10 @@ internal fun HomeScreen(
                         listOf(320, 256, 224, 192, 160, 128).forEach { item ->
                             VrkaChip(
                                 selected = bitrate == item,
-                                onClick = { bitrate = item },
+                                onClick = {
+                                    bitrate = item
+                                    scope.launch { repository.setDefaults(mode, quality, audioFormat, item) }
+                                },
                                 label = "$item kbps",
                                 isMonospace = true,
                             )
@@ -461,6 +490,12 @@ internal fun HomeScreen(
                     }
                     OptionToggle("Download subtitles", subtitles) { subtitles = it }
                     if (subtitles) {
+                        Text(
+                            "Subtitle downloads use the normal yt-dlp path. Browser Fallback does not currently fetch subtitles.",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                            color = VrkaTokens.TextTertiary,
+                            modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 6.dp),
+                        )
                         OptionToggle("Include auto-generated captions", automaticCaptions) {
                             automaticCaptions = it
                         }
@@ -701,7 +736,7 @@ internal fun HomeScreen(
                 }
 
                 val customHeadersMap = HeaderValidation.parseHeaderPairs(customHeaders)
-                val req = DownloadRequest(
+                val rawReq = DownloadRequest(
                     url = url,
                     mode = mode,
                     quality = quality,
@@ -725,6 +760,7 @@ internal fun HomeScreen(
                     origin = origin.trim(),
                     customHeaders = customHeadersMap,
                 )
+                val req = streamCoordinator.commit(rawReq)
                 val isLocationValid = OutputPublisher.isTreePermissionValid(context, settings.outputTreeUri)
                 val needsLocationPrompt = !settings.isDownloadLocationConfigured ||
                     settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME ||

@@ -1,6 +1,7 @@
 package com.mvrk.vrka
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -37,6 +38,10 @@ class JobStorePersistenceTest {
         trimStart = "00:00:10",
         trimEnd = "00:01:00",
         customArguments = listOf("--no-cache-dir", "--geo-bypass"),
+        commandTemplateId = "template-1",
+        commandTemplateName = "My safe template",
+        commandTemplateArguments = listOf("--limit-rate", "2M"),
+        h264CompatibilityMode = true,
     )
 
     @Test
@@ -81,6 +86,10 @@ class JobStorePersistenceTest {
             assertEquals(original.request.sponsorBlock, loaded.request.sponsorBlock)
             assertEquals(original.request.trimStart, loaded.request.trimStart)
             assertEquals(original.request.customArguments, loaded.request.customArguments)
+            assertEquals(original.request.commandTemplateId, loaded.request.commandTemplateId)
+            assertEquals(original.request.commandTemplateName, loaded.request.commandTemplateName)
+            assertEquals(original.request.commandTemplateArguments, loaded.request.commandTemplateArguments)
+            assertEquals(original.request.h264CompatibilityMode, loaded.request.h264CompatibilityMode)
             assertEquals(JobState.DONE, loaded.state)
             assertEquals(original.title, loaded.title)
             assertEquals(original.progress, loaded.progress, 0.001f)
@@ -123,6 +132,28 @@ class JobStorePersistenceTest {
                 job.error.contains("interrupted when Android stopped VRKA") && job.error.contains("Tap retry"),
             )
         }
+    }
+
+    @Test
+    fun sensitiveCustomHeadersAreNotWrittenOrRestoredFromJobHistory() {
+        val file = File(tempFolder.root, "sensitive_jobs.json")
+        val store = JobStore(file)
+        val request = sampleRequest().copy(
+            customHeaders = mapOf(
+                "Cookie" to "session=private-cookie",
+                "Authorization" to "Bearer private-token",
+                "X-Trace-Id" to "trace-123",
+            ),
+        )
+        store.save(listOf(DownloadJob(id = "sensitive-job", request = request)))
+
+        val persisted = file.readText()
+        assertFalse(persisted.contains("private-cookie"))
+        assertFalse(persisted.contains("private-token"))
+        assertTrue(persisted.contains("trace-123"))
+        val restored = store.load().single().request.customHeaders
+        assertFalse(restored.keys.any(HeaderValidation::isSensitiveHeader))
+        assertEquals("trace-123", restored["X-Trace-Id"])
     }
 
     @Test

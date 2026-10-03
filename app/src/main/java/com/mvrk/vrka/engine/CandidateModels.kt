@@ -124,7 +124,8 @@ data class RankingConfig(
     val sustainedCap: Double = 55.0,
     val coherentManifest: Double = 34.0,
     val manifestKind: Double = 14.0,
-    val masterManifest: Double = 40.0,
+    val masterManifest: Double = 60.0,
+    val childPlaylist: Double = 15.0,
     val directKind: Double = 10.0,
     val stableSurvival: Double = 22.0,
     val sourceReplacement: Double = 30.0,
@@ -135,6 +136,7 @@ data class RankingConfig(
     val replaced: Double = -145.0,
     val repeatedLoop: Double = -22.0,
     val nuisance: Double = -5.0,
+    val segmentPenalty: Double = -500.0,
     val expired: Double = -1000.0,
     val failedHandoff: Double = -240.0,
     val minCandidateScore: Double = 20.0,
@@ -181,6 +183,7 @@ data class HandoffBundle(
     val observedStatus: Int = 0,
     val observedContentType: String = "",
     val expectedDurationSeconds: Double = 0.0,
+    val withheldHeaderCount: Int = 0,
 ) {
     /**
      * Return metadata safe for logging. Never includes secret fields.
@@ -197,7 +200,8 @@ data class HandoffBundle(
             "has_user_agent" to userAgent.isNotEmpty(),
             "has_referer" to referer.isNotEmpty(),
             "has_origin" to origin.isNotEmpty(),
-            "cookie_count" to cookies.size,
+            "has_cookie" to (cookies.isNotEmpty() || headers.keys.any { it.equals("Cookie", ignoreCase = true) }),
+            "withheld_header_count" to withheldHeaderCount,
             "header_names" to headers.keys.map { it.lowercase() }.sorted(),
         )
     }

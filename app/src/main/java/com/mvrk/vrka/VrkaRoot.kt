@@ -23,6 +23,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -68,17 +70,25 @@ import kotlinx.coroutines.launch
 fun VrkaRoot(
     manager: VrkaDownloadManager,
     openQueueRequests: StateFlow<Long>,
+    sharedUrl: StateFlow<String?> = remember { kotlinx.coroutines.flow.MutableStateFlow(null) },
 ) {
     val context = LocalContext.current
     val jobs by manager.jobs.collectAsStateWithLifecycle()
     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
+    val incomingUrl by sharedUrl.collectAsStateWithLifecycle()
+    var sharedUrlForHome by remember { mutableStateOf<String?>(null) }
     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
     val diagnostics by manager.diagnostics.collectAsStateWithLifecycle()
     val appUpdateCheckState by manager.appUpdateManager.checkState.collectAsStateWithLifecycle()
     val appUpdateDownloadState by manager.appUpdateManager.downloadState.collectAsStateWithLifecycle()
     val startupUpdateDialogData by manager.componentUpdateManager.startupUpdateDialogData.collectAsStateWithLifecycle()
-    var destination by remember { mutableStateOf(VrkaDestination.DOWNLOAD) }
+    val destinations = remember { VrkaDestination.entries }
+    val pagerState = rememberPagerState(
+        initialPage = 0,
+        pageCount = { destinations.size },
+    )
+    val destination = destinations[pagerState.currentPage]
     var pendingRequest by remember { mutableStateOf<DownloadRequest?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -86,6 +96,13 @@ fun VrkaRoot(
     LaunchedEffect(Unit) {
         manager.appUpdateManager.checkForUpdate(isManual = false)
         manager.componentUpdateManager.performStartupCheckIfNeeded(settings.updatePreference)
+    }
+
+    LaunchedEffect(incomingUrl) {
+        if (!incomingUrl.isNullOrBlank()) {
+            sharedUrlForHome = incomingUrl
+            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.DOWNLOAD))
+        }
     }
 
     val notificationPermission = rememberLauncherForActivityResult(
@@ -107,7 +124,9 @@ fun VrkaRoot(
         } else {
             manager.enqueue(request)
         }
-        destination = VrkaDestination.QUEUE
+        scope.launch {
+            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
+        }
     }
 
     val activeJob = jobs.firstOrNull { !it.state.isTerminal }
@@ -193,18 +212,23 @@ fun VrkaRoot(
                         }
                     }
 
-                    // Clean single-destination composition: Zero background screen measurement or overdraw
-                    Box(
+                    // Responsive swipeable pager: synchronized with bottom nav and indicator puck
+                    HorizontalPager(
+                        state = pagerState,
                         modifier = Modifier
                             .fillMaxSize()
                             .nestedScroll(scrollBackdropConnection)
                             .layerBackdrop(screenBackdrop),
-                    ) {
-                        when (destination) {
+                        beyondViewportPageCount = 1,
+                    ) { page ->
+                        when (destinations[page]) {
                             VrkaDestination.DOWNLOAD -> {
                                 HomeScreen(
                                     settings = settings,
+                                    repository = manager.settingsRepository,
                                     runtime = runtime,
+                                    initialUrl = sharedUrlForHome,
+                                    onInitialUrlConsumed = { sharedUrlForHome = null },
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -244,6 +268,11 @@ fun VrkaRoot(
                                     onOpen = manager::openOutput,
                                     onShare = manager::shareOutput,
                                     onDelete = manager::deleteJob,
+                                    onDeleteRecord = manager::deleteHistoryRecord,
+                                    onDeleteWithFile = { scope.launch { manager.deleteJobWithFiles(it) } },
+                                    onDeleteRecords = manager::deleteHistoryRecords,
+                                    onDeleteJobsWithFiles = { scope.launch { manager.deleteJobsWithFiles(it) } },
+                                    onClearAll = { deleteFiles -> scope.launch { manager.clearAllHistory(deleteFiles) } },
                                     onClear = manager::clearFinished,
                                 )
                             }
@@ -267,7 +296,7 @@ fun VrkaRoot(
                     hostState = snackbar,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 104.dp),
+                        .padding(bottom = 96.dp),
                 )
 
                 Column(
@@ -275,7 +304,7 @@ fun VrkaRoot(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(bottom = 20.dp),
+                        .padding(bottom = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     AnimatedVisibility(
@@ -295,14 +324,23 @@ fun VrkaRoot(
                         if (activeJob != null) {
                             ActiveDownloadStrip(
                                 job = activeJob,
-                                onClick = { destination = VrkaDestination.QUEUE },
+                                onClick = {
+                                    scope.launch {
+                                        pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
+                                    }
+                                },
                             )
                         }
                     }
 
                     VrkaFloatingNavBar(
                         selectedDestination = destination,
-                        onDestinationSelected = { destination = it },
+                        pagerPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
+                        onDestinationSelected = { dest ->
+                            scope.launch {
+                                pagerState.animateScrollToPage(destinations.indexOf(dest))
+                            }
+                        },
                     )
                 }
 
@@ -345,7 +383,9 @@ fun VrkaRoot(
     }
 
     LaunchedEffect(openQueueToken) {
-        if (openQueueToken > 0L) destination = VrkaDestination.QUEUE
+        if (openQueueToken > 0L) {
+            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
+        }
     }
 }
 
@@ -370,20 +410,24 @@ private fun FallbackInteractionOverlay(
                     .fillMaxWidth()
                     .statusBarsPadding()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Row(
+                            modifier = Modifier.weight(1f, fill = false),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Surface(
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
                                 color = VrkaWarning.copy(alpha = 0.2f),
                             ) {
                                 Text(
@@ -391,56 +435,63 @@ private fun FallbackInteractionOverlay(
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     color = VrkaWarning,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                                 )
                             }
                             Text(
-                                fallbackState.job.title.ifBlank {
+                                text = fallbackState.job.title.ifBlank {
                                     runCatching { Uri.parse(fallbackState.engine.targetUrl).host }.getOrNull().orEmpty()
                                 },
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                 maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         }
-                        Text(
-                            when {
-                                candidateCount > 0 -> "Capturing media ($candidateCount stream(s) observed)"
-                                else -> "Select server / Press Play to initiate media stream"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
+
+                        Spacer(Modifier.width(8.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                    horizontal = 12.dp,
+                                    vertical = 4.dp,
+                                ),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                modifier = Modifier.height(34.dp),
+                            ) {
+                                Text("Minimize", style = MaterialTheme.typography.labelMedium)
+                            }
+                            Button(
+                                onClick = onCancel,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                    horizontal = 12.dp,
+                                    vertical = 4.dp,
+                                ),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                modifier = Modifier.height(34.dp),
+                            ) {
+                                Text("Cancel", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
                     }
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                horizontal = 12.dp,
-                                vertical = 4.dp
-                            )
-                        ) {
-                            Text("Minimize", style = MaterialTheme.typography.labelMedium)
-                        }
-                        Button(
-                            onClick = onCancel,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                horizontal = 12.dp,
-                                vertical = 4.dp
-                            )
-                        ) {
-                            Text("Cancel", style = MaterialTheme.typography.labelMedium)
-                        }
+                    val statusMessage = when {
+                        candidateCount > 0 -> "Capturing media ($candidateCount stream(s) observed)"
+                        else -> "Select server / Press Play to initiate media stream"
                     }
+                    Text(
+                        text = statusMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+                    )
                 }
             }
 

@@ -110,6 +110,8 @@ class HeaderValidationTest {
                 "USER-AGENT" to "ResolvedUA",
                 "Cookie" to "session=secret123",
             ),
+            resolvedMediaUrl = "https://example.com/video",
+            resolvedHeadersOrigin = "https://example.com/video",
         )
 
         val effective = HeaderValidation.resolveEffectiveHeaders(request)
@@ -124,6 +126,31 @@ class HeaderValidationTest {
 
         // Custom header is preserved
         assertEquals("CustomValue1", effective["X-Custom-1"])
+    }
+
+    @Test
+    fun capturedHeadersRequireMatchingOriginAndOnlyPassRedirectSafeSessionHeaders() {
+        val request = DownloadRequest(
+            url = "https://page.example/watch",
+            resolvedMediaUrl = "https://cdn.example/video.m3u8?sig=1",
+            resolvedHeadersOrigin = "https://cdn.example/video.m3u8?sig=1",
+            resolvedHeaders = mapOf(
+                "Authorization" to "Bearer token",
+                "X-Custom-Session" to "opaque",
+                "Cookie" to "sid=abc",
+            ),
+        )
+        val resolved = HeaderValidation.resolveEffectiveHeaders(request)
+        assertFalse(resolved.containsKey("Authorization"))
+        assertFalse(resolved.containsKey("X-Custom-Session"))
+        assertEquals("sid=abc", resolved["Cookie"])
+
+        val mismatched = HeaderValidation.resolveEffectiveHeaders(
+            request.copy(resolvedHeadersOrigin = "https://another.example/video"),
+        )
+        assertFalse(mismatched.containsKey("Authorization"))
+        assertFalse(mismatched.containsKey("X-Custom-Session"))
+        assertFalse(mismatched.containsKey("Cookie"))
     }
 
     @Test

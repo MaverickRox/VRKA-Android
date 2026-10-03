@@ -96,12 +96,17 @@ data class DownloadRequest(
     val trimStart: String = "",
     val trimEnd: String = "",
     val customArguments: List<String> = emptyList(),
+    val commandTemplateId: String? = null,
+    val commandTemplateName: String = "",
+    val commandTemplateArguments: List<String> = emptyList(),
+    val h264CompatibilityMode: Boolean = false,
     val referer: String = "",
     val origin: String = "",
     val customHeaders: Map<String, String> = emptyMap(),
     val destinationTreeUri: String? = null,
     val resolvedMediaUrl: String? = null,
     val resolvedHeaders: Map<String, String> = emptyMap(),
+    val resolvedHeadersOrigin: String = "",
 )
 
 @Immutable
@@ -119,7 +124,23 @@ data class DownloadJob(
     val outputUris: List<String> = emptyList(),
     val error: String = "",
     val attempt: Int = 1,
+    val actualResolution: String? = null,
+    val subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus = com.mvrk.vrka.subtitle.SubtitleStatus.NONE,
 )
+
+enum class StreamSelectionState {
+    IDLE,
+    RESOLVING,
+    RESOLVED,
+    AWAITING_CONFIRMATION,
+    QUEUED,
+    STARTING,
+    DOWNLOADING,
+    MERGING,
+    COMPLETED,
+    FAILED,
+    CANCELLED;
+}
 
 @Immutable
 data class RuntimeStatus(

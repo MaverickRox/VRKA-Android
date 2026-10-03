@@ -25,6 +25,30 @@ class FailureClassifierTest {
     }
 
     @Test
+    fun `does not classify benign yt-dlp impersonation extractor warning as impersonation error`() {
+        val output = """
+            WARNING: The extractor specified to use impersonation for this download, but no impersonate target is available. If you encounter errors, then see  https://github.com/yt-dlp/yt-dlp#impersonation  for information on installing the required dependencies
+            ERROR: [youtube] NdvqHc561E0: This video is unavailable
+        """.trimIndent()
+        assertEquals(FailureCategory.UNSUPPORTED, classifyDownloadError(output))
+        val (category, guidance) = formatDownloadError(output)
+        assertEquals(FailureCategory.UNSUPPORTED, category)
+        assertEquals("This video is unavailable or has been removed.", guidance)
+    }
+
+    @Test
+    fun `does not classify subtitle 429 with impersonation warning as impersonation error`() {
+        val output = """
+            WARNING: The extractor specified to use impersonation for this download, but no impersonate target is available. If you encounter errors, then see  https://github.com/yt-dlp/yt-dlp#impersonation  for information on installing the required dependencies
+            ERROR: Unable to download video subtitles for 'en-de': HTTP Error 429: Too Many Requests
+        """.trimIndent()
+        assertEquals(FailureCategory.HTTP, classifyDownloadError(output))
+        val (category, guidance) = formatDownloadError(output)
+        assertEquals(FailureCategory.HTTP, category)
+        assertEquals("The site rate-limited or rejected the subtitle request (HTTP 429 Too Many Requests). Try downloading without subtitles.", guidance)
+    }
+
+    @Test
     fun `classifies Cloudflare challenges`() {
         assertEquals(FailureCategory.CLOUDFLARE, classifyDownloadError("Cloudflare challenge detected"))
         assertEquals(FailureCategory.CLOUDFLARE, classifyDownloadError("Just a moment..."))
@@ -122,10 +146,12 @@ class FailureClassifierTest {
         )
         for (url in ytUrls) {
             assertTrue("Should be recognized as yt-dlp native target: $url", isYtdlpNativeTarget(url))
-            // Auth/bot challenges and HTTP restrictions are browser-recoverable per Phase 7
+            // Bot/auth challenges (cookies, cloudflare) are browser-recoverable
             assertTrue(isFailureBrowserRecoverable(FailureCategory.COOKIES, targetUrl = url))
             assertTrue(isFailureBrowserRecoverable(FailureCategory.CLOUDFLARE, targetUrl = url))
-            assertTrue(isFailureBrowserRecoverable(FailureCategory.HTTP, targetUrl = url))
+            // HTTP errors and generic player parse errors on native yt-dlp targets must NOT trigger browser fallback
+            assertFalse(isFailureBrowserRecoverable(FailureCategory.HTTP, targetUrl = url))
+            assertFalse(isFailureBrowserRecoverable(FailureCategory.BROWSER_RECOVERABLE, targetUrl = url))
             // Other failures stay direct / terminal
             assertFalse(isFailureBrowserRecoverable(FailureCategory.UNSUPPORTED, targetUrl = url))
             assertFalse(isFailureBrowserRecoverable(FailureCategory.TIMEOUT, targetUrl = url))
@@ -414,5 +440,24 @@ class FailureClassifierTest {
             hasTransferStarted = true,
         )
         assertFalse("Started transfer cannot trigger browser fallback again", failureAfterTransferStarted)
+    }
+
+    @Test
+    fun `Case 17 - Subtitle failures must NEVER trigger browser fallback`() {
+        val subError = "ERROR: Unable to download video subtitles for 'en-de': HTTP Error 429: Too Many Requests"
+        val (category, recoverable) = classifyAndCheckRecoverable(
+            errorMessage = subError,
+            targetUrl = "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+        )
+        assertEquals(FailureCategory.HTTP, category)
+        assertFalse("Subtitle 429 error on YouTube must not trigger browser fallback", recoverable)
+
+        val nonYtSubError = "ERROR: unable to download video subtitles: HTTP Error 403: Forbidden"
+        val (nonYtCat, nonYtRec) = classifyAndCheckRecoverable(
+            errorMessage = nonYtSubError,
+            targetUrl = "https://vimeo.com/123456",
+        )
+        assertEquals(FailureCategory.HTTP, nonYtCat)
+        assertFalse("Subtitle errors on any site must not trigger browser fallback", nonYtRec)
     }
 }

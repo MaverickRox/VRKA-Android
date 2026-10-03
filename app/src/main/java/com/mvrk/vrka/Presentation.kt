@@ -9,6 +9,24 @@ internal fun requestSummary(request: DownloadRequest): String = when (request.mo
     }
 }
 
+internal fun jobMediaSummary(job: DownloadJob): String = when (job.request.mode) {
+    MediaMode.VIDEO -> {
+        val actual = job.actualResolution
+        if (!actual.isNullOrBlank()) {
+            if (job.request.quality == VideoQuality.BEST) "Video • $actual (Best available)"
+            else if (job.request.quality.label.startsWith(actual)) "Video • $actual"
+            else "Video • $actual (requested: ${job.request.quality.label})"
+        } else {
+            "Video • ${job.request.quality.label}"
+        }
+    }
+    MediaMode.AUDIO -> when (job.request.audioFormat) {
+        AudioFormat.MP3 -> "Audio • MP3 (${job.request.mp3Bitrate} kbps)"
+        AudioFormat.OPUS -> "Audio • Opus (Native)"
+        AudioFormat.WAV -> "Audio • WAV (PCM)"
+    }
+}
+
 internal fun jobStatusLabel(job: DownloadJob): String = when {
     job.state == JobState.PREPARING && job.detail.contains("runtime", true) -> "Analysing"
     job.state == JobState.POSTPROCESSING && job.detail.contains("Publishing", true) -> "Publishing"

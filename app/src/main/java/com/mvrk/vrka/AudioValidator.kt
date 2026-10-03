@@ -22,12 +22,13 @@ internal object AudioValidator {
         format: AudioFormat,
         expectedBitrateKbps: Int?,
         context: Context,
+        onProcessStarted: (Process) -> Unit = {},
     ): AudioStreamInfo {
         require(file.isFile && file.length() > 0) {
             "Audio output file is missing or empty: ${file.name}"
         }
 
-        val info = probeWithFfprobe(file, context) ?: probeWithMediaMetadataRetriever(file)
+        val info = probeWithFfprobe(file, context, onProcessStarted) ?: probeWithMediaMetadataRetriever(file)
 
         check(info.hasAudio) {
             "Audio validation failed: Output file ${file.name} does not contain a recognized audio stream."
@@ -81,12 +82,19 @@ internal object AudioValidator {
         return info
     }
 
-    private fun probeWithFfprobe(file: File, context: Context): AudioStreamInfo? {
+    private fun probeWithFfprobe(
+        file: File,
+        context: Context,
+        onProcessStarted: (Process) -> Unit,
+    ): AudioStreamInfo? {
         return runCatching {
             val nativeDir = context.applicationInfo.nativeLibraryDir
             val probeBin = File(nativeDir, "libffprobe.so")
             if (!probeBin.exists() || !probeBin.canExecute()) return null
             val ffmpegUsrLib = File(context.noBackupFilesDir, "youtubedl-android/packages/ffmpeg/usr/lib")
+            val pythonUsrLib = File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib")
+            com.mvrk.vrka.engine.MediaAssembly.fixUsrLibSymlinks(ffmpegUsrLib)
+            com.mvrk.vrka.engine.MediaAssembly.fixUsrLibSymlinks(pythonUsrLib)
 
             val pb = ProcessBuilder(
                 probeBin.absolutePath,
@@ -96,12 +104,22 @@ internal object AudioValidator {
                 "-of", "default=noprint_wrappers=1",
                 file.absolutePath,
             )
-            val ldPath = if (ffmpegUsrLib.exists()) "${nativeDir}:${ffmpegUsrLib.absolutePath}" else nativeDir
+            val ldPath = buildList {
+                if (ffmpegUsrLib.exists()) add(ffmpegUsrLib.absolutePath)
+                if (pythonUsrLib.exists()) add(pythonUsrLib.absolutePath)
+                add(nativeDir)
+            }.joinToString(":")
             pb.environment()["LD_LIBRARY_PATH"] = ldPath
+            pb.redirectErrorStream(true)
 
             val process = pb.start()
-            val output = process.inputStream.bufferedReader().readText()
-            process.waitFor()
+            onProcessStarted(process)
+            val output = com.mvrk.vrka.engine.MediaAssembly.readProcessOutput(
+                process,
+                timeoutMs = 10_000L,
+                maxChars = 16_384,
+            ) ?: return null
+            if (process.exitValue() != 0) return null
 
             if (output.isBlank()) return null
             val map = output.lines()

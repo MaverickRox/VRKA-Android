@@ -12,14 +12,17 @@ internal object HeaderValidation {
     private val HEADER_NAME_REGEX = Regex("""^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$""")
 
     private val ALLOWED_SESSION_HEADERS = setOf(
-        "authorization",
         "cookie",
         "origin",
         "referer",
         "user-agent",
-        "x-video-expiration",
-        "x-video-ip",
-        "x-video-token",
+        "accept",
+        "accept-language",
+        "x-requested-with",
+    )
+    private val FORBIDDEN_CAPTURED_HEADERS = setOf(
+        "host", "content-length", "connection", "proxy-authorization", "proxy-connection",
+        "set-cookie", "transfer-encoding", "upgrade",
     )
 
     private val SENSITIVE_HEADER_NAMES = setOf(
@@ -88,6 +91,21 @@ internal object HeaderValidation {
         return SENSITIVE_KEYWORD_PATTERNS.any { lower.contains(it) }
     }
 
+    fun isAllowedSessionHeader(name: String): Boolean {
+        val lower = name.trim().lowercase(Locale.ROOT)
+        return lower in ALLOWED_SESSION_HEADERS && lower !in FORBIDDEN_CAPTURED_HEADERS
+    }
+
+    fun originOf(url: String): String? = runCatching {
+        val uri = java.net.URI(url)
+        val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return@runCatching null
+        if (scheme !in setOf("http", "https") || uri.rawUserInfo != null) return@runCatching null
+        val host = uri.host?.lowercase(Locale.ROOT) ?: return@runCatching null
+        if (host.isBlank() || (uri.port != -1 && uri.port !in 1..65535)) return@runCatching null
+        val port = if (uri.port < 0) if (scheme == "https") 443 else 80 else uri.port
+        "$scheme://$host:$port"
+    }.getOrNull()
+
     fun redactValueIfSensitive(headerName: String, value: String): String =
         if (isSensitiveHeader(headerName)) "[REDACTED]" else value
 
@@ -120,7 +138,10 @@ internal object HeaderValidation {
 
         // 1. User custom headers (arbitrary RFC 7230 headers)
         request.customHeaders.forEach { (name, value) ->
-            if (validateHeaderName(name) is HeaderValidationResult.Valid &&
+            // yt-dlp's global custom headers can reach redirected and manifest-child requests.
+            // Cookie has explicit domain scoping in yt-dlp; other credential-like headers do not.
+            if ((!isSensitiveHeader(name) || name.equals("Cookie", ignoreCase = true)) &&
+                validateHeaderName(name) is HeaderValidationResult.Valid &&
                 validateHeaderValue(value) is HeaderValidationResult.Valid
             ) {
                 result[canonicalHeaderName(name.trim())] = value.trim()
@@ -138,10 +159,13 @@ internal object HeaderValidation {
         }
 
         // 4. Resolved session headers from browser fallback (allowed session headers only)
-        request.resolvedHeaders.forEach { (name, value) ->
+        val browserContextMatches = request.resolvedHeadersOrigin.isNotBlank() &&
+            originOf(request.resolvedHeadersOrigin) != null &&
+            originOf(request.resolvedHeadersOrigin) == originOf(request.resolvedMediaUrl ?: request.url)
+        if (browserContextMatches) request.resolvedHeaders.forEach { (name, value) ->
             val trimmedName = name.trim()
             val lowerName = trimmedName.lowercase(Locale.ROOT)
-            if (lowerName in ALLOWED_SESSION_HEADERS &&
+            if (isAllowedSessionHeader(lowerName) &&
                 validateHeaderName(trimmedName) is HeaderValidationResult.Valid &&
                 validateHeaderValue(value) is HeaderValidationResult.Valid
             ) {
@@ -197,5 +221,14 @@ internal object HeaderValidation {
         }
 
         return result
+    }
+
+    /** Binds credentials to the exact host on which they were observed. */
+    fun bindHeadersToHost(headers: Map<String, String>, targetUrl: String, contextUrl: String?): Map<String, String> {
+        if (contextUrl.isNullOrBlank()) return headers.filterNot { (name, _) -> isSensitiveHeader(name) }
+        val targetOrigin = originOf(targetUrl)
+        val contextOrigin = originOf(contextUrl)
+        return if (targetOrigin != null && targetOrigin == contextOrigin) headers else
+            headers.filterNot { (name, _) -> isSensitiveHeader(name) }
     }
 }

@@ -9,21 +9,36 @@ import com.mvrk.vrka.engine.*
 import com.mvrk.vrka.update.AppUpdateManager
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+
+data class HistoryDeletionResult(
+    val deletedRecordsCount: Int,
+    val deletedFilesCount: Int,
+    val failedFilesCount: Int = 0,
+)
 
 data class ActiveFallbackState(
     val jobId: String,
@@ -44,17 +59,28 @@ class VrkaDownloadManager(
     val settingsRepository: SettingsRepository,
     private val scope: CoroutineScope,
 ) {
-    private val queue = Channel<String>(Channel.UNLIMITED)
+    private val pendingQueue = ConcurrentLinkedQueue<String>()
+    private val activeRunningJobs = ConcurrentHashMap<String, Job>()
+    private val schedulerTrigger = Channel<Unit>(Channel.CONFLATED)
+    private val schedulerMutex = Mutex()
+    // GeckoRuntimeManager owns one runtime-wide media bridge. Keep fallback discovery
+    // sessions serial so two concurrent fallback jobs cannot clear or consume each
+    // other's candidate stream.
+    private val browserFallbackMutex = Mutex()
     private val persistRequests = Channel<Unit>(Channel.CONFLATED)
     private val cancelled = ConcurrentHashMap.newKeySet<String>()
     private val activeFallbackEngines = ConcurrentHashMap<String, FallbackEngine>()
+    private val activeEngineTokens = ConcurrentHashMap<String, EngineCancellationToken>()
+    private val activeMediaProcesses = ConcurrentHashMap<String, Process>()
     private val initialized = AtomicBoolean(false)
     private val store = JobStore(context)
     private val publisher = OutputPublisher(context, settingsRepository)
     private val stagingRoot by lazy { File(context.getExternalFilesDir(null), "staging") }
     private val speedPattern = Regex("""\bat\s+([^\s]+/s)""", RegexOption.IGNORE_CASE)
 
-    private val _jobs = MutableStateFlow<List<DownloadJob>>(emptyList())
+    private val _jobs = MutableStateFlow<List<DownloadJob>>(
+        runCatching { store.load().sortedByDescending(DownloadJob::createdAt) }.getOrDefault(emptyList())
+    )
     val jobs: StateFlow<List<DownloadJob>> = _jobs.asStateFlow()
 
     private val _activeFallback = MutableStateFlow<ActiveFallbackState?>(null)
@@ -68,6 +94,7 @@ class VrkaDownloadManager(
 
     val appUpdateManager = AppUpdateManager.getInstance(context, settingsRepository)
     val componentUpdateManager = ComponentUpdateManager.getInstance(context)
+    val subtitleManager = com.mvrk.vrka.subtitle.VrkaSubtitleManager(context)
 
     fun clearDiagnostics() {
         scope.launch(Dispatchers.IO) {
@@ -88,22 +115,87 @@ class VrkaDownloadManager(
 
     init {
         scope.launch(Dispatchers.IO) {
-            _jobs.value = store.load().sortedByDescending(DownloadJob::createdAt)
+            val initial = runCatching { store.load().sortedByDescending(DownloadJob::createdAt) }.getOrDefault(emptyList())
+            synchronized(_jobs) {
+                val existingIds = _jobs.value.map { it.id }.toSet()
+                val missing = initial.filterNot { it.id in existingIds }
+                if (missing.isNotEmpty()) {
+                    _jobs.value = (_jobs.value + missing).sortedByDescending(DownloadJob::createdAt)
+                }
+            }
             for (ignored in persistRequests) {
                 store.save(_jobs.value)
             }
         }
         scope.launch(Dispatchers.IO) {
-            for (jobId in queue) process(jobId)
+            for (ignored in schedulerTrigger) {
+                pumpQueue()
+            }
+        }
+        scope.launch(Dispatchers.IO) {
+            settingsRepository.settings
+                .map { it.concurrentDownloadsEnabled to it.maxConcurrentDownloads }
+                .distinctUntilChanged()
+                .collect {
+                    triggerScheduler()
+                }
+        }
+    }
+
+    private fun triggerScheduler() {
+        schedulerTrigger.trySend(Unit)
+    }
+
+    private suspend fun pumpQueue() {
+        schedulerMutex.withLock {
+            val settings = settingsRepository.settings.value
+            val maxConcurrent = if (settings.concurrentDownloadsEnabled) {
+                settings.maxConcurrentDownloads.coerceIn(2, 4)
+            } else {
+                1
+            }
+            while (activeRunningJobs.size < maxConcurrent) {
+                val nextJobId = pendingQueue.poll() ?: break
+                if (isCancelled(nextJobId)) continue
+                val job = current(nextJobId)
+                if (job == null || job.state.isTerminal) continue
+                if (activeRunningJobs.containsKey(nextJobId)) continue
+
+                val runningJob = scope.launch(Dispatchers.IO + CoroutineExceptionHandler { _, t ->
+                    Log.e("VRKA", "Unhandled exception in background download job $nextJobId: ${safeError(t)}")
+                }) {
+                    try {
+                        process(nextJobId)
+                    } catch (t: Throwable) {
+                        Log.e("VRKA", "Job $nextJobId failed: ${safeError(t)}")
+                    } finally {
+                        activeRunningJobs.remove(nextJobId)
+                        triggerScheduler()
+                    }
+                }
+                activeRunningJobs[nextJobId] = runningJob
+            }
         }
     }
 
     fun enqueue(request: DownloadRequest): String {
         require(isHttpUrl(request.url)) { "Enter a valid http or https URL." }
+        val settings = settingsRepository.settings.value
+        val selectedTemplate = if (settings.customCommandMode) {
+            settings.customCommandTemplates.firstOrNull { it.id == settings.selectedCustomCommandTemplateId }
+                ?: error("Select a valid yt-dlp command template in Settings.")
+        } else null
+        val queuedRequest = request.copy(
+            h264CompatibilityMode = settings.h264CompatibilityMode,
+            commandTemplateId = selectedTemplate?.id,
+            commandTemplateName = selectedTemplate?.name.orEmpty(),
+            commandTemplateArguments = selectedTemplate?.arguments.orEmpty(),
+        )
         val id = UUID.randomUUID().toString()
-        val job = DownloadJob(id = id, request = request)
+        val job = DownloadJob(id = id, request = queuedRequest)
         mutate(persist = true) { listOf(job) + it }
-        queue.trySend(id)
+        pendingQueue.add(id)
+        triggerScheduler()
         return id
     }
 
@@ -123,7 +215,8 @@ class VrkaDownloadManager(
             attempt = previous.attempt + 1,
         )
         mutate(persist = true) { listOf(replacement) + it }
-        queue.trySend(id)
+        pendingQueue.add(id)
+        triggerScheduler()
         return id
     }
 
@@ -131,11 +224,22 @@ class VrkaDownloadManager(
         val job = _jobs.value.firstOrNull { it.id == jobId } ?: return
         if (job.state.isTerminal) return
         cancelled += jobId
-        activeFallbackEngines.remove(jobId)?.cancel()
+        pendingQueue.remove(jobId)
+        activeRunningJobs.remove(jobId)?.cancel()
+        runCatching { activeFallbackEngines.remove(jobId)?.apply { cancel(); cleanup() } }
+        runCatching { activeEngineTokens.remove(jobId)?.cancel() }
         if (_activeFallback.value?.jobId == jobId) {
             _activeFallback.value = null
         }
-        YoutubeDL.getInstance().destroyProcessById(jobId)
+        runCatching { YoutubeDL.getInstance().destroyProcessById(jobId) }
+        activeMediaProcesses.remove(jobId)?.let { process ->
+            runCatching { process.destroy() }
+            scope.launch(Dispatchers.IO) {
+                if (runCatching { process.waitFor(750, java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrDefault(false).not()) {
+                    runCatching { process.destroyForcibly() }
+                }
+            }
+        }
         update(
             jobId,
             state = JobState.CANCELLED,
@@ -143,7 +247,10 @@ class VrkaDownloadManager(
             error = "",
             persist = true,
         )
-        cleanupStaging(jobId)
+        scope.launch(Dispatchers.IO) {
+            runCatching { cleanupStaging(jobId) }
+        }
+        triggerScheduler()
     }
 
     fun setJobDestination(jobId: String, treeUri: String) {
@@ -155,16 +262,91 @@ class VrkaDownloadManager(
             updatedAt = System.currentTimeMillis(),
         )
         replace(updated, persist = true)
-        queue.trySend(jobId)
+        pendingQueue.add(jobId)
+        triggerScheduler()
     }
 
-    fun deleteJob(jobId: String) {
+    fun fileExists(uriText: String): Boolean = publisher.fileExists(uriText)
+
+    fun deleteHistoryRecord(jobId: String) {
         val job = _jobs.value.firstOrNull { it.id == jobId } ?: return
         if (!job.state.isTerminal) return
         scope.launch(Dispatchers.IO) {
-            job.outputUris.forEach(publisher::delete)
             mutate(persist = true) { jobs -> jobs.filterNot { it.id == jobId } }
         }
+    }
+
+    suspend fun deleteJobWithFiles(jobId: String): HistoryDeletionResult {
+        val job = _jobs.value.firstOrNull { it.id == jobId } ?: return HistoryDeletionResult(0, 0)
+        if (!job.state.isTerminal) return HistoryDeletionResult(0, 0)
+        var deletedFiles = 0
+        var failedFiles = 0
+        job.outputUris.forEach { uriText ->
+            val success = publisher.delete(uriText)
+            if (success) deletedFiles++ else failedFiles++
+        }
+        mutate(persist = true) { jobs -> jobs.filterNot { it.id == jobId } }
+        return HistoryDeletionResult(
+            deletedRecordsCount = 1,
+            deletedFilesCount = deletedFiles,
+            failedFilesCount = failedFiles,
+        )
+    }
+
+    fun deleteHistoryRecords(jobIds: Collection<String>) {
+        val targetIds = jobIds.toSet()
+        scope.launch(Dispatchers.IO) {
+            mutate(persist = true) { jobs ->
+                jobs.filterNot { it.id in targetIds && it.state.isTerminal }
+            }
+        }
+    }
+
+    suspend fun deleteJobsWithFiles(jobIds: Collection<String>): HistoryDeletionResult {
+        val targetIds = jobIds.toSet()
+        val targetJobs = _jobs.value.filter { it.id in targetIds && it.state.isTerminal }
+        var deletedFiles = 0
+        var failedFiles = 0
+        targetJobs.forEach { job ->
+            job.outputUris.forEach { uriText ->
+                val success = publisher.delete(uriText)
+                if (success) deletedFiles++ else failedFiles++
+            }
+        }
+        mutate(persist = true) { jobs ->
+            jobs.filterNot { it.id in targetIds && it.state.isTerminal }
+        }
+        return HistoryDeletionResult(
+            deletedRecordsCount = targetJobs.size,
+            deletedFilesCount = deletedFiles,
+            failedFilesCount = failedFiles,
+        )
+    }
+
+    suspend fun clearAllHistory(deleteFiles: Boolean): HistoryDeletionResult {
+        val targetJobs = _jobs.value.filter { it.state.isTerminal }
+        var deletedFiles = 0
+        var failedFiles = 0
+        if (deleteFiles) {
+            targetJobs.forEach { job ->
+                job.outputUris.forEach { uriText ->
+                    val success = publisher.delete(uriText)
+                    if (success) deletedFiles++ else failedFiles++
+                }
+            }
+        }
+        mutate(persist = true) { jobs ->
+            jobs.filterNot { it.state.isTerminal }
+        }
+        return HistoryDeletionResult(
+            deletedRecordsCount = targetJobs.size,
+            deletedFilesCount = deletedFiles,
+            failedFilesCount = failedFiles,
+        )
+    }
+
+    fun deleteJob(jobId: String) {
+        deleteHistoryRecord(jobId)
     }
 
     fun clearFinished() {
@@ -264,26 +446,44 @@ class VrkaDownloadManager(
             var job = current(jobId) ?: return
             if (isCancelled(jobId)) return
 
-            val metadata = runCatching {
-                YoutubeDL.getInstance().getInfo(DownloadRequestFactory.info(job.request))
-            }.getOrNull()
-            if (isCancelled(jobId)) return
-            if (metadata != null) {
-                val title = metadata.title?.take(180).orEmpty()
-                if (title.isNotBlank()) {
-                    update(jobId, title = title, detail = "Source ready", persist = true)
+            val customCommandMode = !job.request.commandTemplateId.isNullOrBlank()
+            var failure: Throwable? = null
+            if (customCommandMode) {
+                update(
+                    jobId,
+                    state = JobState.PREPARING,
+                    detail = "Custom command: ${job.request.commandTemplateName.ifBlank { "yt-dlp" }}",
+                    persist = true,
+                )
+                failure = runCatching { downloadOnce(job) }.exceptionOrNull()
+                if (failure == null) return
+                Log.e("VRKA", "Custom yt-dlp attempt failed; checking normal recovery paths: ${safeError(failure)}")
+            } else {
+                val metadata = runCatching {
+                    YoutubeDL.getInstance().getInfo(DownloadRequestFactory.info(job.request))
+                }.getOrNull()
+                if (isCancelled(jobId)) return
+                if (metadata != null) {
+                    val title = metadata.title?.take(180).orEmpty()
+                    if (title.isNotBlank()) {
+                        update(jobId, title = title, detail = "Source ready", persist = true)
+                    }
+                }
+
+                job = current(jobId) ?: return
+                failure = runCatching { downloadOnce(job) }.exceptionOrNull()
+                if (failure != null) {
+                    Log.e("VRKA", "Direct attempt failed: ${safeError(failure)}")
                 }
             }
 
             job = current(jobId) ?: return
-            var failure = runCatching { downloadOnce(job) }.exceptionOrNull()
-            if (failure != null) {
-                Log.e("VRKA", "Direct attempt failed: ${safeError(failure)}")
-            }
 
             val priorCategories = mutableListOf<FailureCategory>()
+            val initialErrorText = failure?.message.orEmpty()
+            val initialCleanedError = cleanErrorOutput(initialErrorText)
             if (failure != null) {
-                val firstCategory = classifyDownloadError(failure.message.orEmpty())
+                val firstCategory = classifyDownloadError(initialCleanedError)
                 if (firstCategory != FailureCategory.UNKNOWN) {
                     priorCategories.add(firstCategory)
                 }
@@ -292,9 +492,34 @@ class VrkaDownloadManager(
             val execFailure = failure as? DownloadExecutionException
             val initialTransferStarted = execFailure?.transferStarted == true || job.progress > 0f
 
+            val isImpersonationFailure = failure != null &&
+                classifyDownloadError(initialCleanedError) == FailureCategory.IMPERSONATION
+
+            if (!customCommandMode && isImpersonationFailure && !initialTransferStarted && !isCancelled(jobId)) {
+                Log.w("VRKA", "Attempt encountered unsupported impersonation target; retrying native yt-dlp without impersonation")
+                currentStage = "Native Retry"
+                DownloadRequestFactory.setImpersonationSupported(false)
+                cleanupStaging(job.id)
+                update(
+                    job.id,
+                    state = JobState.PREPARING,
+                    detail = "Retrying native extraction without impersonation",
+                    persist = true,
+                )
+                failure = runCatching { downloadOnce(job, recoveryAttempt = false) }.exceptionOrNull()
+                if (failure != null) {
+                    Log.e("VRKA", "Native retry without impersonation failed: ${safeError(failure)}")
+                    val retryCategory = classifyDownloadError(cleanErrorOutput(failure.message.orEmpty()))
+                    if (retryCategory != FailureCategory.UNKNOWN) {
+                        priorCategories.add(retryCategory)
+                    }
+                }
+            }
+
             // Direct recovery retry: only retry if category in (CLOUDFLARE, HTTP) and transfer has not started
             if (
                 failure != null &&
+                !customCommandMode &&
                 job.request.resolvedMediaUrl == null &&
                 !initialTransferStarted &&
                 !isCancelled(jobId) &&
@@ -311,17 +536,60 @@ class VrkaDownloadManager(
                 failure = runCatching { downloadOnce(job, recoveryAttempt = true) }.exceptionOrNull()
                 if (failure != null) {
                     Log.e("VRKA", "Direct recovery failed: ${safeError(failure)}")
-                    val retryCategory = classifyDownloadError(failure.message.orEmpty())
+                    val retryCategory = classifyDownloadError(cleanErrorOutput(failure.message.orEmpty()))
                     if (retryCategory != FailureCategory.UNKNOWN) {
                         priorCategories.add(retryCategory)
+                    }
+                    if (retryCategory == FailureCategory.IMPERSONATION) {
+                        Log.w("VRKA", "Direct recovery encountered impersonation error; retrying native yt-dlp without impersonation")
+                        currentStage = "Native Retry"
+                        DownloadRequestFactory.setImpersonationSupported(false)
+                        cleanupStaging(job.id)
+                        update(
+                            job.id,
+                            state = JobState.PREPARING,
+                            detail = "Retrying native extraction without impersonation",
+                            persist = true,
+                        )
+                        failure = runCatching { downloadOnce(job, recoveryAttempt = false) }.exceptionOrNull()
                     }
                 }
             }
 
+            // Subtitle failure isolation: If download failed specifically due to subtitles,
+            // retry downloading media without subtitles so subtitle errors never abort the video.
+            if (
+                failure != null &&
+                !customCommandMode &&
+                job.request.downloadSubtitles &&
+                !isCancelled(jobId) &&
+                isSubtitleFailure(
+                    failure.message.orEmpty(),
+                    (failure as? DownloadExecutionException)?.outputTail?.joinToString("\n").orEmpty()
+                )
+            ) {
+                Log.w("VRKA", "Job $jobId failed due to subtitle issue; retrying media download without subtitles to preserve media")
+                cleanupStaging(job.id)
+                update(
+                    job.id,
+                    state = JobState.PREPARING,
+                    detail = "Retrying media download without subtitles",
+                    persist = true,
+                )
+                val mediaOnlyJob = job.copy(request = job.request.copy(downloadSubtitles = false))
+                failure = runCatching { downloadOnce(mediaOnlyJob, recoveryAttempt = false) }.exceptionOrNull()
+            }
+
             // Failure classification and browser-fallback eligibility
-            if (failure != null && job.request.resolvedMediaUrl == null && !isCancelled(jobId)) {
-                val errorMessage = failure.message.orEmpty()
-                val latestExecFailure = failure as? DownloadExecutionException
+            if (DownloadRequestFactory.shouldAttemptBrowserFallback(
+                    request = job.request,
+                    hasFailure = failure != null,
+                    cancelled = isCancelled(jobId),
+                )
+            ) {
+                val fallbackFailure = requireNotNull(failure) { "Browser fallback requested without a failed attempt." }
+                val errorMessage = fallbackFailure.message.orEmpty()
+                val latestExecFailure = fallbackFailure as? DownloadExecutionException
                 val outputTailText = latestExecFailure?.outputTail?.joinToString("\n").orEmpty()
                 val transferStarted = latestExecFailure?.transferStarted == true ||
                     job.progress > 0f ||
@@ -353,19 +621,22 @@ class VrkaDownloadManager(
                         taskId = jobId,
                         targetUrl = job.request.url,
                     )
-                    activeFallbackEngines[jobId] = engine
-                    _activeFallback.value = ActiveFallbackState(jobId, job, engine, isVisible = true)
-
-                    try {
-                        val result = engine.execute()
-                        when (result) {
+                    val result = browserFallbackMutex.withLock {
+                        activeFallbackEngines[jobId] = engine
+                        _activeFallback.value = ActiveFallbackState(jobId, job, engine, isVisible = true)
+                        try {
+                            engine.execute()
+                        } finally {
+                            engine.cleanup()
+                            activeFallbackEngines.remove(jobId)
+                            if (_activeFallback.value?.jobId == jobId) {
+                                _activeFallback.value = null
+                            }
+                        }
+                    }
+                    when (result) {
                             is FallbackResult.Success -> {
                                 val bundle = result.bundle
-                                // Dismiss fallback view; transfer proceeds in queue
-                                engine.dismiss()
-                                activeFallbackEngines.remove(jobId)
-                                _activeFallback.value = null
-
                                 val headers = buildMap {
                                     if (bundle.referer.isNotBlank()) put("Referer", bundle.referer)
                                     if (bundle.origin.isNotBlank()) put("Origin", bundle.origin)
@@ -373,9 +644,10 @@ class VrkaDownloadManager(
                                     putAll(bundle.headers)
                                 }
                                 val updated = job.copy(
-                                    request = job.request.copy(
-                                        resolvedMediaUrl = bundle.mediaUrl,
-                                        resolvedHeaders = headers,
+                                    request = DownloadRequestFactory.browserFallbackRequest(
+                                        request = job.request,
+                                        mediaUrl = bundle.mediaUrl,
+                                        headers = headers,
                                     ),
                                     state = JobState.PREPARING,
                                     detail = "${bundle.mediaKind.value.uppercase()} candidate selected; downloading",
@@ -384,28 +656,29 @@ class VrkaDownloadManager(
                                 replace(updated, persist = true)
                                 DownloadService.start(context)
 
-                                // Resume download with the same task (native replay)
-                                job = current(jobId) ?: return
-                                currentStage = "Native Replay"
-                                Log.i("VRKA", "Resuming downloadOnce (native replay) for job $jobId with resolved media: ${bundle.mediaUrl}")
-                                failure = runCatching { downloadOnce(job) }.exceptionOrNull()
-                                if (failure != null) {
-                                    Log.w("VRKA", "Native replay failed: ${failure.message}")
-                                    val replayReason = classifyNativeReplayFailure(failure.message ?: "")
-                                    val eligible = isEligibleForGeckoTransport(
-                                        reason = replayReason,
-                                        isBrowserDerivedCandidate = true,
-                                    )
-                                    if (eligible && !isCancelled(jobId)) {
-                                        currentStage = "Gecko Transport"
-                                        Log.i("VRKA", "Native replay failed with $replayReason; activating GeckoWebExecutor fallback transport for job $jobId")
-                                        failure = runCatching {
-                                            downloadViaGeckoTransport(job, bundle, stagingDirectory(job.id))
-                                        }.exceptionOrNull()
-                                        if (failure != null) {
-                                            Log.e("VRKA", "GeckoWebExecutor transport transfer failed: ${failure.message}", failure)
-                                        }
+                                currentStage = "Browser Fallback yt-dlp Transfer"
+                                Log.i(
+                                    "VRKA",
+                                    "Starting yt-dlp browser-candidate transfer: job=$jobId, kind=${bundle.mediaKind.value}, origin=${HeaderValidation.originOf(bundle.mediaUrl).orEmpty()}"
+                                )
+                                failure = runCatching {
+                                    val resumedJob = current(jobId) ?: updated
+                                    downloadOnce(resumedJob)
+                                }.exceptionOrNull()
+                                if (failure != null && bundle.withheldHeaderCount > 0) {
+                                    val failureEvidence = buildString {
+                                        append(failure.message.orEmpty())
+                                        append('\n')
+                                        append((failure as? DownloadExecutionException)?.outputTail?.joinToString("\n").orEmpty())
                                     }
+                                    if (Regex("\\b(401|403)\\b").containsMatchIn(failureEvidence)) {
+                                        failure = RuntimeException(
+                                            "HTTP 401/403 rejection after browser fallback; VRKA withheld browser credential/custom header(s) because yt-dlp cannot safely scope them across redirects and media segments."
+                                        )
+                                    }
+                                }
+                                if (failure != null) {
+                                    Log.e("VRKA", "Browser candidate yt-dlp transfer failed: ${safeError(failure)}")
                                 }
                             }
                             is FallbackResult.Failed -> {
@@ -416,11 +689,6 @@ class VrkaDownloadManager(
                                 // Cancellation handled below
                                 return
                             }
-                        }
-                    } finally {
-                        engine.cleanup()
-                        activeFallbackEngines.remove(jobId)
-                        _activeFallback.value = null
                     }
                 } else {
                     // Terminal failure — NOT eligible for fallback
@@ -430,10 +698,10 @@ class VrkaDownloadManager(
 
             if (failure != null) throw failure
         } catch (error: Throwable) {
-            Log.e("VRKA", "Download processing for $jobId failed: ${error.message}", error)
+            Log.e("VRKA", "Download processing for $jobId failed: ${safeError(error)}")
             if (!isCancelled(jobId)) {
                 val failureMsg = safeError(error)
-                val fallbackFailed = currentStage == "Browser Fallback" || failureMsg.contains("browser fallback", ignoreCase = true)
+                val fallbackFailed = currentStage.startsWith("Browser Fallback") || failureMsg.contains("browser fallback", ignoreCase = true)
                 val failureDetail = if (fallbackFailed) {
                     "Browser fallback could not find a media stream"
                 } else {
@@ -455,7 +723,7 @@ class VrkaDownloadManager(
                 val categoryName = if (fallbackFailed) {
                     FailureCategory.BROWSER_RECOVERABLE.name
                 } else {
-                    classifyDownloadError(error.message.orEmpty()).name
+                    classifyDownloadError(cleanErrorOutput(error.message.orEmpty())).name
                 }
                 val tailOutput = (error as? DownloadExecutionException)?.outputTail?.takeLast(30)?.joinToString("\n")
                     ?: error.message.orEmpty().take(2000)
@@ -476,11 +744,12 @@ class VrkaDownloadManager(
             cleanupStaging(jobId)
         } finally {
             activeFallbackEngines.remove(jobId)?.cancel()
+            activeEngineTokens.remove(jobId)?.cancel()
             DownloadService.stopIfIdle(context)
         }
     }
 
-    private fun downloadOnce(job: DownloadJob, recoveryAttempt: Boolean = false) {
+    private suspend fun downloadOnce(job: DownloadJob, recoveryAttempt: Boolean = false) {
         if (isCancelled(job.id)) return
         val directory = stagingDirectory(job.id)
         update(
@@ -495,8 +764,9 @@ class VrkaDownloadManager(
         var transferStarted = false
 
         val response = try {
+            val includeSubtitles = job.request.resolvedMediaUrl == null
             YoutubeDL.getInstance().execute(
-                DownloadRequestFactory.download(job, directory, recoveryAttempt),
+                DownloadRequestFactory.download(job, directory, recoveryAttempt, includeSubtitles = includeSubtitles),
                 job.id,
             ) { progress, eta, line ->
                 outputLines.add(line)
@@ -517,6 +787,14 @@ class VrkaDownloadManager(
                     val parsedTitle = line.substringAfter("__VRKA_TITLE__").substringAfter("__vrka_title__").trim()
                     if (parsedTitle.isNotBlank()) {
                         update(job.id, title = parsedTitle)
+                    }
+                }
+
+                if (!isCommandLineEcho && job.request.mode == MediaMode.VIDEO && line.contains("__VRKA_RES__", ignoreCase = true)) {
+                    val parsedRes = line.substringAfter("__VRKA_RES__").substringAfter("__vrka_res__").trim()
+                    val resHeight = parsedRes.toIntOrNull()
+                    if (resHeight != null && resHeight > 0) {
+                        update(job.id, actualResolution = "${resHeight}p")
                     }
                 }
 
@@ -579,21 +857,55 @@ class VrkaDownloadManager(
             detail = "Publishing to Downloads",
             persist = true,
         )
-        var outputs = DownloadRequestFactory.outputPaths(response.out)
-            .map(::File)
-            .filter(File::isFile)
+        var outputs = if (job.request.commandTemplateId != null) {
+            directory.walkTopDown()
+                .filter { it.isFile && it.extension.lowercase() in PUBLISHABLE_EXTENSIONS && isInsideDirectory(directory, it) }
+                .sortedBy(File::lastModified)
+                .toList()
+        } else {
+            DownloadRequestFactory.outputPaths(response.out)
+                .map(::File)
+                .filter(File::isFile)
+        }
         if (outputs.isEmpty()) {
             outputs = directory.walkTopDown()
-                .filter { it.isFile && !it.name.endsWith(".part") }
+                .filter {
+                    it.isFile && !it.name.endsWith(".part") &&
+                        it.extension.lowercase() in PUBLISHABLE_EXTENSIONS && isInsideDirectory(directory, it)
+                }
                 .sortedBy(File::lastModified)
                 .toList()
         }
         check(outputs.isNotEmpty()) { "yt-dlp completed but produced no output file." }
+
+        if (job.request.mode == MediaMode.VIDEO && job.request.h264CompatibilityMode) {
+            outputs = transcodeVideosToH264(job, outputs, directory)
+        }
+        var jobSubStatus = com.mvrk.vrka.subtitle.SubtitleStatus.NONE
+        var jobSubNote = ""
+
+        if (job.request.downloadSubtitles && outputs.isNotEmpty()) {
+            val primaryVideo = outputs.firstOrNull { it.extension in listOf("mp4", "mkv", "webm", "mov") }
+            if (primaryVideo != null && job.request.mode == MediaMode.VIDEO && job.request.embedSubtitles &&
+                verifySubtitlePresence(job.id, primaryVideo)
+            ) {
+                jobSubStatus = com.mvrk.vrka.subtitle.SubtitleStatus.EMBEDDED_VERIFIED
+                jobSubNote = "subtitles embedded"
+            } else if (outputs.any { it.extension in listOf("srt", "vtt", "ass", "ssa") }) {
+                jobSubStatus = com.mvrk.vrka.subtitle.SubtitleStatus.SAVED_SEPARATELY
+                jobSubNote = "subtitles saved"
+            } else {
+                jobSubStatus = com.mvrk.vrka.subtitle.SubtitleStatus.UNAVAILABLE
+                jobSubNote = "subtitles unavailable"
+            }
+        }
+
         if (job.request.mode == MediaMode.VIDEO) {
             requireVideoStreams(job, outputs)
         } else {
             requireAudioStreams(job, outputs)
         }
+        if (isCancelled(job.id)) throw CancellationException("Download cancelled")
         val published = outputs.mapIndexed { index, file ->
             val outputName = preferredOutputName(job, file, index, outputs.size)
             publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
@@ -601,11 +913,12 @@ class VrkaDownloadManager(
         val isOpus = job.request.mode == MediaMode.AUDIO && job.request.audioFormat == AudioFormat.OPUS
         val transcoded = isOpus && outputLines.any { it.contains("libopus", ignoreCase = true) || it.contains("Converting audio", ignoreCase = true) }
         val doneDetail = if (isOpus) {
-            if (transcoded) "Saved (transcoded to Opus)" else "Saved (native Opus stream copy)"
+            val base = if (transcoded) "Saved (transcoded to Opus)" else "Saved (native Opus stream copy)"
+            if (jobSubNote.isNotBlank()) "$base • $jobSubNote" else base
         } else if (published.size == 1) {
-            "Saved to Downloads/VRKA"
+            if (jobSubNote.isNotBlank()) "Saved to Downloads/VRKA ($jobSubNote)" else "Saved to Downloads/VRKA"
         } else {
-            "Saved " + published.size + " files"
+            if (jobSubNote.isNotBlank()) "Saved ${published.size} files ($jobSubNote)" else "Saved ${published.size} files"
         }
         update(
             job.id,
@@ -614,29 +927,19 @@ class VrkaDownloadManager(
             detail = doneDetail,
             outputUris = published,
             error = "",
+            subtitleStatus = jobSubStatus,
             persist = true,
         )
         cleanupStaging(job.id)
     }
 
-    private fun downloadViaGeckoTransport(
+    private suspend fun downloadViaMediaEngine(
         job: DownloadJob,
         bundle: HandoffBundle,
         directory: File,
     ) {
         if (isCancelled(job.id)) return
         directory.mkdirs()
-
-        update(
-            job.id,
-            state = JobState.DOWNLOADING,
-            detail = "Downloading via browser network",
-            error = "",
-            persist = true,
-        )
-
-        val runtime = GeckoRuntimeManager.getInstance(context).runtime
-        val transport = GeckoWebExecutorTransport(runtime)
 
         val headers = buildMap {
             putAll(job.request.customHeaders)
@@ -648,148 +951,222 @@ class VrkaDownloadManager(
             putAll(bundle.headers)
         }
 
-        val isHls = bundle.mediaKind == CandidateKind.HLS || MediaAssembly.isHlsPlaylist(bundle.mediaUrl)
-        val isDash = bundle.mediaKind == CandidateKind.DASH || MediaAssembly.isDashManifest(bundle.mediaUrl)
-        val outputFile: File
+        val mediaKind = when {
+            bundle.mediaKind == CandidateKind.HLS || MediaAssembly.isHlsPlaylist(bundle.mediaUrl) -> EngineMediaKind.HLS
+            bundle.mediaKind == CandidateKind.DASH || MediaAssembly.isDashManifest(bundle.mediaUrl) -> EngineMediaKind.DASH
+            bundle.mediaKind == CandidateKind.DIRECT -> if (job.request.mode == MediaMode.AUDIO) EngineMediaKind.PROGRESSIVE_AUDIO else EngineMediaKind.PROGRESSIVE_VIDEO
+            else -> EngineMediaKind.UNKNOWN
+        }
 
-        if (isHls || isDash) {
-            val segments: List<String>
-            if (isHls) {
-                Log.i("VRKA", "Gecko transport downloading HLS playlist for job ${job.id}")
-                val playlistRequest = GeckoTransportRequest(url = bundle.mediaUrl, headers = headers)
-                val playlistResponse = transport.fetch(playlistRequest)
-                val playlistContent = playlistResponse.body?.bufferedReader()?.use { it.readText() }
-                    ?: throw IOException("Empty playlist response from ${bundle.mediaUrl}")
+        val ext = if (job.request.mode == MediaMode.AUDIO) job.request.audioFormat.codec else "mp4"
+        val stagingFile = File(directory, "media.$ext")
 
-                var variantUrl = bundle.mediaUrl
-                var variantContent = playlistContent
+        val handoffContext = MediaHandoffContext(
+            url = bundle.mediaUrl,
+            mediaKind = mediaKind,
+            headers = headers,
+            title = job.title.ifBlank { "media" },
+            stagingOutputFile = stagingFile,
+            durationSeconds = if (bundle.expectedDurationSeconds > 0.0) bundle.expectedDurationSeconds else null,
+            expectedHeight = job.request.quality.height,
+            originalPageUrl = job.request.url,
+        )
 
-                if (MediaAssembly.isMasterPlaylist(playlistContent)) {
-                    val variants = MediaAssembly.parseMasterPlaylist(playlistContent, bundle.mediaUrl)
-                    val selected = MediaAssembly.selectVariant(variants, job.request.quality.height)
-                        ?: throw IOException("No suitable variant stream found in master playlist")
-                    Log.i("VRKA", "Selected HLS variant: $selected")
-                    variantUrl = selected
-                    val variantResponse = transport.fetch(GeckoTransportRequest(url = selected, headers = headers))
-                    variantContent = variantResponse.body?.bufferedReader()?.use { it.readText() }
-                        ?: throw IOException("Empty variant playlist response from $selected")
+        val router = MediaEngineRouter(context, GeckoRuntimeManager.getInstance(context).runtime)
+        val token = SimpleEngineCancellationToken()
+        activeEngineTokens[job.id] = token
+
+        try {
+            update(
+                job.id,
+                state = JobState.DOWNLOADING,
+                detail = "Downloading media stream",
+                error = "",
+                persist = true,
+            )
+
+            val result = router.executeDownload(
+                handoffContext = handoffContext,
+                onProgress = { progress ->
+                    when (progress) {
+                        is EngineDownloadProgress.Initializing -> {
+                            update(job.id, detail = progress.message)
+                        }
+                        is EngineDownloadProgress.Downloading -> {
+                            update(
+                                job.id,
+                                progress = progress.percentage,
+                                speed = progress.speedBytesPerSec?.let { UnifiedProgressSnapshot.formatSpeed(it) }.orEmpty(),
+                                etaSeconds = progress.etaSeconds,
+                                detail = progress.detail.ifBlank { "Downloading stream" },
+                            )
+                        }
+                        is EngineDownloadProgress.Finalizing -> {
+                            update(job.id, progress = 100f, detail = progress.message)
+                        }
+                    }
+                },
+                cancellationToken = token,
+            )
+
+            if (isCancelled(job.id)) return
+
+            when (result) {
+                is EngineExecutionResult.Success -> {
+                    update(
+                        job.id,
+                        state = JobState.POSTPROCESSING,
+                        progress = 100f,
+                        detail = "Publishing to Downloads",
+                        persist = true,
+                    )
+                    val outputs = listOf(result.outputFile)
+                    if (job.request.mode == MediaMode.VIDEO) {
+                        requireVideoStreams(job, outputs)
+                    } else {
+                        requireAudioStreams(job, outputs)
+                    }
+                    val published = outputs.mapIndexed { index, file ->
+                        val outputName = preferredOutputName(job, file, index, outputs.size)
+                        publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+                    }
+                    update(
+                        job.id,
+                        state = JobState.DONE,
+                        progress = 100f,
+                        detail = if (published.size == 1) "Saved to Downloads/VRKA" else "Saved ${published.size} files",
+                        outputUris = published,
+                        error = "",
+                        persist = true,
+                    )
+                    cleanupStaging(job.id)
                 }
-
-                segments = MediaAssembly.parseVariantSegments(variantContent, variantUrl)
-            } else {
-                Log.i("VRKA", "Gecko transport downloading DASH manifest for job ${job.id}")
-                val mpdRequest = GeckoTransportRequest(url = bundle.mediaUrl, headers = headers)
-                val mpdResponse = transport.fetch(mpdRequest)
-                val mpdContent = mpdResponse.body?.bufferedReader()?.use { it.readText() }
-                    ?: throw IOException("Empty DASH manifest response from ${bundle.mediaUrl}")
-                segments = MediaAssembly.parseDashSegments(mpdContent, bundle.mediaUrl)
+                is EngineExecutionResult.Failed -> {
+                    throw result.error
+                }
+                is EngineExecutionResult.Cancelled -> {
+                    throw CancellationException("Download cancelled")
+                }
             }
-
-            if (segments.isEmpty()) {
-                throw IOException("No media segments found in manifest")
-            }
-
-            Log.i("VRKA", "Gecko transport transferring ${segments.size} segments concurrently for job ${job.id}")
-            val stagingFile = File(directory, "assembled_media.ts")
-            var lastUiUpdate = 0L
-            kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                ConcurrentTransferEngine.downloadHlsSegments(
-                    transport = transport,
-                    segments = segments,
-                    headers = headers,
-                    outputFile = stagingFile,
-                    directory = directory,
-                    maxWorkers = 4,
-                    isCancelled = { isCancelled(job.id) },
-                    onProgress = { completed, total ->
-                        val now = System.currentTimeMillis()
-                        if (now - lastUiUpdate >= 250 || completed >= total) {
-                            lastUiUpdate = now
-                            val progress = ((completed.toFloat() / total) * 100f).coerceIn(0f, 100f)
-                            update(
-                                job.id,
-                                progress = progress,
-                                detail = "Downloading segment $completed/$total",
-                            )
-                        }
-                    }
-                )
-            }
-            outputFile = stagingFile
-        } else {
-            Log.i("VRKA", "Gecko transport downloading direct media for job ${job.id}")
-            val directFile = File(directory, "media.mp4")
-            var lastUiUpdate = 0L
-            kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                ConcurrentTransferEngine.downloadDirectMedia(
-                    transport = transport,
-                    url = bundle.mediaUrl,
-                    headers = headers,
-                    destinationFile = directFile,
-                    directory = directory,
-                    maxWorkers = 4,
-                    isCancelled = { isCancelled(job.id) },
-                    onProgress = { written, total ->
-                        val now = System.currentTimeMillis()
-                        if (now - lastUiUpdate >= 250 || (total > 0 && written >= total)) {
-                            lastUiUpdate = now
-                            val progress = if (total > 0) ((written.toFloat() / total) * 100f).coerceIn(0f, 100f) else 50f
-                            update(
-                                job.id,
-                                progress = progress,
-                                detail = "Downloading via browser network",
-                            )
-                        }
-                    }
-                )
-            }
-            outputFile = directFile
+        } finally {
+            activeEngineTokens.remove(job.id)
         }
-
-        if (isCancelled(job.id)) return
-
-        update(
-            job.id,
-            state = JobState.POSTPROCESSING,
-            progress = 100f,
-            detail = "Publishing to Downloads",
-            persist = true,
-        )
-
-        val outputs = listOf(outputFile)
-        if (job.request.mode == MediaMode.VIDEO) {
-            requireVideoStreams(job, outputs)
-        } else {
-            requireAudioStreams(job, outputs)
-        }
-        val published = outputs.mapIndexed { index, file ->
-            val outputName = preferredOutputName(job, file, index, outputs.size)
-            publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
-        }
-
-        update(
-            job.id,
-            state = JobState.DONE,
-            progress = 100f,
-            detail = if (published.size == 1) "Saved to Downloads/VRKA" else "Saved ${published.size} files",
-            outputUris = published,
-            error = "",
-            persist = true,
-        )
-        cleanupStaging(job.id)
     }
+
+    private fun isInsideDirectory(directory: File, file: File): Boolean = runCatching {
+        val root = directory.canonicalFile.toPath()
+        file.canonicalFile.toPath().startsWith(root)
+    }.getOrDefault(false)
+
+    private suspend fun transcodeVideosToH264(
+        job: DownloadJob,
+        outputs: List<File>,
+        directory: File,
+    ): List<File> {
+        val videoFiles = outputs.filter { it.extension.lowercase() in setOf("mp4", "mkv", "webm", "mov", "m4v", "ts") }
+        if (videoFiles.isEmpty()) return outputs
+        val codecs = videoFiles.associateWith { input ->
+            if (isCancelled(job.id)) throw CancellationException("H.264 conversion cancelled")
+            try {
+                MediaAssembly.videoCodecName(input, context) { process -> activeMediaProcesses[job.id] = process }
+            } finally {
+                activeMediaProcesses.remove(job.id)
+            }
+        }
+        val unsupportedCodec = codecs.values.any { codec -> codec == null }
+        check(!unsupportedCodec) { "Could not verify the downloaded video codec; H.264 conversion was not started." }
+        val needsEncoding = codecs.values.any { codec -> !MediaAssembly.isH264Codec(codec.orEmpty()) }
+        if (!needsEncoding) return outputs
+
+        val encoderAvailable = MediaAssembly.hasH264Encoder(context) { process ->
+            activeMediaProcesses[job.id] = process
+        }
+        activeMediaProcesses.remove(job.id)
+        if (isCancelled(job.id)) throw CancellationException("H.264 conversion cancelled")
+        check(encoderAvailable) {
+            "The installed FFmpeg build does not provide the libx264 encoder required for H.264 Compatibility Mode."
+        }
+
+        val replacements = mutableMapOf<File, File>()
+        for ((index, input) in videoFiles.withIndex()) {
+            if (isCancelled(job.id)) throw CancellationException("H.264 conversion cancelled")
+            val codec = codecs[input].orEmpty()
+            if (MediaAssembly.isH264Codec(codec)) continue
+
+            update(
+                job.id,
+                state = JobState.POSTPROCESSING,
+                detail = "Converting ${codec.uppercase()} video to H.264 (CPU, battery, and storage use)",
+                progress = 0f,
+                speed = "",
+                etaSeconds = null,
+                persist = true,
+            )
+            val output = File(directory, ".vrka_h264_${UUID.randomUUID()}.mkv")
+            val command = MediaAssembly.buildH264CompatibilityCommand(context, input, output)
+            val durationUs = MediaAssembly.durationMilliseconds(input, context)?.times(1_000L)
+            val completed = MediaAssembly.executeFfmpeg(
+                command,
+                context,
+                onProcessStarted = { process -> activeMediaProcesses[job.id] = process },
+                onOutputLine = { line ->
+                    if (line.startsWith("out_time_ms=")) {
+                        val outTimeUs = line.substringAfter('=').toLongOrNull()
+                        if (outTimeUs != null && durationUs != null && durationUs > 0L) {
+                            val progress = (outTimeUs.toDouble() * 100.0 / durationUs).toFloat().coerceIn(0f, 99f)
+                            update(job.id, progress = progress, detail = "Converting to H.264 (${progress.toInt()}%)")
+                        }
+                    } else if (line == "progress=end") {
+                        update(job.id, progress = 99f, detail = "Validating H.264 output")
+                    }
+                },
+            )
+            activeMediaProcesses.remove(job.id)
+            if (isCancelled(job.id)) {
+                output.delete()
+                throw CancellationException("H.264 conversion cancelled")
+            }
+            check(completed && output.isFile && output.length() > 0L) { "FFmpeg could not convert the video to H.264." }
+            check(MediaAssembly.isH264Codec(MediaAssembly.videoCodecName(output, context).orEmpty())) {
+                "FFmpeg output validation failed: the converted file is not H.264."
+            }
+            replacements[input] = output
+        }
+        return outputs.map { replacements[it] ?: it }
+    }
+
+
 
     private fun requireAudioStreams(job: DownloadJob, outputs: List<File>) {
         val expectedBitrate = if (job.request.audioFormat == AudioFormat.MP3) job.request.mp3Bitrate else null
-        outputs.forEach { file ->
-            val info = AudioValidator.validateAudioOutput(file, job.request.audioFormat, expectedBitrate, context)
+        val audioFiles = outputs.filter { it.extension.lowercase() in AUDIO_EXTENSIONS }
+        check(audioFiles.isNotEmpty()) { "Audio mode produced no audio file; refusing to publish custom-command output." }
+        audioFiles.forEach { file ->
+            val info = try {
+                AudioValidator.validateAudioOutput(file, job.request.audioFormat, expectedBitrate, context) { process ->
+                    activeMediaProcesses[job.id] = process
+                }
+            } finally {
+                activeMediaProcesses.remove(job.id)
+            }
             Log.i("VRKA", "Audio validation passed for ${file.name}: format=${job.request.audioFormat}, codec=${info.codecName}, duration=${info.durationMs}ms")
         }
     }
 
+    private fun verifySubtitlePresence(jobId: String, file: File): Boolean = try {
+        MediaAssembly.verifySubtitlePresence(file, context) { process ->
+            activeMediaProcesses[jobId] = process
+        }
+    } finally {
+        activeMediaProcesses.remove(jobId)
+    }
+
     private fun requireVideoStreams(job: DownloadJob, outputs: List<File>) {
         if (job.request.mode != MediaMode.VIDEO) return
-        outputs.forEach { file ->
+        val videoFiles = outputs.filter { it.extension.lowercase() in VIDEO_EXTENSIONS }
+        check(videoFiles.isNotEmpty()) { "Video mode produced no video file; refusing to publish custom-command output." }
+        var detectedResolution: String? = null
+        videoFiles.forEach { file ->
             val media = runCatching {
                 val retriever = MediaMetadataRetriever()
                 try {
@@ -813,11 +1190,17 @@ class VrkaDownloadManager(
             check(media.first) {
                 "Video mode produced no video stream; refusing to publish an audio-only file."
             }
+            if (media.third != null && media.third!! > 0) {
+                detectedResolution = "${media.third}p"
+            }
             job.request.quality.height?.let { cap ->
                 check(media.third == null || media.third!! <= cap) {
                     "Downloaded video exceeds the requested ${cap}p quality cap."
                 }
             }
+        }
+        if (detectedResolution != null && current(job.id)?.actualResolution == null) {
+            update(job.id, actualResolution = detectedResolution)
         }
     }
 
@@ -842,6 +1225,8 @@ class VrkaDownloadManager(
             YoutubeDL.getInstance().init(context)
             FFmpeg.getInstance().init(context)
             DownloadRequestFactory.initNativeLibraryDir(context.applicationInfo.nativeLibraryDir)
+            MediaAssembly.fixUsrLibSymlinks(File(context.noBackupFilesDir, "youtubedl-android/packages/ffmpeg/usr/lib"))
+            MediaAssembly.fixUsrLibSymlinks(File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib"))
             initialized.set(true)
             val version = normalizedVersion(
                 YoutubeDL.getInstance().versionName(context).orEmpty(),
@@ -888,6 +1273,8 @@ class VrkaDownloadManager(
         etaSeconds: Long? = null,
         outputUris: List<String>? = null,
         error: String? = null,
+        actualResolution: String? = null,
+        subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus? = null,
         persist: Boolean = false,
     ) {
         mutate(persist) { list ->
@@ -901,8 +1288,15 @@ class VrkaDownloadManager(
                     etaSeconds = etaSeconds ?: job.etaSeconds,
                     outputUris = outputUris ?: job.outputUris,
                     error = error ?: job.error,
+                    actualResolution = actualResolution ?: job.actualResolution,
+                    subtitleStatus = subtitleStatus ?: job.subtitleStatus,
                     updatedAt = System.currentTimeMillis(),
                 )
+            }
+        }
+        if (state?.isTerminal == true) {
+            scope.launch(Dispatchers.IO + NonCancellable) {
+                store.save(_jobs.value)
             }
         }
     }
@@ -935,11 +1329,12 @@ class VrkaDownloadManager(
 
     private fun safeError(error: Throwable): String {
         val raw = (error.message ?: error::class.java.simpleName)
-        val (_, guidance) = formatDownloadError(raw)
-        val text = if (guidance.isNotBlank() && guidance != raw) {
+        val cleaned = cleanErrorOutput(raw)
+        val (_, guidance) = formatDownloadError(cleaned)
+        val text = if (guidance.isNotBlank() && guidance != cleaned) {
             guidance
         } else {
-            raw.lineSequence().toList().takeLast(2).joinToString(" ")
+            cleaned.ifBlank { raw }.lineSequence().toList().takeLast(2).joinToString(" ")
         }
         val redactedText = HeaderValidation.redactSensitiveHeaderInText(text)
         return redactedText
@@ -949,13 +1344,13 @@ class VrkaDownloadManager(
             .ifBlank { "The operation failed." }
     }
 
-    private fun isHttpUrl(value: String): Boolean =
-        runCatching {
-            val uri = Uri.parse(value.trim())
-            uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank()
-        }.getOrDefault(false)
+    private fun isHttpUrl(value: String): Boolean = CustomCommandPolicy.isHttpUrl(value)
 
     companion object {
+        private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "webm", "mov", "m4v", "ts")
+        private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "mka", "aac", "opus", "flac", "wav", "ogg")
+        private val PUBLISHABLE_EXTENSIONS = VIDEO_EXTENSIONS + AUDIO_EXTENSIONS + setOf("srt", "vtt", "ass", "ssa")
+
         fun create(context: Context): VrkaDownloadManager {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val settings = SettingsRepository(context.applicationContext, scope)

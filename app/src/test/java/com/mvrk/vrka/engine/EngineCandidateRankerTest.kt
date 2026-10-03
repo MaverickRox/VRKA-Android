@@ -147,4 +147,88 @@ class EngineCandidateRankerTest {
         val decision = ranker.decide(listOf(sidebarAdCandidate, primaryVideoCandidate), 100.0)
         assertEquals("mc_primary_video", decision.selectedCandidateId)
     }
+
+    @Test
+    fun `master manifest beats child rendition beats media segment`() {
+        val masterHls = MediaCandidate(
+            candidateId = "mc_master",
+            canonicalIdentity = "ident_master",
+            currentUrl = "https://megap.shiora.top/stream/master.m3u8",
+            kind = CandidateKind.HLS,
+            firstSeen = 90.0,
+            lastSeen = 100.0,
+            primaryPlayer = true,
+            playing = true,
+            userStarted = true,
+            segmentCount = 4,
+        )
+        val childVideoHls = MediaCandidate(
+            candidateId = "mc_child_video",
+            canonicalIdentity = "ident_child_video",
+            currentUrl = "https://megap.shiora.top/stream/video.m3u8",
+            kind = CandidateKind.HLS,
+            firstSeen = 90.0,
+            lastSeen = 100.0,
+            primaryPlayer = true,
+            playing = true,
+            userStarted = true,
+            segmentCount = 4,
+            width = 1920,
+            height = 1080,
+        )
+        val childAudioHls = MediaCandidate(
+            candidateId = "mc_child_audio",
+            canonicalIdentity = "ident_child_audio",
+            currentUrl = "https://megap.shiora.top/stream/audio.m3u8",
+            kind = CandidateKind.HLS,
+            firstSeen = 90.0,
+            lastSeen = 100.0,
+            primaryPlayer = true,
+            playing = true,
+            userStarted = true,
+            segmentCount = 4,
+        )
+        val segmentDirect = MediaCandidate(
+            candidateId = "mc_segment",
+            canonicalIdentity = "ident_segment",
+            currentUrl = "https://vividfalcon52.boats/frag/0001-0840.m4s",
+            kind = CandidateKind.DIRECT,
+            firstSeen = 90.0,
+            lastSeen = 100.0,
+            primaryPlayer = false,
+            playing = false,
+            contentType = "video/iso.segment",
+        )
+
+        val scoredMaster = ranker.score(masterHls, 100.0)
+        val scoredChildVideo = ranker.score(childVideoHls, 100.0)
+        val scoredChildAudio = ranker.score(childAudioHls, 100.0)
+        val scoredSegment = ranker.score(segmentDirect, 100.0)
+
+        // Master manifest must score higher than child playlists
+        assertTrue(
+            "Master manifest (${scoredMaster.score}) must score higher than child video (${scoredChildVideo.score})",
+            scoredMaster.score > scoredChildVideo.score
+        )
+        assertTrue(
+            "Child video (${scoredChildVideo.score}) must score higher than child audio (${scoredChildAudio.score})",
+            scoredChildVideo.score > scoredChildAudio.score
+        )
+        // Media segment must receive heavy penalty and be negative
+        assertTrue(
+            "Segment score (${scoredSegment.score}) must be strongly negative",
+            scoredSegment.score < 0.0
+        )
+        assertTrue(
+            "Child audio (${scoredChildAudio.score}) must vastly outscore segment (${scoredSegment.score})",
+            scoredChildAudio.score > scoredSegment.score + 200.0
+        )
+
+        // decide must unambiguously pick the master manifest
+        val decision = ranker.decide(
+            listOf(segmentDirect, childAudioHls, childVideoHls, masterHls),
+            100.0
+        )
+        assertEquals("mc_master", decision.selectedCandidateId)
+    }
 }

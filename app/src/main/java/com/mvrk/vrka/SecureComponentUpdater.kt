@@ -619,7 +619,7 @@ class SecureComponentUpdater(
     fun getInstalledGeckoViewVersion(): String {
         return runCatching {
             org.mozilla.geckoview.BuildConfig.MOZILLA_VERSION
-        }.getOrNull()?.trim()?.ifBlank { null } ?: "153.0"
+        }.getOrNull()?.trim()?.ifBlank { null } ?: "156.0"
     }
 
     /**

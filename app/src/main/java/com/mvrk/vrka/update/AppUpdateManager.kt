@@ -2,6 +2,7 @@ package com.mvrk.vrka.update
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -200,6 +201,52 @@ class AppUpdateManager(
 
     fun installApk(file: File) {
         try {
+            // Security verification: Pre-verify APK package name and signing certificate before handoff
+            val pm = context.packageManager
+            val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            }
+
+            if (archiveInfo == null) {
+                _downloadState.value = AppUpdateDownloadState.Error("APK verification failed: corrupt or invalid package archive")
+                return
+            }
+
+            if (archiveInfo.packageName != context.packageName) {
+                _downloadState.value = AppUpdateDownloadState.Error("APK verification failed: package name mismatch (${archiveInfo.packageName} != ${context.packageName})")
+                return
+            }
+
+            // Verify certificate matches installed app
+            val currentPkgInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+            }
+
+            val currentSigners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                currentPkgInfo.signingInfo?.apkContentsSigners?.map { it.toByteArray().contentHashCode() }?.toSet().orEmpty()
+            } else {
+                @Suppress("DEPRECATION")
+                currentPkgInfo.signatures?.map { it.toByteArray().contentHashCode() }?.toSet().orEmpty()
+            }
+
+            val candidateSigners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                archiveInfo.signingInfo?.apkContentsSigners?.map { it.toByteArray().contentHashCode() }?.toSet().orEmpty()
+            } else {
+                @Suppress("DEPRECATION")
+                archiveInfo.signatures?.map { it.toByteArray().contentHashCode() }?.toSet().orEmpty()
+            }
+
+            if (currentSigners.isNotEmpty() && candidateSigners.isNotEmpty() && currentSigners.intersect(candidateSigners).isEmpty()) {
+                _downloadState.value = AppUpdateDownloadState.Error("APK verification failed: signing certificate mismatch. Update rejected.")
+                return
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!context.packageManager.canRequestPackageInstalls()) {
                     val manageIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {

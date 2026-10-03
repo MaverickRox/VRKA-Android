@@ -22,7 +22,7 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
         message: Any,
         sender: WebExtension.MessageSender
     ): GeckoResult<Any>? {
-        Log.d(TAG, "onMessage received from $nativeApp: $message")
+        Log.d(TAG, "onMessage received from $nativeApp")
         handlePayload(message)
         val response = JSONObject().put("status", "ok")
         return GeckoResult.fromValue(response)
@@ -60,7 +60,7 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
             if (type == "MEDIA_DETECTED") {
                 val candidateObj = json.optJSONObject("candidate") ?: return
                 val url = candidateObj.optString("url").trim()
-                if (url.isBlank() || !url.startsWith("http")) return
+                if (!CustomCommandPolicy.isHttpUrl(url)) return
 
                 val pageUrl = candidateObj.optString("pageUrl")
                 val title = candidateObj.optString("title")
@@ -96,8 +96,12 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
                     while (keys.hasNext()) {
                         val key = keys.next()
                         val value = headersObj.optString(key)
-                        if (value.isNotBlank() && isAllowedHeader(key)) {
-                            headersMap[key] = value
+                        if (value.isNotBlank() && value.length <= 8192 && isAllowedHeader(key) &&
+                            HeaderValidation.isValidHeaderName(key) &&
+                            HeaderValidation.validateHeaderValue(value) is HeaderValidationResult.Valid &&
+                            headersMap.size < 32
+                        ) {
+                            headersMap[HeaderValidation.canonicalHeaderName(key)] = value.trim()
                         }
                     }
                 }
@@ -121,7 +125,8 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
                     nuisanceScore = nuisanceScore,
                 )
 
-                Log.i(TAG, "Discovered media candidate: ${candidate.kind} - ${candidate.displayTitle} (userStarted=$userStarted, primary=$primaryPlayer, url=${candidate.url})")
+                val host = runCatching { java.net.URI(candidate.url).host }.getOrNull().orEmpty()
+                Log.i(TAG, "Discovered media candidate: ${candidate.kind} (userStarted=$userStarted, primary=$primaryPlayer, host=$host)")
 
                 synchronized(seenUrls) {
                     val currentList = _candidates.value
@@ -151,7 +156,7 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling media detector payload: ${e.message}", e)
+            Log.e(TAG, "Error handling media detector payload (${e.javaClass.simpleName})")
         }
     }
 
@@ -170,8 +175,12 @@ class GeckoMediaBridge : WebExtension.MessageDelegate, WebExtension.PortDelegate
             "origin",
             "range",
             "cookie",
+            "authorization",
+            "accept",
+            "accept-language",
             "x-requested-with",
-        )
+        ) || (lower.startsWith("x-") && !lower.startsWith("x-moz-") &&
+            lower !in setOf("x-forwarded-for", "x-real-ip", "x-forwarded-host"))
     }
 
     companion object {
