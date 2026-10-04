@@ -1,13 +1,14 @@
 VRKA Android is a native media downloader and passive web stream discovery application for Android devices.
 
-Built with Jetpack Compose, Kotlin Coroutines, and local processing, VRKA delivers direct media processing powered by yt-dlp and FFmpeg, combined with an isolated Mozilla GeckoView browser fallback engine featuring integrated uBlock Origin content filtering and Puemos stream inspection.
+Built with Jetpack Compose, Kotlin Coroutines, yt-dlp and FFmpeg, VRKA performs media transfers locally. When an eligible direct extraction fails, its embedded Mozilla GeckoView browser can discover media candidates; VRKA hands a selected candidate to the same yt-dlp transfer path.
 
 Key Features:
-- Direct Extraction & Download: Powered by yt-dlp and FFmpeg (arm64-v8a), supporting video and audio stream extraction, quality and resolution selection (Best, 4K, 1440p, 1080p, 720p), 60 FPS preference, subtitle embedding, and audio extraction (MP3, Opus with native stream copy remuxing, and 16-bit PCM WAV).
-- Custom HTTP Headers: Dedicated Referer and Origin customization with RFC 7230 token validation and CRLF injection protection.
-- Sensitive Data Redaction: Multi-tier protection masking authorization tokens, cookies, and secret headers across logs, diagnostics, and on-device history.
-- Passive Browser Fallback: Embedded Mozilla GeckoView session activates when direct extraction encounters anti-bot challenges or client-side player scripts.
-- Content Filtering: Integrated uBlock Origin WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation.
-- Passive Stream Discovery: Integrated Puemos WebExtension intercepts network traffic to observe and rank media manifests (.m3u8 playlists, .mpd manifests).
-- Local On-Device Processing: No application telemetry, no cloud tracking, and all operations executed locally on your device.
-- Cryptographically Verified Updates: Core components (yt-dlp, uBlock Origin, Puemos) are user-controlled and cryptographically verified against pinned OpenPGP signatures and checksums.
+- Direct media extraction and downloads using yt-dlp, with optional local FFmpeg processing.
+- Quality selection, video and audio formats, subtitle handling, and optional H.264 conversion.
+- Custom Referer and Origin fields with validation and CRLF injection protection.
+- Sensitive-data redaction for authorization tokens, cookies, and secret headers in diagnostics and history.
+- GeckoView Browser Fallback for eligible anti-bot or client-side player failures. Site compatibility varies.
+- A VRKA media-detector WebExtension discovers and ranks stream candidates; uBlock Origin filters browser requests.
+- Browser Fallback transfers use yt-dlp. FFmpeg handles local processing; VRKA does not use an app-owned native HLS/DASH transfer engine.
+- Local on-device processing with no application telemetry or cloud tracking.
+- Component updates for yt-dlp and uBlock Origin are verified before installation.

@@ -1,0 +1,9 @@
+- GeckoView media-discovery Browser Fallback for anti-bot or client-side player challenges.
+- Dynamic yt-dlp installed-version detection from active zipapp, runtime, and bundled source.
+- Liquid-glass navigation refinements with equal slot-based indicator geometry and live AGSL optics.
+- Hardened update checks with bounded network reads, 6s timeouts, and cooperative cancellation.
+- Bundled yt-dlp updated to 2026.08.19.
+- Bundled uBlock Origin updated to current production WebExtension.
+- Optional H.264 Compatibility Mode with FFmpeg output validation.
+- Custom yt-dlp argument templates with security restrictions.
+- Removed retired Puemos component from active UI and updater surface.

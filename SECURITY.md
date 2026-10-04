@@ -4,78 +4,28 @@
 
 | Version | Supported |
 | :--- | :--- |
-| 4.5.3 | :white_check_mark: |
-| 4.5.2 | :white_check_mark: |
-| 4.5.1 | :white_check_mark: |
-| 4.5 | :white_check_mark: |
-| 4.0.3 | :white_check_mark: |
-| 4.0.2 | :white_check_mark: |
-| 4.0.1 | :white_check_mark: |
-| 4.0.0 | :white_check_mark: |
-| < 4.0.0 | :x: |
-
----
+| 5.0 | :white_check_mark: |
+| 4.5.3 and older | :x: |
 
 ## Reporting a Vulnerability
 
-We take the security and privacy of VRKA Android seriously. If you discover a potential security issue or vulnerability, please report it responsibly:
+Report vulnerabilities through the [GitHub security page](https://github.com/MaverickRox/VRKA-Android/security). Include reproduction steps and sanitized logs; do not attach cookies, authorization values, signed media URLs, or personal device identifiers.
 
-1. Navigate to the repository security page: [https://github.com/MaverickRox/VRKA-Android/security](https://github.com/MaverickRox/VRKA-Android/security)
-2. Submit a report or contact the repository maintainer with details to reproduce the issue.
-3. Provide a clear explanation, steps to reproduce, and any relevant logs (with sensitive data redacted).
+## Release Integrity
 
-Please allow up to 48 hours for initial triage before public disclosure.
+The official v5.0 release APK is production-signed. Verify its signature and SHA-256 against `RELEASE_EVIDENCE.md` or official GitHub release checksums before installation.
 
----
+The `release` build type requires explicit signing properties; it has no debug-key fallback. Never publish signing properties, keystores, passwords, or private signing keys in this repository or artifact package.
 
-## Release Integrity & Cryptographic Signing Lineage
+## Security Boundaries
 
-All official release binaries of VRKA Android are signed using the canonical v1.0 signing certificate. The build system strictly requires external signing credentials for release artifacts and prevents silent fallbacks to debug keys.
+- Custom yt-dlp templates are argument arrays passed to yt-dlp, not shell commands. Validation blocks shell hooks, external downloaders, config files, cookie files, and output-path overrides. VRKA owns staging and publication paths.
+- Browser Fallback always hands the selected candidate to the standard yt-dlp request path. It keeps the original public page URL as the job source and clears custom template arguments and user-defined headers before transfer construction. Captured browser headers are validated and origin-bound by `HeaderValidation`.
+- User URLs are validated HTTP(S) inputs. They remain individual argv values; no shell is used.
+- Diagnostics and persisted job data sanitize URLs and sensitive header values. Avoid exporting diagnostic files containing site or account identifiers.
+- GeckoView navigates in a task-scoped private session. The Settings clear action clears GeckoView cookies, DOM storage, auth sessions, site data, caches and the in-memory candidate bridge. It does not cancel an active task.
+- yt-dlp is the normal and Browser Fallback transfer engine. FFmpeg is used for local processing, probing and validation. The active browser extensions are the VRKA media detector and uBlock Origin. Dormant Media3 and gated N_m3u8DL-RE code are not advertised or routed as active download capabilities.
 
-### Certificate Fingerprint
+## Out of Scope
 
-Verify the signing certificate of downloaded release APKs using `apksigner`:
-
-```bash
-apksigner verify --verbose --print-certs VRKA-Android-v4.5.3.apk
-```
-
-The signing certificate must match:
-- **SHA-256 Fingerprint**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`
-- **SHA-1 Fingerprint**: `7758980f74a503684bf1a187994e447823d19d7c`
-
-### Checksum Verification
-
-Every release includes an authentic `SHA256SUMS` manifest. Verify your download:
-
-```bash
-sha256sum -c SHA256SUMS
-```
-
-Or in PowerShell:
-
-```powershell
-(Get-FileHash .\VRKA-Android-v4.5.3.apk -Algorithm SHA256).Hash
-```
-
----
-
-## Threat Model
-
-### Protected Scope
-
-- **Component Updates**: External binaries and extensions are downloaded over HTTPS from official GitHub releases:
-  - **yt-dlp Engine**: Verified against detached OpenPGP signatures (`SHA2-256SUMS.sig`) and SHA-256 digests from `yt-dlp/yt-dlp`. Binaries are staged in temporary storage and verified before replacing the active component. If an update fails verification, the previous working binary is retained.
-  - **uBlock Origin**: The full `uBlock0@raymondhill.net` extension is downloaded from official signed Firefox XPIs (`gorhill/uBlock`). Pre-install checks confirm the extension ID, GeckoView compatibility, and required Mozilla signature metadata. The XPI is installed through GeckoView without extracting or repacking it.
-  - **Puemos**: The official HLS Downloader extension (`{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}`) is downloaded from `puemos/hls-downloader`. Pre-install checks confirm the extension ID, GeckoView compatibility, and required Mozilla signature metadata. The XPI is installed through GeckoView without extracting or repacking it. The internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) remains bundled separately.
-- **HTTP Header Validation & Injection Prevention**: Custom HTTP headers are validated strictly against RFC 7230 / RFC 9110 token specifications. Header names containing non-token characters or CRLF sequences (`\r`, `\n`) are rejected at input time. Case-insensitive precedence ensures deduplication, and dedicated `Referer` and `Origin` parameters maintain unambiguous routing precedence.
-- **Sensitive Header Redaction & Diagnostics Sanitization**: Sensitive header keys (including `Authorization`, `Cookie`, `X-Api-Key`, and secret tokens) are systematically masked (`[REDACTED]`) across logs, crash diagnostics, on-device stores, and UI cards. Diagnostic traces automatically sanitize URL query tokens, signatures, and credentials before rendering or clipboard export.
-- **Browser Session Isolation & Clearing**: Embedded GeckoView fallback sessions operate in an isolated sandbox with strict tracking protection. Users can explicitly purge all cookies, active auth sessions, DOM storages, and caches via Settings without affecting download history or configuration.
-- **Application Self-Update Security**: The in-app application updater verifies releases exclusively via HTTPS over approved GitHub endpoints (`api.github.com`, `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, `raw.githubusercontent.com`, and `*.githubusercontent.com`). Every redirect hop is independently validated against protocol downgrade and arbitrary hosts. Released APKs must strictly match the canonical `VRKA-Android-vX.Y.Z.apk` naming convention corresponding to the release version. Package installation is handed off via Android `FileProvider` with scoped content URI permissions, requiring explicit user confirmation.
-- **Release Continuity**: The build pipeline enforces canonical signing certificate verification to prevent APK takeover and update incompatibilities.
-
-### Out of Scope / Not Guaranteed
-
-- **Compromised Host OS**: Devices with compromised root access, modified Android frameworks, or active spyware cannot guarantee application memory isolation or secure storage guarantees.
-- **Physical Access**: Unencrypted physical access to an unlocked device bypasses Android's local application sandboxing.
-- **Malicious Third-Party Content**: While GeckoView and uBlock Origin mitigate common script execution threats, untrusted websites visited during fallback navigation remain subject to browser-level sandboxing limits.
+VRKA does not bypass DRM, authentication, payment, CAPTCHA, consent, or other site access controls. A compromised operating system or device can defeat application sandbox protections. A site's behavior and third-party component availability can change after release.

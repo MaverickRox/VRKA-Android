@@ -2,6 +2,30 @@
 
 All notable changes to VRKA Android are documented in this file.
 
+## [5.0] - 2026-10-04
+
+### Added
+- GeckoView media-discovery Browser Fallback for eligible anti-bot or client-side player failures.
+- Dynamic yt-dlp installed-version detection from runtime, active zipapp, and bundled raw resource.
+- Liquid-glass navigation refinements with equal slot-based indicator geometry, live AGSL backdrop magnification, edge refraction, and chromatic dispersion.
+- Optional H.264 Compatibility Mode with FFmpeg validation.
+- Named Custom yt-dlp argument templates with security-hardened parameter restrictions.
+
+### Changed
+- Bundled yt-dlp updated to 2026.08.19.
+- Bundled uBlock Origin updated to the current production WebExtension.
+- Hardened component update checks with bounded network reads, 6-second socket timeouts, 8-second component deadlines, and cooperative cancellation.
+- Single-flight batch updater protection with rapid-tap debounce and spam resilience.
+- Improved Android UI, component row alignment, and monospace status badges.
+- Retained v4.5.3 component behavior and channel selector styling.
+
+### Removed
+- Retired Puemos component from the active production component/update surface and purged legacy extension state.
+
+### Security
+- Custom yt-dlp templates validated against RFC 7230 and injection protection, rejecting shell hooks, file paths, and credentials.
+- Browser Fallback transfers bound to public page source with origin-validated headers and dropped custom template state.
+
 ## [4.5.3] - 2026-09-14
 
 ### Changed
