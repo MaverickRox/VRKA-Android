@@ -41,7 +41,7 @@
 
 ## Overview
 
-**VRKA Android** is built with **Jetpack Compose** and **Kotlin Coroutines**. Normal downloads and Browser Fallback transfers use `yt-dlp`; GeckoView provides browser navigation and media discovery, while FFmpeg handles local post-processing and validation. uBlock Origin is used as a browser privacy filter. The bundled, update-managed Puemos extension is not a media transfer engine and is not required for fallback discovery.
+**VRKA Android** is built with **Jetpack Compose** and **Kotlin Coroutines**. Normal downloads and Browser Fallback transfers use `yt-dlp`; GeckoView provides browser navigation and media discovery, while FFmpeg handles local post-processing and validation. uBlock Origin is used as a browser privacy filter.
 
 Designed for local, on-device processing without an application analytics service, featuring an AMOLED-optimized Liquid Glass interface.
 
@@ -93,7 +93,7 @@ Designed for local, on-device processing without an application analytics servic
 - **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation.
 - **Browser Fallback Discovery**: The VRKA media-detector WebExtension observes browser requests and page media elements, including direct media, HLS and DASH candidates. Candidate discovery is followed by yt-dlp probing and the standard yt-dlp transfer.
 - **Local On-Device Diagnostics**: On-device diagnostic failure logging in Settings with stage attribution, terminal trace viewer, secret-sanitized reporting, and one-tap clipboard export.
-- **In-App Component Updates**: The app checks and updates yt-dlp, uBlock Origin, and the bundled Puemos extension through the component updater. Installed version values are taken from runtime, packaged files or verified update records; “Up to date” is shown only after an update check.
+- **In-App Component Updates**: The app checks and updates the active yt-dlp and uBlock Origin components. Installed versions come from the running yt-dlp runtime or the installed/bundled extension; “Up to date” is shown only after a successful remote check.
 - **In-App Application Self-Update**: Secure in-app update checker querying GitHub Releases with a 24-hour rate limit gate, manual checks from Settings, semantic version comparison, APK asset verification (`VRKA-Android-vX.Y.Z.apk`), HTTPS redirect validation, and installation via Android FileProvider.
 - **Browser Session Clearing**: Settings clears GeckoView cookies, DOM storage, auth sessions, site data, caches and in-memory discovered candidates. It does not cancel an active fallback.
 - **H.264 Compatibility Mode**: Optional, off by default. If a downloaded video is not H.264, FFmpeg converts the local staged file, validates the result and preserves supported audio/subtitle streams.
@@ -121,7 +121,6 @@ VRKA Android independently manages and updates its core media and filtering comp
 
 - **yt-dlp**: The installed runtime version is queried when available and updated using the app's updater. No historical version is presented as the active version when it cannot be queried.
 - **uBlock Origin**: Bundled as a Firefox XPI (`uBlock0@raymondhill.net`) in `assets/extensions/ublock.xpi`; it is installed and enabled for Browser Fallback sessions. The Settings version row reports the detected runtime/package/update version rather than an embedded historical label.
-- **Puemos**: Bundled and update-managed as a browser extension. It is not the native Browser Fallback transfer engine; the VRKA media-detector WebExtension and bridge provide fallback discovery.
 - **Persistent Background Execution**: Component updates use WorkManager to survive Activity recreation and backgrounding.
 - **Concurrency & Spam Protection**: Only one update operation runs per component at a time. Rapid button taps are de-duplicated without freezing the UI.
 
@@ -161,7 +160,7 @@ VRKA Android independently manages and updates its core media and filtering comp
 1. **UI Layer**: Built with Jetpack Compose and design tokens (`VrkaTokens`), featuring floating capsule navigation with adaptive backdrop blur across AMOLED Dark and Light modes.
 2. **Download Pipeline**: `VrkaDownloadManager` invokes yt-dlp through the ordinary request factory. An eligible failure can enter Browser Fallback. A failed custom-template attempt follows the same eligibility check.
 3. **Browser Fallback**: GeckoView navigates in a task-scoped private session. The media-detector WebExtension and GeckoMediaBridge feed the candidate store/ranker. yt-dlp probes the selected candidate and performs the transfer using its standard request path; custom template arguments and custom request headers are not carried into that handoff. FFmpeg is used only for local processing and validation.
-4. **Components and Updates**: yt-dlp, uBlock Origin, and Puemos are update-managed. Puemos is a bundled browser extension, not a native transfer engine. GeckoView's dependency version is declared once in the Gradle build and displayed from generated BuildConfig.
+4. **Components and Updates**: yt-dlp and uBlock Origin are the active update-managed components. GeckoView's dependency version is declared once in the Gradle build and displayed from generated BuildConfig.
 
 ---
 
@@ -222,26 +221,26 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-The v5.0 engineering release asset is built from the tagged source using `assembleDevRelease`; it uses the Android development signing key. Check the release page for the APK SHA-256 and signer details. It is not update-compatible with a separately production-signed installation.
+The current v5.0 final APK is a local production-signed build and has not been published. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
 
 ---
 
 ## Release Signing
 
-The `release` build type requires explicit signing credentials and never silently falls back to a debug key. The v5.0 `devRelease` asset is intentionally built with the Android development key for this release pass. Verify its certificate and SHA-256 against the release evidence before use; do not treat this development signer as the production signing lineage.
+The `release` build type requires explicit signing credentials and never silently falls back to a debug key. The final local v5.0 artifact is production-signed; verify its certificate and SHA-256 against the release evidence before installation. It remains unpublished until the maintainer's separate publication command.
 
 ---
 
 ## Installation
 
-1. Download `VRKA-Android-v5.0.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
+1. For this unpublished local release candidate, use the APK path and SHA-256 recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). No public APK is available yet.
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
    (Get-FileHash .\VRKA-Android-v5.0.apk -Algorithm SHA256).Hash
    ```
 3. Install on your Android device:
    ```bash
-   adb install -r VRKA-Android-v4.5.3.apk
+   adb install -r .\app\build\outputs\apk\release\app-release.apk
    ```
 
 ---
@@ -252,7 +251,6 @@ VRKA Android integrates the following open-source software:
 - **yt-dlp**: The Unlicense ([yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp))
 - **Mozilla GeckoView**: Mozilla Public License 2.0 ([GeckoView](https://wiki.mozilla.org/Mobile/GeckoView))
 - **uBlock Origin**: GNU General Public License v3.0 ([gorhill/uBlock](https://github.com/gorhill/uBlock))
-- **Puemos**: Bundled and update-managed browser extension; not VRKA's media transfer engine ([puemos/hls-downloader](https://github.com/puemos/hls-downloader))
 - **FFmpeg**: LGPL / GPL licensed components
 - **Space Mono Font**: SIL Open Font License 1.1
 

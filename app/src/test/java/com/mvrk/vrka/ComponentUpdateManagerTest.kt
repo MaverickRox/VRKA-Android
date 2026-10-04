@@ -351,137 +351,10 @@ class ComponentUpdateManagerTest {
         assertEquals(origPayload.size.toLong(), originalXpi.length())
     }
 
-    // --- PUEMOS TESTS ---
-
-    @Test
-    fun puemosCurrentVersionDetectionAndComparison() {
-        val installed = "1.0.0"
-        assertEquals(listOf(1L, 0L, 0L), ComponentUpdateManager.extractVersionNumbers(installed))
-        assertEquals("1.0.0", ComponentUpdateManager.cleanVersionString(installed))
-
-        // Update available
-        assertTrue(ComponentUpdateManager.isNewerVersion("5.5.0", installed))
-        assertTrue(ComponentUpdateManager.isNewerVersion("1.0.1", installed))
-        assertTrue(ComponentUpdateManager.isNewerVersion("2.0.0", installed))
-
-        // Downgrade rejected
-        assertFalse(ComponentUpdateManager.isNewerVersion("0.9.0", installed))
-        assertFalse(ComponentUpdateManager.isNewerVersion("1.0.0", installed))
-    }
-
-    @Test
-    fun puemosSuccessfulVerifiedUpdate() = kotlinx.coroutines.runBlocking {
-        val target = tempDir.newFolder("puemos_active")
-        val payload = createMockXpi(
-            id = SecureComponentUpdater.PUEMOS_EXTENSION_ID,
-            version = "5.5.0",
-        )
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        val expectedHash = org.bouncycastle.util.encoders.Hex.toHexString(md.digest(payload))
-
-        val transport = TestTransport(fileContent = payload, fileHash = expectedHash)
-        val updater = SecureComponentUpdater(
-            customTargetDir = target,
-        )
-
-        val result = updater.updateExtension(
-            componentId = ComponentUpdateManager.ID_PUEMOS,
-            candidateVersion = "5.5.0",
-            installedVersion = "1.0.0",
-            downloadUrl = "https://github.com/puemos/hls-downloader/releases/download/v5.5.0/extension-mv2-firefox.xpi",
-            expectedSha256 = expectedHash,
-            transport = transport,
-            customExtensionValidator = { "5.5.0" },
-        )
-
-        assertTrue("Update must succeed: ${result.exceptionOrNull()}", result.isSuccess)
-        assertEquals("5.5.0", result.getOrNull())
-        val installedXpi = java.io.File(target, "puemos.xpi")
-        assertTrue("Installed intact XPI must exist", installedXpi.exists())
-    }
-
-    @Test
-    fun puemosInvalidIntegrityRejection() = kotlinx.coroutines.runBlocking {
-        val target = tempDir.newFolder("puemos_integrity")
-        val payload = createMockXpi(
-            id = SecureComponentUpdater.PUEMOS_EXTENSION_ID,
-            version = "5.5.0",
-        )
-        val transport = TestTransport(fileContent = payload, fileHash = "actualHash")
-        val updater = SecureComponentUpdater(customTargetDir = target)
-
-        val result = updater.updateExtension(
-            componentId = ComponentUpdateManager.ID_PUEMOS,
-            candidateVersion = "5.5.0",
-            installedVersion = "1.0.0",
-            downloadUrl = "https://github.com/puemos/hls-downloader/releases/download/v5.5.0/extension-mv2-firefox.xpi",
-            expectedSha256 = "expectedDifferentHash",
-            transport = transport,
-        )
-
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull() is SecurityException)
-        assertTrue(result.exceptionOrNull()!!.message!!.contains("SHA-256 mismatch"))
-    }
-
-    @Test
-    fun puemosDowngradeRejectedException() = kotlinx.coroutines.runBlocking {
-        val target = tempDir.newFolder("puemos_downgrade")
-        val updater = SecureComponentUpdater(customTargetDir = target)
-
-        val result = updater.updateExtension(
-            componentId = ComponentUpdateManager.ID_PUEMOS,
-            candidateVersion = "0.9.0",
-            installedVersion = "1.0.0",
-            downloadUrl = "https://github.com/puemos/hls-downloader/releases/download/v0.9.0/extension-mv2-firefox.xpi",
-        )
-
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
-        assertTrue(result.exceptionOrNull()!!.message!!.contains("Downgrade rejected"))
-    }
-
-    @Test
-    fun puemosFailedInstallationRetainsPreviousVersion() = kotlinx.coroutines.runBlocking {
-        val target = tempDir.newFolder("puemos_retained")
-        val originalXpi = java.io.File(target, "puemos.xpi")
-        val origPayload = createMockXpi(
-            id = SecureComponentUpdater.PUEMOS_EXTENSION_ID,
-            version = "1.0.0",
-        )
-        originalXpi.writeBytes(origPayload)
-
-        val newPayload = createMockXpi(
-            id = SecureComponentUpdater.PUEMOS_EXTENSION_ID,
-            version = "5.5.0",
-        )
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        val expectedHash = org.bouncycastle.util.encoders.Hex.toHexString(md.digest(newPayload))
-
-        val transport = TestTransport(fileContent = newPayload, fileHash = expectedHash)
-        val updater = SecureComponentUpdater(
-            customTargetDir = target,
-        )
-
-        val result = updater.updateExtension(
-            componentId = ComponentUpdateManager.ID_PUEMOS,
-            candidateVersion = "5.5.0",
-            installedVersion = "1.0.0",
-            downloadUrl = "https://github.com/puemos/hls-downloader/releases/download/v5.5.0/extension-mv2-firefox.xpi",
-            expectedSha256 = expectedHash,
-            transport = transport,
-            customExtensionValidator = { null },
-        )
-
-        assertTrue("Update must fail validation", result.isFailure)
-        assertTrue("Previous active XPI must still exist", originalXpi.exists())
-        assertEquals(origPayload.size.toLong(), originalXpi.length())
-    }
-
     // --- ISOLATION TESTS ---
 
     @Test
-    fun testIsolationYtdlpFailureDoesNotBreakPuemosOrUblock() {
+    fun testIsolationYtdlpFailureDoesNotBreakUblock() {
         val initialMap = mapOf(
             ComponentUpdateManager.ID_YTDLP to ComponentStatus(
                 id = ComponentUpdateManager.ID_YTDLP,
@@ -497,26 +370,17 @@ class ComponentUpdateManagerTest {
                 checkState = ComponentCheckState.UP_TO_DATE,
                 updateState = ComponentUpdateState.UPDATE_IDLE,
             ),
-            ComponentUpdateManager.ID_PUEMOS to ComponentStatus(
-                id = ComponentUpdateManager.ID_PUEMOS,
-                name = "Puemos",
-                installedVersion = "5.5.0",
-                checkState = ComponentCheckState.UP_TO_DATE,
-                updateState = ComponentUpdateState.UPDATE_IDLE,
-            ),
         )
 
         // yt-dlp is failed
         assertEquals(ComponentUpdateState.UPDATE_FAILED, initialMap[ComponentUpdateManager.ID_YTDLP]?.updateState)
-        // uBlock and Puemos remain fully operational
+        // uBlock remains fully operational
         assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_UBLOCK]?.checkState)
         assertEquals("1.74.0", initialMap[ComponentUpdateManager.ID_UBLOCK]?.installedVersion)
-        assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_PUEMOS]?.checkState)
-        assertEquals("5.5.0", initialMap[ComponentUpdateManager.ID_PUEMOS]?.installedVersion)
     }
 
     @Test
-    fun testIsolationUblockFailureDoesNotBreakYtdlpOrPuemos() {
+    fun testIsolationUblockFailureDoesNotBreakYtdlp() {
         val initialMap = mapOf(
             ComponentUpdateManager.ID_YTDLP to ComponentStatus(
                 id = ComponentUpdateManager.ID_YTDLP,
@@ -532,51 +396,11 @@ class ComponentUpdateManagerTest {
                 updateState = ComponentUpdateState.UPDATE_FAILED,
                 error = "uBlock download checksum mismatch",
             ),
-            ComponentUpdateManager.ID_PUEMOS to ComponentStatus(
-                id = ComponentUpdateManager.ID_PUEMOS,
-                name = "Puemos",
-                installedVersion = "5.5.0",
-                checkState = ComponentCheckState.UP_TO_DATE,
-                updateState = ComponentUpdateState.UPDATE_IDLE,
-            ),
         )
 
         assertEquals(ComponentUpdateState.UPDATE_FAILED, initialMap[ComponentUpdateManager.ID_UBLOCK]?.updateState)
         assertEquals("1.74.0", initialMap[ComponentUpdateManager.ID_UBLOCK]?.installedVersion)
         assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_YTDLP]?.checkState)
-        assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_PUEMOS]?.checkState)
-    }
-
-    @Test
-    fun testIsolationPuemosFailureDoesNotBreakYtdlpOrUblock() {
-        val initialMap = mapOf(
-            ComponentUpdateManager.ID_YTDLP to ComponentStatus(
-                id = ComponentUpdateManager.ID_YTDLP,
-                name = "yt-dlp Engine",
-                installedVersion = "2026.08.19",
-                checkState = ComponentCheckState.UP_TO_DATE,
-                updateState = ComponentUpdateState.UPDATE_IDLE,
-            ),
-            ComponentUpdateManager.ID_UBLOCK to ComponentStatus(
-                id = ComponentUpdateManager.ID_UBLOCK,
-                name = "uBlock Origin",
-                installedVersion = "1.74.0",
-                checkState = ComponentCheckState.UP_TO_DATE,
-                updateState = ComponentUpdateState.UPDATE_IDLE,
-            ),
-            ComponentUpdateManager.ID_PUEMOS to ComponentStatus(
-                id = ComponentUpdateManager.ID_PUEMOS,
-                name = "Puemos",
-                installedVersion = "5.5.0",
-                updateState = ComponentUpdateState.UPDATE_FAILED,
-                error = "Puemos verification failed",
-            ),
-        )
-
-        assertEquals(ComponentUpdateState.UPDATE_FAILED, initialMap[ComponentUpdateManager.ID_PUEMOS]?.updateState)
-        assertEquals("5.5.0", initialMap[ComponentUpdateManager.ID_PUEMOS]?.installedVersion)
-        assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_YTDLP]?.checkState)
-        assertEquals(ComponentCheckState.UP_TO_DATE, initialMap[ComponentUpdateManager.ID_UBLOCK]?.checkState)
     }
 
     @Test

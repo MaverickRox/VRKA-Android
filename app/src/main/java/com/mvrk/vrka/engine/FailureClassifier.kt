@@ -433,7 +433,7 @@ fun isFailureBrowserRecoverable(
         return false
     }
 
-    // Subtitle failures cannot be resolved by browser fallback (Puemos only sniffs media streams).
+    // Subtitle failures are outside the browser media-discovery fallback path.
     if (isSubtitleFailure(errorMessage, executionOutput)) {
         return false
     }

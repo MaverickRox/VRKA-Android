@@ -3,6 +3,7 @@ package com.mvrk.vrka
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -68,8 +69,12 @@ import androidx.compose.ui.layout.onSizeChanged
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalViewConfiguration
 import com.mvrk.vrka.ui.backdrop.drawBackdrop
 import com.mvrk.vrka.ui.backdrop.effects.blur
+import com.mvrk.vrka.ui.backdrop.effects.lens
+import com.mvrk.vrka.ui.backdrop.highlight.Highlight
+import com.mvrk.vrka.ui.backdrop.highlight.HighlightStyle
 import com.mvrk.vrka.ui.backdrop.isRenderEffectSupported
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -498,10 +503,12 @@ fun VrkaTextButton(
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
     contentPadding: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+    enabled: Boolean = true,
 ) {
     val resolvedColor = if (color != Color.Unspecified) color else VrkaTokens.TextSecondary
     androidx.compose.material3.TextButton(
         onClick = onClick,
+        enabled = enabled,
         shape = RoundedCornerShape(10.dp),
         modifier = modifier,
         contentPadding = contentPadding,
@@ -509,7 +516,7 @@ fun VrkaTextButton(
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
-            color = resolvedColor,
+            color = if (enabled) resolvedColor else VrkaTokens.TextTertiary,
             maxLines = 1,
             softWrap = false,
         )
@@ -631,6 +638,7 @@ fun VrkaFloatingNavBar(
 ) {
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
+    val viewConfiguration = LocalViewConfiguration.current
     val colors = LocalVrkaColors.current
     val backdrop = LocalAppBackdrop.current
     val destinations = remember { VrkaDestination.entries }
@@ -657,11 +665,12 @@ fun VrkaFloatingNavBar(
         }
     }
 
-    val puckBgColor = if (colors.isLight) {
-        Color(0xFFE5E2EE).copy(alpha = 0.92f)
+    val puckTintColor = if (colors.isLight) {
+        Color(0xFFE5E2EE)
     } else {
-        Color(0xFF282538).copy(alpha = 0.88f)
+        Color(0xFF282538)
     }
+    val puckSurfaceAlpha = if (colors.isLight) 0.70f else 0.62f
 
     val puckBorderBrush = remember(colors.isLight) {
         if (colors.isLight) {
@@ -695,16 +704,21 @@ fun VrkaFloatingNavBar(
     }
 
     var isDragging by remember { mutableStateOf(false) }
-    var dragAccumulator by remember { mutableFloatStateOf(0f) }
-    var dragBasePosition by remember { mutableFloatStateOf(0f) }
-    var lastHapticIndex by remember { mutableIntStateOf(selectedIndex) }
-
+    var dragPosition by remember { mutableFloatStateOf(selectedIndex.toFloat()) }
     val indicatorPosition = remember { Animatable(selectedIndex.toFloat()) }
 
     LaunchedEffect(pagerPosition, selectedIndex) {
         if (!isDragging) {
-            val target = pagerPosition ?: selectedIndex.toFloat()
-            indicatorPosition.snapTo(target)
+            val target = (pagerPosition ?: selectedIndex.toFloat())
+                .coerceIn(0f, destinations.lastIndex.toFloat())
+            if (pagerPosition != null) {
+                indicatorPosition.snapTo(target)
+            } else {
+                indicatorPosition.animateTo(
+                    targetValue = target,
+                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+                )
+            }
         }
     }
 
@@ -720,7 +734,6 @@ fun VrkaFloatingNavBar(
         val indicatorWidthPx = (slotWidthPx - (insetPx * 2f)).coerceAtLeast(0f)
         val indicatorWidthDp = with(density) { indicatorWidthPx.toDp() }
         val barCornerRadiusPx = with(density) { NAV_BAR_CORNER_RADIUS.toPx() }
-        val currentOffsetPx = (indicatorPosition.value * slotWidthPx) + insetPx
 
         // Outer soft ambient shadow
         Box(
@@ -751,7 +764,15 @@ fun VrkaFloatingNavBar(
                             backdrop = backdrop,
                             shape = { RoundedCornerShape(NAV_BAR_CORNER_RADIUS) },
                             effects = { blur(with(density) { 16.dp.toPx() }) },
-                            highlight = null,
+                            highlight = {
+                                Highlight(
+                                    width = 0.7.dp,
+                                    style = HighlightStyle.Default(
+                                        color = Color.White.copy(alpha = if (colors.isLight) 0.14f else 0.12f),
+                                        angle = 50f,
+                                    ),
+                                )
+                            },
                             shadow = null,
                             onDrawSurface = {
                                 val veilColor = if (colors.isLight) {
@@ -779,7 +800,6 @@ fun VrkaFloatingNavBar(
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         var isDrag = false
-                        var dragAccum = 0f
                         val basePos = indicatorPosition.value
                         var lastHaptic = basePos.roundToInt().coerceIn(0, destinations.lastIndex)
 
@@ -787,48 +807,46 @@ fun VrkaFloatingNavBar(
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (!change.pressed) {
-                                change.consume()
                                 if (isDrag) {
-                                    val shift = dragAccum / slotWidthPx
+                                    change.consume()
+                                    val shift = (change.position.x - down.position.x) / slotWidthPx
                                     val targetIndex = (basePos + shift).roundToInt().coerceIn(0, destinations.lastIndex)
-                                    isDragging = false
                                     val targetDest = destinations[targetIndex]
+                                    val releasePosition = dragPosition
                                     coroutineScope.launch {
-                                        indicatorPosition.animateTo(
-                                            targetValue = targetIndex.toFloat(),
-                                            animationSpec = spring(
-                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                stiffness = Spring.StiffnessMedium,
-                                            ),
-                                        )
+                                        indicatorPosition.snapTo(releasePosition)
+                                        isDragging = false
+                                        if (targetIndex != selectedIndex) {
+                                            onDestinationSelected(targetDest)
+                                        } else {
+                                            indicatorPosition.animateTo(
+                                                targetValue = targetIndex.toFloat(),
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMedium,
+                                                ),
+                                            )
+                                        }
                                     }
-                                    if (targetIndex != selectedIndex) {
+                                    if (targetIndex != lastHaptic) {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onDestinationSelected(targetDest)
                                     }
-                                } else {
-                                    val tapIndex = (down.position.x / slotWidthPx).toInt().coerceIn(0, destinations.lastIndex)
-                                    val targetDest = destinations[tapIndex]
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onDestinationSelected(targetDest)
                                 }
                                 break
                             }
 
                             val dx = change.position.x - down.position.x
-                            if (!isDrag && kotlin.math.abs(dx) > 12f) {
+                            if (!isDrag && kotlin.math.abs(dx) > viewConfiguration.touchSlop) {
                                 isDrag = true
+                                dragPosition = basePos
                                 isDragging = true
                             }
 
                             if (isDrag) {
                                 change.consume()
-                                dragAccum = dx
-                                val newPosition = (basePos + (dragAccum / slotWidthPx))
+                                val newPosition = (basePos + (dx / slotWidthPx))
                                     .coerceIn(0f, destinations.lastIndex.toFloat())
-                                coroutineScope.launch {
-                                    indicatorPosition.snapTo(newPosition)
-                                }
+                                dragPosition = newPosition
                                 val currentTab = newPosition.roundToInt().coerceIn(0, destinations.lastIndex)
                                 if (currentTab != lastHaptic) {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -847,10 +865,45 @@ fun VrkaFloatingNavBar(
                         .height(NAV_INDICATOR_HEIGHT)
                         .align(Alignment.CenterStart)
                         .graphicsLayer {
-                            translationX = currentOffsetPx
+                            val position = if (isDragging) dragPosition else indicatorPosition.value
+                            translationX = (position * slotWidthPx) + insetPx
                         }
+                        .then(
+                            if (backdrop != null && isRenderEffectSupported()) {
+                                Modifier.drawBackdrop(
+                                    backdrop = backdrop,
+                                    shape = { RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS) },
+                                    effects = {
+                                        blur(with(density) { 8.dp.toPx() })
+                                        lens(
+                                            refractionHeight = with(density) { 4.dp.toPx() },
+                                            refractionAmount = with(density) { 1.5.dp.toPx() },
+                                            depthEffect = true,
+                                        )
+                                    },
+                                    highlight = {
+                                        Highlight(
+                                            width = 0.65.dp,
+                                            style = HighlightStyle.Default(
+                                                color = Color.White.copy(alpha = if (colors.isLight) 0.28f else 0.22f),
+                                                angle = 50f,
+                                            ),
+                                        )
+                                    },
+                                    shadow = null,
+                                    onDrawSurface = {
+                                        drawRect(color = puckTintColor.copy(alpha = puckSurfaceAlpha))
+                                    },
+                                    backdropScale = 1f,
+                                )
+                            } else {
+                                Modifier.background(
+                                    puckTintColor.copy(alpha = puckSurfaceAlpha),
+                                    RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS),
+                                )
+                            },
+                        )
                         .clip(RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS))
-                        .background(puckBgColor, RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS))
                         .border(1.dp, puckBorderBrush, RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS)),
                 )
             }
@@ -924,7 +977,7 @@ private fun VrkaNavItem(
                 painter = androidx.compose.ui.res.painterResource(item.iconRes),
                 contentDescription = item.label,
                 tint = iconTint,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(24.dp),
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(

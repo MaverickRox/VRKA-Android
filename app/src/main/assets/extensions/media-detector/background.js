@@ -1,6 +1,6 @@
 /**
  * VRKA Android Media Discovery WebExtension Background Service
- * Adapted from Puemos HLS stream capture architecture & GeckoView Native Bridge
+ * VRKA media discovery background worker and GeckoView native bridge.
  */
 
 const seenCandidates = new Map();

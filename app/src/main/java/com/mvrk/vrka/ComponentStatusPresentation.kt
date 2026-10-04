@@ -29,7 +29,7 @@ internal data class ComponentStatusPresentation(
             status.updateState == ComponentUpdateState.UPDATE_FAILED ->
                 ComponentStatusPresentation("Failed", ComponentStatusTone.ERROR)
             status.checkState == ComponentCheckState.UPDATE_AVAILABLE ->
-                ComponentStatusPresentation("v${status.latestVersion.orEmpty()}", ComponentStatusTone.ACCENT)
+                ComponentStatusPresentation("Update available", ComponentStatusTone.ACCENT)
             status.checkState == ComponentCheckState.CHECK_FAILED ->
                 ComponentStatusPresentation("Error", ComponentStatusTone.ERROR)
             status.checkState == ComponentCheckState.UP_TO_DATE ->

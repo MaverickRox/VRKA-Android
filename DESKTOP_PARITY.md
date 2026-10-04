@@ -1,3 +1,5 @@
+> **Historical engineering artifact:** This report documents repository or artifact state before the 2026-10-04 final hardening pass. Preserve it as historical evidence; it is not evidence for the current APK or current component set. See [CURRENT_PRODUCTION_ARCHITECTURE.md](CURRENT_PRODUCTION_ARCHITECTURE.md) and [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for current source and artifact evidence.
+
 # VRKA Android 4.5.3 — Desktop Build 017 Parity Matrix
 
 ## Component Parity Analysis

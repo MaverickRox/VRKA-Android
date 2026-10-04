@@ -36,9 +36,6 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
     private val _uBlockActive = MutableStateFlow(false)
     val uBlockActive: StateFlow<Boolean> = _uBlockActive.asStateFlow()
 
-    private val _puemosActive = MutableStateFlow(false)
-    val puemosActive: StateFlow<Boolean> = _puemosActive.asStateFlow()
-
     private val _mediaDetectorActive = MutableStateFlow(false)
     val mediaDetectorActive: StateFlow<Boolean> = _mediaDetectorActive.asStateFlow()
 
@@ -123,8 +120,7 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                 runCatching {
                     withTimeout(timeoutMs) {
                         val controller = runtime.webExtensionController
-                        // Fallback needs only uBlock's XPI; Puemos is an independent browser
-                        // extension and must not add first-use copy work to this gate.
+                        removeRetiredExtension(controller)
                         seedUblockIfMissing()
                         val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
                         val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
@@ -167,6 +163,29 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                     false
                 }
             }
+        }
+    }
+
+    private suspend fun removeRetiredExtension(controller: WebExtensionController) {
+        val installed = controller.list().awaitResult()
+            ?.firstOrNull { it.id == RETIRED_WEB_EXTENSION_ID }
+        if (installed != null) {
+            val removed = runCatching {
+                controller.uninstall(installed).awaitResult()
+                controller.list().awaitResult()?.none { it.id == RETIRED_WEB_EXTENSION_ID } == true
+            }.onFailure { error ->
+                Log.w(TAG, "Could not uninstall a retired browser extension: ${error.message}")
+            }.getOrDefault(false)
+            if (removed) {
+                Log.i(TAG, "Removed a retired browser extension")
+            } else {
+                Log.w(TAG, "A retired browser extension remains in the GeckoView profile")
+            }
+        }
+
+        val retiredXpi = java.io.File(context.filesDir, "extensions/xpis/puemos.xpi")
+        if (retiredXpi.exists() && !retiredXpi.delete()) {
+            Log.w(TAG, "Could not remove a retired browser extension asset")
         }
     }
 
@@ -258,8 +277,6 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
 
         if (expectedId == UBLOCK_ID) {
             _uBlockActive.value = true
-        } else if (expectedId == PUEMOS_ID) {
-            _puemosActive.value = true
         }
         Log.i(TAG, "WebExtension verified active in GeckoView: $actualId v$actualVersion")
         confirmedExt
@@ -278,7 +295,7 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                     controller.setAllowedInPrivateBrowsing(restored, true).awaitResult()
                 }
             } else {
-                val assetName = if (extensionId == UBLOCK_ID) "ublock.xpi" else "puemos.xpi"
+                val assetName = "ublock.xpi"
                 val targetXpi = java.io.File(context.filesDir, "extensions/xpis/$assetName")
                 runCatching {
                     context.assets.open("extensions/$assetName").use { input ->
@@ -291,8 +308,6 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                         controller.setAllowedInPrivateBrowsing(restored, true).awaitResult()
                         if (extensionId == UBLOCK_ID) {
                             _uBlockActive.value = true
-                        } else if (extensionId == PUEMOS_ID) {
-                            _puemosActive.value = true
                         }
                     }
                 }
@@ -305,7 +320,6 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
 
     fun seedBundledExtensionsIfMissing() {
         seedBundledExtensionIfMissing("ublock.xpi")
-        seedBundledExtensionIfMissing("puemos.xpi")
     }
 
     private fun seedUblockIfMissing() {
@@ -363,7 +377,7 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
         private const val TAG = "VRKA-GeckoRuntime"
         const val UBLOCK_ID = "uBlock0@raymondhill.net"
         const val MEDIA_DETECTOR_ID = "media-detector@vrka.mvrk.com"
-        const val PUEMOS_ID = "{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}"
+        private const val RETIRED_WEB_EXTENSION_ID = "{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}"
 
         @Volatile
         private var INSTANCE: GeckoRuntimeManager? = null

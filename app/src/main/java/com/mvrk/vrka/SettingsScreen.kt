@@ -358,7 +358,11 @@ internal fun SettingsScreen(
                         templateError = ""
                         showTemplateEditor = true
                     },
-                    height = 48.dp,
+                    height = 32.dp,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = 8.dp,
+                        vertical = 0.dp,
+                    ),
                 )
                 val selectedTemplate = settings.customCommandTemplates.firstOrNull {
                     it.id == settings.selectedCustomCommandTemplateId
@@ -377,9 +381,13 @@ internal fun SettingsScreen(
                         }
                     },
                     enabled = selectedTemplate != null,
-                    height = 48.dp,
+                    height = 32.dp,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = 8.dp,
+                        vertical = 0.dp,
+                    ),
                 )
-                VrkaOutlinedButton(
+                VrkaTextButton(
                     text = "Delete",
                     onClick = {
                         selectedTemplate?.let { template ->
@@ -387,9 +395,7 @@ internal fun SettingsScreen(
                         }
                     },
                     enabled = selectedTemplate != null,
-                    height = 48.dp,
-                    contentColor = VrkaTokens.Destructive,
-                    borderColor = VrkaTokens.Destructive,
+                    color = VrkaTokens.Destructive,
                 )
             }
         }
@@ -501,29 +507,15 @@ internal fun SettingsScreen(
         }
 
         SettingsHeading("Components & Updates")
-        Text(
-            "Installed version references and update checks for yt-dlp and bundled browser extensions.",
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-            color = VrkaTokens.TextSecondary,
-            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-        )
-
-        val isAnyCheckingOrUpdating = componentMap.values.any { it.isChecking || it.isUpdating }
-
         VrkaSectionContainer {
             componentMap.values.forEachIndexed { index, comp ->
                 if (index > 0) VrkaDivider()
                 val displayVer = ComponentStatusPresentation.versionLabel(comp.installedVersion)
                 val componentStatus = ComponentStatusPresentation.from(comp)
-                val roleDescription = when (comp.id) {
-                    ComponentUpdateManager.ID_YTDLP -> "Downloader used for normal jobs and Browser Fallback transfers"
-                    ComponentUpdateManager.ID_UBLOCK -> "Browser privacy filter used during Browser Fallback"
-                    ComponentUpdateManager.ID_PUEMOS -> "Bundled, update-managed extension; not used for media transfer"
-                    else -> "Bundled component"
-                }
                 VrkaSettingRow(
                     title = comp.name,
-                    subtitle = "$roleDescription\nVersion reported: $displayVer",
+                    subtitle = "Installed $displayVer",
+                    isSubtitleMono = true,
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -549,25 +541,33 @@ internal fun SettingsScreen(
                                             updateManager.checkUpdate(comp.id, settings.updatePreference)
                                         }
                                     },
-                                    height = 48.dp,
+                                    height = 32.dp,
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                        horizontal = 8.dp,
+                                        vertical = 0.dp,
+                                    ),
                                 )
                             }
                             comp.checkState == ComponentCheckState.UPDATE_AVAILABLE -> {
                                 VrkaOutlinedButton(
                                     text = "Update",
                                     onClick = { updateManager.applyUpdate(comp.id, settings.updatePreference) },
-                                    height = 48.dp,
+                                    height = 32.dp,
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                        horizontal = 8.dp,
+                                        vertical = 0.dp,
+                                    ),
                                 )
                             }
                         }
                     }
                 }
-                if (comp.message.isNotBlank()) {
+                if (!comp.error.isNullOrBlank()) {
                     Text(
-                        comp.message,
+                        comp.error,
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-                        color = if (comp.error != null) VrkaTokens.Error else VrkaTokens.TextSecondary,
-                        modifier = Modifier.padding(bottom = 8.dp),
+                        color = VrkaTokens.Error,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
                     )
                 }
             }
@@ -593,21 +593,19 @@ internal fun SettingsScreen(
                 height = 40.dp,
             )
 
-            Spacer(Modifier.height(10.dp))
             VrkaDivider()
 
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
-                    "yt-dlp update channel",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                    "yt-dlp channel",
+                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = VrkaMonoFamily),
                     fontWeight = FontWeight.SemiBold,
-                    color = VrkaTokens.TextPrimary,
+                    color = VrkaTokens.TextSecondary,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     UpdatePreference.entries.forEach { item ->

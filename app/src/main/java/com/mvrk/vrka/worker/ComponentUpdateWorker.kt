@@ -19,6 +19,9 @@ class ComponentUpdateWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val componentId = inputData.getString(KEY_COMPONENT_ID)
             ?: return@withContext Result.failure(workDataOf(KEY_ERROR to "Missing component ID"))
+        if (componentId !in setOf(ComponentUpdateManager.ID_YTDLP, ComponentUpdateManager.ID_UBLOCK)) {
+            return@withContext Result.failure(workDataOf(KEY_ERROR to "Unsupported component ID"))
+        }
         val targetVersion = inputData.getString(KEY_TARGET_VERSION)
             ?: return@withContext Result.failure(workDataOf(KEY_ERROR to "Missing target version"))
         val channelStr = inputData.getString(KEY_CHANNEL) ?: UpdatePreference.STABLE.name

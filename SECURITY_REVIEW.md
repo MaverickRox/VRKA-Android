@@ -1,30 +1,29 @@
-# VRKA Android 5.0 — Security Review
+# VRKA Android 5.0 — Release Security Review
 
-Date: 2026-10-03
-Scope: VRKA Android app source, tests, build inputs, and release artifact. F-Droid and other external distribution artifacts were excluded.
+**Date:** 2026-10-04
+**Scope:** source changes for final local release preparation and the resulting production-signed APK. This is not a dynamic penetration test.
 
 ## Custom yt-dlp templates
 
-- Templates are parsed and passed as argv elements; VRKA does not execute a shell.
-- The public HTTP(S) URL remains a separate validated argv element.
-- Dangerous output-path, shell-hook, and credential-bearing header options are rejected.
-- VRKA controls the staging/output path.
-- Browser Fallback rebuilds a sanitized request without the selected template, custom arguments, or typed custom headers. A Gecko-derived private candidate is not promoted to the user's public URL.
-- Cancellation uses the normal job lifecycle and terminates the associated yt-dlp work.
+- Templates are parsed as argument lists and passed to yt-dlp without shell execution.
+- VRKA retains control of the public URL, staging path, and output publication.
+- Existing policy rejects shell hooks and unsafe output/config paths, cookie files, external downloaders, credential-bearing header arguments, proxies, and extra positional URLs.
+- Eligible failed custom attempts may enter Browser Fallback. The fallback request clears template IDs/arguments and user-entered headers and uses the standard yt-dlp path.
 
-## URL, headers, and persisted state
+## URLs, headers, and persisted state
 
-- External job URLs are restricted to HTTP(S).
-- Header validation rejects malformed/CRLF values and constrains sensitive browser-session headers to approved use.
-- Browser candidate URLs and browser headers remain in memory and are excluded from persisted job data.
-- Sensitive headers are filtered from persistence.
-- Diagnostics sanitize URLs, headers, and free text before storage or display.
-- Browser Fallback failures are presented generically instead of exposing temporary private candidate URLs.
+- External job URLs are constrained to HTTP(S).
+- Header validation rejects malformed/CRLF values and restricts sensitive browser-session headers to approved use.
+- Browser candidate URLs and captured headers are held in memory and are excluded from persisted job data.
+- Diagnostics sanitize URLs, headers, and free text; Browser Fallback failures do not expose private candidate URLs.
 
-## Output and component boundaries
+## Runtime components and release signature
 
-Staging/publication remain controlled by VRKA, with output validation before publication and staged-file cleanup on failure/cancellation. yt-dlp is the normal and fallback transfer engine; FFmpeg is for local processing. Puemos is bundled/update-managed, not a transfer engine. Media3/remote-FFmpeg code is dormant and N_m3u8DL-RE is gated off.
+- GeckoView hosts navigation and the active VRKA media-detector and uBlock WebExtensions.
+- yt-dlp owns normal and Browser Fallback transfers; FFmpeg handles local processing. Media3/remote-FFmpeg code has no active manager call site, and N_m3u8DLRE is gated off.
+- The retired extension is absent from the APK and active updater/registration paths. Upgrade-only cleanup cancels its queued update, clears old preferences, uninstalls the existing Gecko extension ID, and deletes its old copied XPI.
+- The final APK was verified with `apksigner`: one RSA 4096-bit signer, v2 scheme verified, certificate SHA-256 `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`. This matches the known production certificate. Signing secrets and passwords are not included in the repository or this report.
 
-A targeted scan found no embedded production signing material, tokens, or credentials. Matches were test fixtures and runtime property-name lookups. No direct app/build reference to an F-Droid patch or metadata file was found.
+## Verification boundary
 
-This was a source/build review, not a dynamic penetration test. No emulator, ADB, physical device, or device automation was used. Browser Fallback still depends on yt-dlp and site behavior. The development APK uses a debug signing key.
+The clean build passed 317 unit tests and release lint (66 warnings, one hint, no errors or fatal findings). APK metadata and packaged assets were inspected. No emulator, ADB, physical device, or dynamic network interception was used. Browser Fallback remains dependent on yt-dlp and site behavior and does not bypass DRM, authentication, payment, CAPTCHA, or other access controls. See [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for exact artifact metadata and [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md) for device-test status.

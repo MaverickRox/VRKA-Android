@@ -1,0 +1,38 @@
+VRKA Android 5.0 — FINAL LOCAL RELEASE CANDIDATE
+Generated: 2026-10-04
+Publication: NOT PUBLISHED
+
+APK: F:\Projects\VRKA-Android\app\build\outputs\apk\release\app-release.apk
+Build variant: release (not devRelease; not debug-signed)
+Build result: BUILD SUCCESSFUL from clean, offline Gradle task run
+APK size bytes: 155327956
+APK SHA-256: 8FE92CD2968639238D13D376EE8A6FAC8039AD5925CCCAE9781B20275A698ED4
+
+Application ID: com.mvrk.vrka
+versionName: 5.0
+versionCode: 50000
+minSdk: 26
+targetSdk: 36
+compileSdk: 37 (minor API level 1 configured)
+Native ABI: arm64-v8a
+
+Signing: apksigner verification passed; 1 signer; v2=true, v1=false, v3=false, v3.1=false, v4=false
+Signing certificate SHA-256: 9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA
+Signer key: RSA 4096-bit
+
+Packaged native libraries verified: lib/arm64-v8a/libmozglue.so, libxul.so, libffmpeg.so, libffprobe.so
+Packaged extension assets: media-detector/background.js, media-detector/content.js, media-detector/manifest.json, ublock.xpi
+Retired extension asset entries: 0
+
+Automated validation:
+  Unit tests: 317; suites: 30; failures: 0; errors: 0; skipped: 0
+  Release lint: warnings 66; hints 1; errors 0; fatal 0
+  JavaScript syntax: background.js PASS; content.js PASS
+  Media-detector manifest JSON parse: PASS
+  Release Kotlin/Java/resource compile and packaging: PASS
+  Physical-device validation: NOT RUN; maintainer OnePlus 11 validation pending
+
+Toolchain: Gradle 9.4.1; Android Gradle Plugin 9.2.0; Android Studio JBR OpenJDK 25.0.3; Java source/target 17
+Base HEAD when built: ea30c00aed644c3a068c96b2bf15e1b09b1b8e9c (vrka-5.0); APK built from the local release-hardening working tree based on this commit
+v5.0 tag: unchanged; peeled target ea30c00aed644c3a068c96b2bf15e1b09b1b8e9c
+Push/release/upload: NONE

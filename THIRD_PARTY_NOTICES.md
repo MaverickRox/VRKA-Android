@@ -15,24 +15,17 @@ VRKA Android incorporates open-source libraries, engines, and extensions in full
 - **License**: GNU General Public License v3.0 (GPLv3)
 - **Source**: https://github.com/gorhill/uBlock
 
-### 3. Puemos browser extension
-- **Project**: HLS Downloader (`puemos/hls-downloader`; bundled and update-managed extension)
-- **Author**: Puemos
-- **License**: MIT License
-- **Source**: https://github.com/puemos/hls-downloader
-- **Role**: Browser component only. VRKA's media-detector WebExtension performs Browser Fallback discovery; yt-dlp performs the transfer.
-
-### 4. yt-dlp / youtubedl-android
+### 3. yt-dlp / youtubedl-android
 - **Project**: yt-dlp & youtubedl-android (`io.github.junkfood02.youtubedl-android:library:0.18.1`; yt-dlp runtime version is reported dynamically)
 - **License**: The Unlicense / Apache-2.0
 - **Source**: https://github.com/yt-dlp/yt-dlp
 
-### 5. FFmpeg
+### 4. FFmpeg
 - **Project**: FFmpeg (`io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1`)
 - **License**: GNU Lesser General Public License v2.1+ (LGPL-2.1+)
 - **Source**: https://ffmpeg.org/
 
-### 6. Space Mono Font
+### 5. Space Mono Font
 - **Project**: Space Mono
 - **Author**: Colophon Foundry
 - **License**: SIL Open Font License 1.1 (OFL-1.1)

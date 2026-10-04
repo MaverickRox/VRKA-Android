@@ -211,37 +211,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         return "Unknown"
     }
 
-    private suspend fun getInstalledPuemosVersion(): String {
-        val geckoManager = runCatching { GeckoRuntimeManager.getInstance(context) }.getOrNull()
-        val runtimeVer = geckoManager?.getInstalledExtensionVersion(GeckoRuntimeManager.PUEMOS_ID)
-        if (!runtimeVer.isNullOrBlank()) {
-            prefs.edit().putString(KEY_PUEMOS_VER, runtimeVer).apply()
-            return runtimeVer
-        }
-        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
-        val puemosXpi = java.io.File(xpiDir, "puemos.xpi")
-        if (puemosXpi.exists() && puemosXpi.length() > 0L) {
-            val fileVer = readXpiManifestVersion(puemosXpi)
-            if (!fileVer.isNullOrBlank()) {
-                prefs.edit().putString(KEY_PUEMOS_VER, fileVer).apply()
-                return fileVer
-            }
-        }
-        geckoManager?.seedBundledExtensionsIfMissing()
-        if (puemosXpi.exists() && puemosXpi.length() > 0L) {
-            val fileVer = readXpiManifestVersion(puemosXpi)
-            if (!fileVer.isNullOrBlank()) {
-                prefs.edit().putString(KEY_PUEMOS_VER, fileVer).apply()
-                return fileVer
-            }
-        }
-        val prefVer = prefs.getString(KEY_PUEMOS_VER, null)
-        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) {
-            return prefVer
-        }
-        return "Unknown"
-    }
-
     private val _components = MutableStateFlow<Map<String, ComponentStatus>>(
         mapOf(
             ID_YTDLP to ComponentStatus(
@@ -254,18 +223,30 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 name = "uBlock Origin",
                 installedVersion = prefs.getString(KEY_UBLOCK_VER, null)?.takeIf { !it.equals("Unknown", ignoreCase = true) } ?: "Unknown",
             ),
-            ID_PUEMOS to ComponentStatus(
-                id = ID_PUEMOS,
-                name = "Puemos",
-                installedVersion = prefs.getString(KEY_PUEMOS_VER, null)?.takeIf { !it.equals("Unknown", ignoreCase = true) } ?: "Unknown",
-            ),
         ),
     )
     val components: StateFlow<Map<String, ComponentStatus>> = _components.asStateFlow()
 
     init {
+        clearRetiredComponentState()
         refreshInstalledVersions()
         observeComponentWorkers()
+    }
+
+    private fun clearRetiredComponentState() {
+        runCatching {
+            WorkManager.getInstance(context).cancelUniqueWork(LEGACY_PUEMOS_WORK_NAME)
+        }.onFailure { error ->
+            Log.w(TAG, "Could not cancel a retired component update: ${error.message}")
+        }
+        prefs.edit().remove(LEGACY_PUEMOS_VERSION_KEY).apply()
+        context.getSharedPreferences(ComponentUpdateWorker.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove("puemos.state")
+            .remove("puemos.targetVersion")
+            .remove("puemos.error")
+            .remove("puemos.installedVersion")
+            .apply()
     }
 
     private fun ensureYtdlpInitialized(): Boolean {
@@ -279,14 +260,13 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
     fun refreshInstalledVersions() {
         scope.launch {
+            ensureYtdlpInitialized()
             val ytdlpVer = getInstalledYtDlpVersion()
             val ublockVer = getInstalledUBlockVersion()
-            val puemosVer = getInstalledPuemosVersion()
 
             listOf(
                 ID_YTDLP to ytdlpVer,
                 ID_UBLOCK to ublockVer,
-                ID_PUEMOS to puemosVer,
             ).forEach { (id, ver) ->
                 val clean = cleanVersionString(ver)
                 updateState(id) { current ->
@@ -308,7 +288,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
     private fun observeComponentWorkers() {
         val workManager = runCatching { WorkManager.getInstance(context) }.getOrNull() ?: return
-        listOf(ID_YTDLP, ID_UBLOCK, ID_PUEMOS).forEach { compId ->
+        listOf(ID_YTDLP, ID_UBLOCK).forEach { compId ->
             val workName = ComponentUpdateWorker.getWorkName(compId)
             scope.launch {
                 workManager.getWorkInfosForUniqueWorkFlow(workName).collect { workInfos ->
@@ -337,7 +317,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                                 when (compId) {
                                     ID_YTDLP -> prefs.edit().putString(KEY_YTDLP_VER, verifiedVer).apply()
                                     ID_UBLOCK -> prefs.edit().putString(KEY_UBLOCK_VER, verifiedVer).apply()
-                                    ID_PUEMOS -> prefs.edit().putString(KEY_PUEMOS_VER, verifiedVer).apply()
                                 }
                                 updateState(compId) {
                                     it.copy(
@@ -471,9 +450,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                     ID_UBLOCK -> {
                         fetchLatestGithubRelease("gorhill", "uBlock")
                     }
-                    ID_PUEMOS -> {
-                        fetchLatestGithubRelease("puemos", "hls-downloader")
-                    }
                     else -> throw IllegalArgumentException("Unknown component $id")
                 }
 
@@ -589,8 +565,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                     coroutineScope {
                         val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel) }
                         val ublock = async { checkUpdateInternal(ID_UBLOCK, channel) }
-                        val puemos = async { checkUpdateInternal(ID_PUEMOS, channel) }
-                        awaitAll(ytdlp, ublock, puemos)
+                        awaitAll(ytdlp, ublock)
                     }
                 }
                 val allFailed = _components.value.values.all { it.checkState == ComponentCheckState.CHECK_FAILED }
@@ -626,8 +601,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                     coroutineScope {
                         val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel) }
                         val ublock = async { checkUpdateInternal(ID_UBLOCK, channel) }
-                        val puemos = async { checkUpdateInternal(ID_PUEMOS, channel) }
-                        awaitAll(ytdlp, ublock, puemos)
+                        awaitAll(ytdlp, ublock)
                     }
                 }
 
@@ -670,10 +644,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             ID_UBLOCK -> {
                 val clean = cleanVersionString(targetVer)
                 "https://github.com/gorhill/uBlock/releases/download/$clean/uBlock0_$clean.firefox.signed.xpi" to null
-            }
-            ID_PUEMOS -> {
-                val clean = cleanVersionString(targetVer)
-                "https://github.com/puemos/hls-downloader/releases/download/v$clean/extension-mv2-firefox.xpi" to null
             }
             else -> return
         }
@@ -795,11 +765,11 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     companion object {
         const val ID_YTDLP = "ytdlp"
         const val ID_UBLOCK = "ublock"
-        const val ID_PUEMOS = "puemos"
 
         private const val KEY_YTDLP_VER = "ver_ytdlp"
         private const val KEY_UBLOCK_VER = "ver_ublock"
-        private const val KEY_PUEMOS_VER = "ver_puemos"
+        private const val LEGACY_PUEMOS_VERSION_KEY = "ver_puemos"
+        private const val LEGACY_PUEMOS_WORK_NAME = "VRKA_COMPONENT_UPDATE_puemos"
         private const val KEY_LAST_AUTO_CHECK_SUCCESS_TIMESTAMP = "last_auto_check_success_timestamp"
 
         private const val CHECK_TIMEOUT_MS = 8_000L

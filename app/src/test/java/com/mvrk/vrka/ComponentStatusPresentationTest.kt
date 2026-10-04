@@ -41,7 +41,7 @@ class ComponentStatusPresentationTest {
         )
         val failed = available.copy(checkState = ComponentCheckState.CHECK_FAILED, latestVersion = null)
 
-        assertEquals("v1.75.0", ComponentStatusPresentation.from(available).label)
+        assertEquals("Update available", ComponentStatusPresentation.from(available).label)
         assertEquals("Error", ComponentStatusPresentation.from(failed).label)
     }
 }

@@ -13,7 +13,7 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 
 ## Release Integrity
 
-The v5.0 engineering artifact in this release is built with the `devRelease` variant and Android's development signing key. It is not signed with the maintainer's production release key and is not update-compatible with an APK signed by that key. Verify the attached APK's signature and SHA-256 using the values published with the release.
+The current v5.0 final APK is production-signed locally and has not been published. Verify its signature and SHA-256 from `RELEASE_EVIDENCE.md` before installation.
 
 The `release` build type requires explicit signing properties; it has no debug-key fallback. Never publish signing properties, keystores, passwords, or private signing keys in this repository or artifact package.
 
@@ -24,7 +24,7 @@ The `release` build type requires explicit signing properties; it has no debug-k
 - User URLs are validated HTTP(S) inputs. They remain individual argv values; no shell is used.
 - Diagnostics and persisted job data sanitize URLs and sensitive header values. Avoid exporting diagnostic files containing site or account identifiers.
 - GeckoView navigates in a task-scoped private session. The Settings clear action clears GeckoView cookies, DOM storage, auth sessions, site data, caches and the in-memory candidate bridge. It does not cancel an active task.
-- yt-dlp is the normal and Browser Fallback transfer engine. FFmpeg is used for local processing, probing and validation. Puemos is a bundled/update-managed extension, not a native transfer engine. Dormant Media3 and gated N_m3u8DL-RE code are not advertised or routed as active download capabilities.
+- yt-dlp is the normal and Browser Fallback transfer engine. FFmpeg is used for local processing, probing and validation. The active browser extensions are the VRKA media detector and uBlock Origin. Dormant Media3 and gated N_m3u8DL-RE code are not advertised or routed as active download capabilities.
 
 ## Out of Scope
 

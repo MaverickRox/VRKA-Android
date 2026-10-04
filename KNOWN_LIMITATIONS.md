@@ -6,11 +6,11 @@
 - H.264 Compatibility Mode is optional and off by default. It needs a downloaded local video, an available FFmpeg `libx264` encoder, temporary storage and extra processing time/battery. Conversion fails safely if the codec cannot be probed or the output does not validate. Audio and subtitle streams are copied where the input/container permits.
 - Custom yt-dlp templates apply to the explicitly selected normal attempt. They do not apply to Browser Fallback. VRKA blocks shell execution and path/output overrides, but a permitted yt-dlp option can still alter extraction behavior or fail on a particular site.
 - The Browser Session clear action clears GeckoView runtime cookies, DOM storage, auth sessions, site data, caches and in-memory discovered candidates. It does not cancel an active private fallback session or clear app settings, history, queue, or diagnostics.
-- Puemos remains bundled and update-managed as a browser extension. It is not required by fallback discovery and does not perform native media transfer. Media3 custom transfer code is dormant; N_m3u8DL-RE is gated off.
+- An upgrade from the previous release may carry retired extension and update state; the app cleans that state during migration. The final APK includes no corresponding extension asset or active update/registration path. Media3 custom transfer code is dormant; N_m3u8DL-RE is gated off.
 - Component version is shown as unknown when the app cannot read a runtime, packaged-file or verified-update version. “Up to date” appears only after a check or verified component update.
 - Android may stop the application process; interrupted work may need to be retried. Network access and available storage affect downloads and updates.
-- The `devRelease` APK uses a development signing key. It is not signed with the maintainer's production key and cannot update an installation signed with a different key.
+- The final local APK has not yet had physical-device validation on the OnePlus 11. See `PHYSICAL_VALIDATION_REPORT.md` for the manual test boundary.
 
 ## Validation Scope
 
-Automated test/build results are recorded in `TEST_RESULTS.md` and the dated engineering artifact package. This engineering run does not use an emulator, ADB, or device automation. The maintainer separately reported physical validation of Browser Fallback sites on a OnePlus 11; this report does not claim those manual tests were performed by the build process.
+Automated test/build results are recorded in `RELEASE_EVIDENCE.md` and the current artifact manifest. No emulator, ADB, or device automation is used. The maintainer's OnePlus 11 test applies to a prior build; the final local APK still requires physical validation.
