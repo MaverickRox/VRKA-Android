@@ -9,8 +9,8 @@
 - An upgrade from the previous release may carry retired extension and update state; the app cleans that state during migration. The final APK includes no corresponding extension asset or active update/registration path. Media3 custom transfer code is dormant; N_m3u8DL-RE is gated off.
 - Component version is shown as unknown when the app cannot read a runtime, packaged-file or verified-update version. “Up to date” appears only after a check or verified component update.
 - Android may stop the application process; interrupted work may need to be retried. Network access and available storage affect downloads and updates.
-- The final local APK has not yet had physical-device validation on the OnePlus 11. See `PHYSICAL_VALIDATION_REPORT.md` for the manual test boundary.
+- The maintainer has physically inspected the final production APK on the OnePlus 11 and accepted the product state for release. See `PHYSICAL_VALIDATION_REPORT.md`.
 
 ## Validation Scope
 
-Automated test/build results are recorded in `RELEASE_EVIDENCE.md` and the current artifact manifest. No emulator, ADB, or device automation is used. The maintainer's OnePlus 11 test applies to a prior build; the final local APK still requires physical validation.
+Automated test/build results are recorded in `RELEASE_EVIDENCE.md` and the current artifact manifest. No emulator, ADB, or device automation was used in the engineering run. The maintainer manually validated and approved the final production-signed APK on the OnePlus 11.

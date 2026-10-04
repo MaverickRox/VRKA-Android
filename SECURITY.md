@@ -13,7 +13,7 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 
 ## Release Integrity
 
-The current v5.0 final APK is production-signed locally and has not been published. Verify its signature and SHA-256 from `RELEASE_EVIDENCE.md` before installation.
+The official v5.0 release APK is production-signed. Verify its signature and SHA-256 against `RELEASE_EVIDENCE.md` or official GitHub release checksums before installation.
 
 The `release` build type requires explicit signing properties; it has no debug-key fallback. Never publish signing properties, keystores, passwords, or private signing keys in this repository or artifact package.
 

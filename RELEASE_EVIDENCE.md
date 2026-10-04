@@ -1,7 +1,7 @@
-# VRKA Android 5.0 — Final Local Release Evidence
+# VRKA Android 5.0 — Official Release Evidence
 
 **Build date:** 2026-10-04
-**Status:** production-signed local correction candidate; unpublished; awaiting maintainer physical-device validation.
+**Status:** production-signed release candidate; physically inspected and approved by maintainer on OnePlus 11.
 
 ## Build and checks
 
@@ -46,7 +46,7 @@ The navbar uses equal navigation slot geometry across all 4 destinations (Queue 
 
 Normal and Browser Fallback transfers use yt-dlp; FFmpeg handles local processing. Puemos has no active production UI, extension registration, or update path. Historical one-time cleanup removes its legacy state from upgraded installs.
 
-The new APK has not been physically tested. The maintainer will test this exact APK manually after the correction pass. See [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md).
+The maintainer physically inspected this final production-signed APK (`D821B65BE0D054F3232E7A3BB051408BC0150EB2A66CDF5E7D3FC9170D8DA487`) on the OnePlus 11 and confirmed that the updater/version implementation and product state are accepted for the 5.0 release. See [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md).
 
 ## Local repository state
 

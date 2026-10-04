@@ -2,27 +2,29 @@
 
 All notable changes to VRKA Android are documented in this file.
 
-## [5.0] - 2026-10-03
+## [5.0] - 2026-10-04
 
 ### Added
-- Optional H.264 Compatibility Mode converts local staged video only when the downloaded video is not H.264, then validates output before publication.
-- Named Custom yt-dlp argument templates for normal queued download attempts.
-
-### Fixed
-- Eligible failures from a custom yt-dlp attempt can now enter the existing Browser Fallback flow. The fallback transfer clears custom template/header state and uses the standard yt-dlp request.
-- Custom-template Delete now uses the same aligned, 48dp outlined control as Add and Edit and the destructive app color.
-- Quality, audio format, bitrate, and mode selections are persisted when the user changes them.
+- GeckoView media-discovery Browser Fallback for eligible anti-bot or client-side player failures.
+- Dynamic yt-dlp installed-version detection from runtime, active zipapp, and bundled raw resource.
+- Liquid-glass navigation refinements with equal slot-based indicator geometry, live AGSL backdrop magnification, edge refraction, and chromatic dispersion.
+- Optional H.264 Compatibility Mode with FFmpeg validation.
+- Named Custom yt-dlp argument templates with security-hardened parameter restrictions.
 
 ### Changed
-- Settings now distinguishes yt-dlp transfer, browser discovery, uBlock filtering, and Puemos component roles.
-- Component versions are displayed as reported by runtime/package/update state; unverified components no longer appear Ready or Up to date.
-- Browser media detection is described as direct media, HLS, and DASH discovery.
-- Browser-session clearing text now matches the GeckoView clear flags and in-memory candidate cleanup.
-- Subtitle text states that subtitle acquisition applies to the normal yt-dlp path; Browser Fallback does not currently fetch subtitles.
-- Removed the obsolete stored ad-blocking toggle; uBlock remains enabled by fallback runtime behavior.
+- Bundled yt-dlp updated to 2026.08.19.
+- Bundled uBlock Origin updated to the current production WebExtension.
+- Hardened component update checks with bounded network reads, 6-second socket timeouts, 8-second component deadlines, and cooperative cancellation.
+- Single-flight batch updater protection with rapid-tap debounce and spam resilience.
+- Improved Android UI, component row alignment, and monospace status badges.
+- Retained v4.5.3 component behavior and channel selector styling.
+
+### Removed
+- Retired Puemos component from the active production component/update surface and purged legacy extension state.
 
 ### Security
-- Browser Fallback transfer construction retains the public page URL and drops custom template, custom argument, and user-defined header state before handoff.
+- Custom yt-dlp templates validated against RFC 7230 and injection protection, rejecting shell hooks, file paths, and credentials.
+- Browser Fallback transfers bound to public page source with origin-validated headers and dropped custom template state.
 
 ## [4.5.3] - 2026-09-14
 

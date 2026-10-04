@@ -17,7 +17,7 @@ The project does not configure `armeabi-v7a` or `x86_64` APK support. The applic
 
 ## Platform behavior to validate on-device
 
-The source targets Android API 36 and declares API 26 as its minimum. Behavior that depends on GeckoView, foreground-service policy, storage-provider behavior, notifications, and device-specific rendering still requires physical-device testing. The maintainer's OnePlus 11 test is pending; no emulator or ADB validation is part of this release pass.
+The source targets Android API 36 and declares API 26 as its minimum. Behavior that depends on GeckoView, foreground-service policy, storage-provider behavior, notifications, and device-specific rendering was physically validated and approved by the maintainer on the OnePlus 11. No emulator or ADB automation was used during engineering runs.
 
 ## Release artifact checks
 

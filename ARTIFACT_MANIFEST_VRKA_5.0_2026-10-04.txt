@@ -1,6 +1,6 @@
-VRKA Android 5.0 — FINAL LOCAL CORRECTION CANDIDATE
+VRKA Android 5.0 — OFFICIAL RELEASE MANIFEST
 Generated: 2026-10-04
-Publication: NOT PUBLISHED
+Publication: OFFICIAL RELEASE v5.0
 
 APK: F:\Projects\VRKA-Android\app\build\outputs\apk\release\app-release.apk
 Build variant: release (production-signed; not devRelease or debug-signed)
@@ -37,12 +37,11 @@ Automated validation:
   Media-detector manifest JSON parse: PASS
   Release Kotlin/Java/resource compile and packaging: PASS
   APK signature verification: PASS; certificate fingerprint above
-  Physical-device validation: NOT RUN; maintainer validation pending
+  Physical-device validation: PASS; physically inspected and approved by maintainer on OnePlus 11
 
 Toolchain: Gradle 9.4.1; Android Gradle Plugin 9.2.0; Android Studio JBR OpenJDK 25.0.3; Java source/target 17
 Source branch: vrka-5.0
-Source base HEAD when verification began: 51c1bce9c9e52039fbf9e95e3bab22774aab8ba5 (working tree contained correction changes used for this APK)
-v5.0 annotated tag object: f414305be1087aeba28cd2947321cae280774d01
-v5.0 peeled target: ea30c00aed644c3a068c96b2bf15e1b09b1b8e9c (unchanged)
-Push/release/upload: NONE
+Official release tag: v5.0
+Release asset: VRKA-Android-v5.0.apk
+Release checksums: SHA256SUMS
 

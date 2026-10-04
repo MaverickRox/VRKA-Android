@@ -4,11 +4,9 @@
   <p><strong>Native Android media downloader and passive web stream discovery.</strong></p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v5.0-8B5CF6?style=flat-square" alt="Release" /></a>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases"><img src="https://img.shields.io/badge/platform-Android%208.0+%20%7C%20arm64--v8a-blue?style=flat-square" alt="Platform" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green?style=flat-square" alt="License" /></a>
-    <a href="https://github.com/MaverickRox/VRKA"><img src="https://img.shields.io/badge/origin-VRKA%20Desktop-purple?style=flat-square" alt="Desktop Origin" /></a>
-    <a href="https://github.com/MaverickRox/VRKA-Android/issues"><img src="https://img.shields.io/github/issues/MaverickRox/VRKA-Android?style=flat-square" alt="Issues" /></a>
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/github/v/release/MaverickRox/VRKA-Android?style=for-the-badge&labelColor=0d1117" alt="Latest Release" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/MaverickRox/VRKA-Android?style=for-the-badge&labelColor=0d1117" alt="License" /></a>
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases"><img src="https://img.shields.io/github/downloads/MaverickRox/VRKA-Android/total?style=for-the-badge&labelColor=0d1117" alt="Downloads" /></a>
   </p>
 
   <p>
@@ -16,7 +14,7 @@
     <a href="#screenshots">Screenshots</a> •
     <a href="#architecture">Architecture</a> •
     <a href="#build-instructions">Build Guide</a> •
-    <a href="#release-signing--continuity">Signing Protocol</a> •
+    <a href="#release-signing">Signing Protocol</a> •
     <a href="SECURITY.md">Security</a>
   </p>
 </div>
@@ -221,26 +219,27 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-The current v5.0 final APK is a local production-signed build and has not been published. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
+The official v5.0 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
 
 ---
 
 ## Release Signing
 
-The `release` build type requires explicit signing credentials and never silently falls back to a debug key. The final local v5.0 artifact is production-signed; verify its certificate and SHA-256 against the release evidence before installation. It remains unpublished until the maintainer's separate publication command.
+The `release` build type requires explicit signing credentials and never silently falls back to a debug key. The v5.0 release artifact is production-signed; verify its certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
 
 ---
 
 ## Installation
 
-1. For this unpublished local release candidate, use the APK path and SHA-256 recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). No public APK is available yet.
+1. Download the official `VRKA-Android-v5.0.apk` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
    (Get-FileHash .\VRKA-Android-v5.0.apk -Algorithm SHA256).Hash
    ```
+   Expected: `D821B65BE0D054F3232E7A3BB051408BC0150EB2A66CDF5E7D3FC9170D8DA487`
 3. Install on your Android device:
    ```bash
-   adb install -r .\app\build\outputs\apk\release\app-release.apk
+   adb install -r .\VRKA-Android-v5.0.apk
    ```
 
 ---

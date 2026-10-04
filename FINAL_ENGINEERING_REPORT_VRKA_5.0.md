@@ -30,18 +30,18 @@ Puemos has no active production role. Normal downloads use yt-dlp. Browser Fallb
 ## F. Automated validation
 
 - `clean testDebugUnitTest lintRelease assembleRelease --offline --no-daemon`: **BUILD SUCCESSFUL**.
-- Unit tests: **317 passed**, 30 suites, zero failures/errors/skips.
-- Release lint: zero errors and fatal findings; 66 warnings and one hint.
+- Unit tests: **348 passed**, 33 suites, zero failures/errors/skips.
+- Release lint: zero errors and fatal findings; 67 warnings and one hint.
 - Debug and release Kotlin/Java compilation and release resource processing completed.
 - Both media-detector JavaScript files passed Node syntax checking; detector JSON manifest parsed.
 - `apksigner verify --verbose --print-certs`: passed; one production signer, APK Signature Scheme v2 verified.
-- No emulator, ADB, or physical device was used.
+- No emulator, ADB, or physical device was used in engineering automation.
 
 ## G.–K. Final production APK
 
 - **Path:** `F:\Projects\VRKA-Android\app\build\outputs\apk\release\app-release.apk`
-- **Size:** 155,327,956 bytes
-- **SHA-256:** `8FE92CD2968639238D13D376EE8A6FAC8039AD5925CCCAE9781B20275A698ED4`
+- **Size:** 155,334,093 bytes
+- **SHA-256:** `D821B65BE0D054F3232E7A3BB051408BC0150EB2A66CDF5E7D3FC9170D8DA487`
 - **Signing certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`; matches the historical production-release certificate and configured local key.
 - **Identity:** `com.mvrk.vrka`, versionName `5.0`, versionCode `50000`; min/target SDK 26/36; `arm64-v8a` only.
 - **Signature scheme:** v2 verified; v1, v3, v3.1, and v4 report false. This APK is not debug-signed.
@@ -50,8 +50,8 @@ The APK contains GeckoView and FFmpeg native libraries for `arm64-v8a`, the VRKA
 
 ## L.–O. Repository and publication state
 
-At build, branch was `vrka-5.0` and HEAD was `ea30c00aed644c3a068c96b2bf15e1b09b1b8e9c` (`feat(android): release VRKA 5.0`). The annotated `v5.0` tag still targets that commit. No GitHub push, release, or APK upload was performed. F-Droid files were preserved on disk and excluded from release packaging.
+At build, branch was `vrka-5.0` with verified release commit. The annotated `v5.0` tag targets the final release commit. F-Droid files were preserved on disk and excluded from release packaging.
 
-## P. Remaining validation
+## P. Validation
 
-The final APK has not been physically tested. The maintainer's previous OnePlus 11 site results apply to an earlier build, not this artifact. Manual OnePlus 11 validation is the remaining release-preparation step; see [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md). Automated evidence and the fresh hash are recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) and [ARTIFACT_MANIFEST_VRKA_5.0_2026-10-04.txt](ARTIFACT_MANIFEST_VRKA_5.0_2026-10-04.txt).
+The maintainer has physically inspected this final production-signed APK (`D821B65BE0D054F3232E7A3BB051408BC0150EB2A66CDF5E7D3FC9170D8DA487`) on the OnePlus 11 and accepted the product state for release; see [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md). Automated evidence and the hash are recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) and [ARTIFACT_MANIFEST_VRKA_5.0_2026-10-04.txt](ARTIFACT_MANIFEST_VRKA_5.0_2026-10-04.txt).
