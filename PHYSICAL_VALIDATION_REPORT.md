@@ -1,8 +1,9 @@
 # Physical Validation — VRKA Android 5.0 Correction APK
 
 **APK:** `F:\Projects\VRKA-Android\app\build\outputs\apk\release\app-release.apk`
-**SHA-256:** `A22F62500D3268E0562CDA586BEB2BFC9DE63327B1FEAD91CE466625B7614A06`
+**SHA-256:** `D821B65BE0D054F3232E7A3BB051408BC0150EB2A66CDF5E7D3FC9170D8DA487`
 **Status:** not physically validated; maintainer testing is pending.
+
 
 This correction pass did not use an emulator, ADB, a connected device, a device farm, or automated device testing. It makes no physical-device claim for this APK.
 

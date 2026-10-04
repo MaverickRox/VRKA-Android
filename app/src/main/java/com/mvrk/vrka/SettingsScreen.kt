@@ -532,7 +532,7 @@ internal fun SettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.Top,
                     ) {
                         Column(
                             modifier = Modifier
@@ -551,10 +551,19 @@ internal fun SettingsScreen(
                                 color = VrkaTokens.TextSecondary,
                                 modifier = Modifier.padding(top = 2.dp),
                             )
+                            componentStatus.secondaryText?.let { resultText ->
+                                Text(
+                                    text = resultText,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                                    color = if (comp.error != null) VrkaTokens.Error else VrkaTokens.TextSecondary,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                )
+                            }
                         }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(top = 2.dp),
                         ) {
                             VrkaStatusBadge(componentStatus.label, statusColor, isMonospace = true)
                             when {
@@ -590,17 +599,8 @@ internal fun SettingsScreen(
                             }
                         }
                     }
-                    componentStatus.secondaryText?.let { resultText ->
-                        Text(
-                            text = resultText,
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-                            color = if (comp.error != null) VrkaTokens.Error else VrkaTokens.TextSecondary,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp),
-                        )
-                    }
                 }
+
             }
 
             VrkaDivider()

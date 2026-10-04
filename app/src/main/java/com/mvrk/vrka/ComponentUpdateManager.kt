@@ -156,7 +156,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     @Volatile
     private var rateLimitErrorMessage: String? = null
 
-    private fun getInstalledYtDlpVersion(): String {
+    internal fun getInstalledYtDlpVersion(): String {
         val installedZipAppVersion = runCatching {
             val installedZipApp = java.io.File(SecureComponentUpdater.getYoutubeDLDir(context), "yt-dlp")
             InstalledComponentVersionReader.readYtDlpVersion(installedZipApp)
@@ -174,13 +174,25 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             return runtimeVer
         }
         val prefVer = prefs.getString(KEY_YTDLP_VER, null)
-        if (!prefVer.isNullOrBlank()) return prefVer
+        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) return prefVer
         val ytdlPrefs = context.getSharedPreferences("youtubedl-android", Context.MODE_PRIVATE)
         val ytdlVer = ytdlPrefs.getString("dlpVersionName", null)
             ?: ytdlPrefs.getString("dlpVersion", null)
-        if (!ytdlVer.isNullOrBlank()) return ytdlVer.removePrefix("yt-dlp ").trim()
+        if (!ytdlVer.isNullOrBlank()) {
+            val clean = ytdlVer.removePrefix("yt-dlp ").trim()
+            prefs.edit().putString(KEY_YTDLP_VER, clean).apply()
+            return clean
+        }
+
+        val bundledVer = InstalledComponentVersionReader.readBundledYtDlpVersion(context)
+        if (!bundledVer.isNullOrBlank()) {
+            prefs.edit().putString(KEY_YTDLP_VER, bundledVer).apply()
+            return bundledVer
+        }
+
         return "Unknown"
     }
+
 
     private fun readXpiManifestVersion(file: java.io.File): String? {
         return runCatching {
@@ -440,13 +452,14 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
         try {
             withTimeout(CHECK_TIMEOUT_MS) {
-                val installedVersion = resolveAndPublishInstalledVersion(id)
-                val cleanInstalled = cleanVersionString(installedVersion)
-                if (cleanInstalled.isBlank() || cleanInstalled.equals("Unknown", ignoreCase = true) ||
-                    extractVersionNumbers(cleanInstalled).isEmpty()
-                ) {
-                    throw IOException(ComponentStatusTransitions.INSTALLED_VERSION_UNAVAILABLE)
-                }
+                // Resolve and publish the currently installed version.
+                // This is a best-effort read: if the version cannot be read (e.g. on first
+                // launch before the bundled library has been extracted) we continue with
+                // whatever was stored previously rather than aborting the whole check with
+                // a confusing "cannot compare" error.  A genuine local-resolution failure
+                // is already reflected in the installedVersion field published by
+                // resolveAndPublishInstalledVersion.
+                resolveAndPublishInstalledVersion(id)
 
                 val latest = when (id) {
                     ID_YTDLP -> {
@@ -520,6 +533,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             }
         }
     }
+
 
     /**
      * Checks all components with single-flight mutex protection and spam-resilience.

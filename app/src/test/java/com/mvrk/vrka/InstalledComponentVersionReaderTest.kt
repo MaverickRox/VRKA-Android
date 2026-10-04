@@ -40,4 +40,13 @@ class InstalledComponentVersionReaderTest {
         assertEquals("Bundled yt-dlp version source must remain readable", true, bundledZipApp.isFile)
         assertEquals("2026.08.19", InstalledComponentVersionReader.readYtDlpVersion(bundledZipApp))
     }
+
+    @Test
+    fun readsVersionFromInputStream() {
+        val bundledZipApp = File("src/main/res/raw/ytdlp")
+        bundledZipApp.inputStream().use { stream ->
+            assertEquals("2026.08.19", InstalledComponentVersionReader.readYtDlpVersion(stream))
+        }
+    }
 }
+
