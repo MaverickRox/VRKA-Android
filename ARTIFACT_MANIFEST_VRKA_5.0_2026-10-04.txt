@@ -5,8 +5,8 @@ Publication: NOT PUBLISHED
 APK: F:\Projects\VRKA-Android\app\build\outputs\apk\release\app-release.apk
 Build variant: release (production-signed; not devRelease or debug-signed)
 Build result: BUILD SUCCESSFUL from clean, offline Gradle task run
-APK size bytes: 155330895
-APK SHA-256: FEF0C2F1F33AE9F8E48389B8EB1AF7B70C9630213E328445A374FAA8231EB724
+APK size bytes: 155334511
+APK SHA-256: A22F62500D3268E0562CDA586BEB2BFC9DE63327B1FEAD91CE466625B7614A06
 
 Application ID: com.mvrk.vrka
 versionName: 5.0
@@ -22,7 +22,7 @@ Signer key: RSA 4096-bit
 
 Bundled yt-dlp: 2026.08.19, extracted from the effective app raw resource and verified byte-for-byte in the release APK
 Bundled source Git head: 594bd50c2c78ac432f81600d309fdc4e0a92d82c
-Installed-version UI source: YoutubeDL.versionName(context) after initialization, with persisted installed-version fallback
+Installed-version UI source: active installed yt-dlp zipapp's yt_dlp/version.py; persisted installed-version fallback
 Active Components & Updates entries: yt-dlp; uBlock Origin
 Active Puemos UI/updater entries: 0
 
@@ -31,8 +31,8 @@ Packaged extension assets: media-detector/background.js, media-detector/content.
 Retired Puemos asset entries: 0
 
 Automated validation:
-  Unit tests: 319; suites: 30; failures: 0; errors: 0; skipped: 0
-  Release lint: warnings 66; hints 1; errors 0; fatal 0
+  Unit tests: 329; suites: 33; failures: 0; errors: 0; skipped: 0
+  Release lint: warnings 67; hints 1; errors 0; fatal 0
   JavaScript syntax: background.js PASS; content.js PASS
   Media-detector manifest JSON parse: PASS
   Release Kotlin/Java/resource compile and packaging: PASS
@@ -41,7 +41,7 @@ Automated validation:
 
 Toolchain: Gradle 9.4.1; Android Gradle Plugin 9.2.0; Android Studio JBR OpenJDK 25.0.3; Java source/target 17
 Source branch: vrka-5.0
-Source base HEAD when verification began: 05b207136efc4975abb1e98c05a77842e76d26be (working tree contained correction changes used for this APK)
+Source base HEAD when verification began: 40707aa185fe5f758f4268e2e3e47047d864a029 (working tree contained correction changes used for this APK)
 v5.0 annotated tag object: f414305be1087aeba28cd2947321cae280774d01
 v5.0 peeled target: ea30c00aed644c3a068c96b2bf15e1b09b1b8e9c (unchanged)
 Push/release/upload: NONE
