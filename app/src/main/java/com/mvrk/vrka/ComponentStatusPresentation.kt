@@ -29,11 +29,14 @@ internal data class ComponentStatusPresentation(
             status.updateState == ComponentUpdateState.UPDATE_FAILED ->
                 ComponentStatusPresentation("Failed", ComponentStatusTone.ERROR)
             status.checkState == ComponentCheckState.UPDATE_AVAILABLE ->
-                ComponentStatusPresentation("Update available", ComponentStatusTone.ACCENT)
+                ComponentStatusPresentation(
+                    label = status.latestVersion?.let { versionLabel(it) } ?: "Update available",
+                    tone = ComponentStatusTone.ACCENT,
+                )
             status.checkState == ComponentCheckState.CHECK_FAILED ->
                 ComponentStatusPresentation("Error", ComponentStatusTone.ERROR)
             status.checkState == ComponentCheckState.UP_TO_DATE ->
-                ComponentStatusPresentation("Up to date", ComponentStatusTone.SUCCESS)
+                ComponentStatusPresentation("Ready", ComponentStatusTone.SUCCESS)
             else -> ComponentStatusPresentation("Not checked", ComponentStatusTone.NEUTRAL)
         }
 

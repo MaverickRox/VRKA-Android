@@ -1,12 +1,12 @@
-VRKA Android 5.0 — FINAL LOCAL RELEASE CANDIDATE
+VRKA Android 5.0 — FINAL LOCAL CORRECTION CANDIDATE
 Generated: 2026-10-04
 Publication: NOT PUBLISHED
 
 APK: F:\Projects\VRKA-Android\app\build\outputs\apk\release\app-release.apk
-Build variant: release (not devRelease; not debug-signed)
+Build variant: release (production-signed; not devRelease or debug-signed)
 Build result: BUILD SUCCESSFUL from clean, offline Gradle task run
-APK size bytes: 155327956
-APK SHA-256: 8FE92CD2968639238D13D376EE8A6FAC8039AD5925CCCAE9781B20275A698ED4
+APK size bytes: 155330895
+APK SHA-256: FEF0C2F1F33AE9F8E48389B8EB1AF7B70C9630213E328445A374FAA8231EB724
 
 Application ID: com.mvrk.vrka
 versionName: 5.0
@@ -20,19 +20,28 @@ Signing: apksigner verification passed; 1 signer; v2=true, v1=false, v3=false, v
 Signing certificate SHA-256: 9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA
 Signer key: RSA 4096-bit
 
+Bundled yt-dlp: 2026.08.19, extracted from the effective app raw resource and verified byte-for-byte in the release APK
+Bundled source Git head: 594bd50c2c78ac432f81600d309fdc4e0a92d82c
+Installed-version UI source: YoutubeDL.versionName(context) after initialization, with persisted installed-version fallback
+Active Components & Updates entries: yt-dlp; uBlock Origin
+Active Puemos UI/updater entries: 0
+
 Packaged native libraries verified: lib/arm64-v8a/libmozglue.so, libxul.so, libffmpeg.so, libffprobe.so
 Packaged extension assets: media-detector/background.js, media-detector/content.js, media-detector/manifest.json, ublock.xpi
-Retired extension asset entries: 0
+Retired Puemos asset entries: 0
 
 Automated validation:
-  Unit tests: 317; suites: 30; failures: 0; errors: 0; skipped: 0
+  Unit tests: 319; suites: 30; failures: 0; errors: 0; skipped: 0
   Release lint: warnings 66; hints 1; errors 0; fatal 0
   JavaScript syntax: background.js PASS; content.js PASS
   Media-detector manifest JSON parse: PASS
   Release Kotlin/Java/resource compile and packaging: PASS
-  Physical-device validation: NOT RUN; maintainer OnePlus 11 validation pending
+  APK signature verification: PASS; certificate fingerprint above
+  Physical-device validation: NOT RUN; maintainer validation pending
 
 Toolchain: Gradle 9.4.1; Android Gradle Plugin 9.2.0; Android Studio JBR OpenJDK 25.0.3; Java source/target 17
-Base HEAD when built: ea30c00aed644c3a068c96b2bf15e1b09b1b8e9c (vrka-5.0); APK built from the local release-hardening working tree based on this commit
-v5.0 tag: unchanged; peeled target ea30c00aed644c3a068c96b2bf15e1b09b1b8e9c
+Source branch: vrka-5.0
+Source base HEAD when verification began: 05b207136efc4975abb1e98c05a77842e76d26be (working tree contained correction changes used for this APK)
+v5.0 annotated tag object: f414305be1087aeba28cd2947321cae280774d01
+v5.0 peeled target: ea30c00aed644c3a068c96b2bf15e1b09b1b8e9c (unchanged)
 Push/release/upload: NONE

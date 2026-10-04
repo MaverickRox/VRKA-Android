@@ -22,18 +22,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 enum class ComponentCheckState {
     CHECK_IDLE,
@@ -216,7 +219,9 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             ID_YTDLP to ComponentStatus(
                 id = ID_YTDLP,
                 name = "yt-dlp",
-                installedVersion = getInstalledYtDlpVersion(),
+                installedVersion = getInstalledYtDlpVersion().takeUnless {
+                    it.isBlank() || it.equals("Unknown", ignoreCase = true)
+                }.orEmpty(),
             ),
             ID_UBLOCK to ComponentStatus(
                 id = ID_UBLOCK,
@@ -456,6 +461,12 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 if (checkGenerations[id] != generation) return@withTimeout
 
                 val current = _components.value[id] ?: return@withTimeout
+                val cleanInstalled = cleanVersionString(current.installedVersion)
+                if (cleanInstalled.isBlank() || cleanInstalled.equals("Unknown", ignoreCase = true) ||
+                    extractVersionNumbers(cleanInstalled).isEmpty()
+                ) {
+                    throw IOException("Installed version unavailable; cannot compare update")
+                }
                 val isNewer = isNewerVersion(candidate = latest, installed = current.installedVersion)
 
                 // Channel switch check for yt-dlp:
@@ -469,8 +480,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 val hasUpdate = isNewer || isChannelSwitch
 
                 val cleanCandidate = cleanVersionString(latest)
-                val cleanInstalled = cleanVersionString(current.installedVersion)
-
                 updateState(id) {
                     it.copy(
                         checkState = if (hasUpdate) ComponentCheckState.UPDATE_AVAILABLE else ComponentCheckState.UP_TO_DATE,
@@ -499,7 +508,18 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 }
             }
         } catch (ce: CancellationException) {
+            if (checkGenerations[id] == generation) {
+                updateState(id) {
+                    it.copy(
+                        checkState = ComponentCheckState.CHECK_IDLE,
+                        message = "Update check cancelled",
+                        error = null,
+                        lastChecked = System.currentTimeMillis(),
+                    )
+                }
+            }
             Log.d(TAG, "Check cancelled for $id (gen $generation)")
+            throw ce
         } catch (e: Exception) {
             if (checkGenerations[id] == generation) {
                 val errMsg = when (e) {
@@ -561,21 +581,32 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         scope.launch {
             _batchState.value = BatchOperationState.CHECKING
             try {
-                withTimeout(CHECK_TIMEOUT_MS * 3) {
+                withTimeout(CHECK_TIMEOUT_MS + BATCH_CLEANUP_GRACE_MS) {
                     coroutineScope {
                         val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel) }
                         val ublock = async { checkUpdateInternal(ID_UBLOCK, channel) }
                         awaitAll(ytdlp, ublock)
                     }
                 }
-                val allFailed = _components.value.values.all { it.checkState == ComponentCheckState.CHECK_FAILED }
-                _batchState.value = if (allFailed) BatchOperationState.FAILED else BatchOperationState.COMPLETED
+                val anyFailed = _components.value.values.any { it.checkState == ComponentCheckState.CHECK_FAILED }
+                _batchState.value = if (anyFailed) BatchOperationState.FAILED else BatchOperationState.COMPLETED
+            } catch (te: kotlinx.coroutines.TimeoutCancellationException) {
+                Log.w(TAG, "Check All Updates exceeded its total deadline")
+                markPendingChecksFailed("Check timed out")
+                _batchState.value = BatchOperationState.FAILED
             } catch (ce: CancellationException) {
                 _batchState.value = BatchOperationState.CANCELLED
+                markPendingChecksCancelled()
+                throw ce
             } catch (e: Exception) {
                 Log.e(TAG, "checkAllUpdates failed: ${e.message}", e)
+                markPendingChecksFailed("Check failed: ${e.message?.take(60) ?: "Unknown error"}")
                 _batchState.value = BatchOperationState.FAILED
             } finally {
+                if (_batchState.value == BatchOperationState.CHECKING) {
+                    markPendingChecksFailed("Check failed")
+                    _batchState.value = BatchOperationState.FAILED
+                }
                 batchMutex.unlock()
             }
         }
@@ -597,7 +628,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
             if (!batchMutex.tryLock()) return@launch
             try {
-                withTimeout(CHECK_TIMEOUT_MS * 3) {
+                withTimeout(CHECK_TIMEOUT_MS + BATCH_CLEANUP_GRACE_MS) {
                     coroutineScope {
                         val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel) }
                         val ublock = async { checkUpdateInternal(ID_UBLOCK, channel) }
@@ -625,6 +656,10 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 if (available.isNotEmpty()) {
                     _startupUpdateDialogData.value = StartupUpdateDialogData(available)
                 }
+            } catch (te: kotlinx.coroutines.TimeoutCancellationException) {
+                Log.w(TAG, "Automatic startup update check timed out")
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 Log.w(TAG, "Automatic startup check encountered error: ${e.message}")
             } finally {
@@ -700,58 +735,103 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
     private class RateLimitException(message: String) : IOException(message)
 
-    private suspend fun fetchLatestGithubRelease(owner: String, repo: String): String = withContext(Dispatchers.IO) {
+    private suspend fun fetchLatestGithubRelease(owner: String, repo: String): String {
         val cacheKey = "$owner/$repo"
         val cached = releaseCache[cacheKey]
         val now = System.currentTimeMillis()
         if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
             Log.d(TAG, "Using cached release for $cacheKey: ${cached.tag}")
-            return@withContext cached.tag
+            return cached.tag
         }
 
         if (now < rateLimitCooldownUntil) {
             throw RateLimitException(rateLimitErrorMessage ?: "GitHub API rate limit reached. Try again later.")
         }
 
-        val url = URL("https://api.github.com/repos/$owner/$repo/releases/latest")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.setRequestProperty("User-Agent", "VRKA-Android-Updater")
-        conn.connectTimeout = 6000
-        conn.readTimeout = 6000
-        try {
-            val code = conn.responseCode
-            when (code) {
-                200 -> {
-                    val jsonStr = conn.inputStream.bufferedReader().readText()
-                    val json = JSONObject(jsonStr)
-                    val isPrerelease = json.optBoolean("prerelease", false)
-                    val isDraft = json.optBoolean("draft", false)
-                    if (isPrerelease || isDraft) {
-                        throw IOException("Release in $owner/$repo is marked as prerelease or draft")
-                    }
-                    val tag = json.optString("tag_name").removePrefix("v").trim()
-                    if (tag.isBlank()) throw IOException("Empty tag_name in release")
-                    releaseCache[cacheKey] = ReleaseCacheEntry(tag, now)
-                    tag
-                }
-                403 -> {
-                    val retryAfterSec = conn.getHeaderField("Retry-After")?.toLongOrNull()
-                    val rateLimitResetSec = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
-                    val cooldownMs = when {
-                        retryAfterSec != null -> (retryAfterSec * 1000L).coerceAtLeast(10_000L)
-                        rateLimitResetSec != null -> (rateLimitResetSec * 1000L - now).coerceIn(10_000L, 3600_000L)
-                        else -> 60_000L // 1 minute default cooldown
-                    }
-                    rateLimitCooldownUntil = now + cooldownMs
-                    val msg = "GitHub API rate limit reached. Try again later."
-                    rateLimitErrorMessage = msg
-                    throw RateLimitException(msg)
-                }
-                404 -> throw IOException("Release repository not found (HTTP 404)")
-                else -> throw IOException("GitHub returned HTTP $code")
+        return suspendCancellableCoroutine { continuation ->
+            val connectionRef = AtomicReference<HttpURLConnection?>(null)
+            continuation.invokeOnCancellation {
+                connectionRef.getAndSet(null)?.disconnect()
             }
-        } finally {
-            conn.disconnect()
+            Dispatchers.IO.dispatch(continuation.context, Runnable {
+                var connection: HttpURLConnection? = null
+                try {
+                    connection = URL("https://api.github.com/repos/$owner/$repo/releases/latest")
+                        .openConnection() as HttpURLConnection
+                    connection.connectTimeout = NETWORK_CONNECT_TIMEOUT_MS
+                    connection.readTimeout = NETWORK_READ_TIMEOUT_MS
+                    connection.setRequestProperty("User-Agent", "VRKA-Android-Updater")
+                    connection.setRequestProperty("Accept", "application/vnd.github+json")
+                    connectionRef.set(connection)
+                    if (!continuation.isActive) {
+                        connectionRef.getAndSet(null)?.disconnect()
+                        return@Runnable
+                    }
+
+                    when (val code = connection.responseCode) {
+                        200 -> {
+                            val jsonText = readBoundedResponseBody(connection.inputStream, MAX_RELEASE_METADATA_BYTES)
+                            val json = JSONObject(jsonText)
+                            if (json.optBoolean("prerelease", false) || json.optBoolean("draft", false)) {
+                                throw IOException("Release in $owner/$repo is marked as prerelease or draft")
+                            }
+                            val tag = json.optString("tag_name").removePrefix("v").trim()
+                            if (tag.isBlank()) throw IOException("Empty tag_name in release")
+                            releaseCache[cacheKey] = ReleaseCacheEntry(tag, System.currentTimeMillis())
+                            continuation.resumeWith(Result.success(tag))
+                        }
+                        403 -> {
+                            val retryAfterSec = connection.getHeaderField("Retry-After")?.toLongOrNull()
+                            val rateLimitResetSec = connection.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
+                            val responseTime = System.currentTimeMillis()
+                            val cooldownMs = when {
+                                retryAfterSec != null -> (retryAfterSec * 1000L).coerceAtLeast(10_000L)
+                                rateLimitResetSec != null -> (rateLimitResetSec * 1000L - responseTime).coerceIn(10_000L, 3600_000L)
+                                else -> 60_000L
+                            }
+                            rateLimitCooldownUntil = responseTime + cooldownMs
+                            val message = "GitHub API rate limit reached. Try again later."
+                            rateLimitErrorMessage = message
+                            throw RateLimitException(message)
+                        }
+                        404 -> throw IOException("Release repository not found (HTTP 404)")
+                        else -> throw IOException("GitHub returned HTTP $code")
+                    }
+                } catch (error: Exception) {
+                    continuation.resumeWith(Result.failure(error))
+                } finally {
+                    connectionRef.getAndSet(null)?.disconnect()
+                    connection?.disconnect()
+                }
+            })
+        }
+    }
+
+    private fun markPendingChecksFailed(message: String) {
+        _components.value.keys.forEach { id ->
+            updateState(id) { current ->
+                if (!current.isChecking) current else current.copy(
+                    checkState = ComponentCheckState.CHECK_FAILED,
+                    lifecycleState = ComponentLifecycleState.UNKNOWN,
+                    message = message,
+                    error = message,
+                    lastChecked = System.currentTimeMillis(),
+                )
+            }
+        }
+    }
+
+    private fun markPendingChecksCancelled() {
+        _components.value.keys.forEach { id ->
+            updateState(id) { current ->
+                if (!current.isChecking) current else current.copy(
+                    checkState = ComponentCheckState.CHECK_IDLE,
+                    lifecycleState = ComponentLifecycleState.UNKNOWN,
+                    message = "Update check cancelled",
+                    error = null,
+                    lastChecked = System.currentTimeMillis(),
+                )
+            }
         }
     }
 
@@ -773,6 +853,10 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         private const val KEY_LAST_AUTO_CHECK_SUCCESS_TIMESTAMP = "last_auto_check_success_timestamp"
 
         private const val CHECK_TIMEOUT_MS = 8_000L
+        private const val BATCH_CLEANUP_GRACE_MS = 2_000L
+        private const val NETWORK_CONNECT_TIMEOUT_MS = 6_000
+        private const val NETWORK_READ_TIMEOUT_MS = 6_000
+        private const val MAX_RELEASE_METADATA_BYTES = 64 * 1024
         private const val UPDATE_TIMEOUT_MS = 90_000L
         private const val CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
         private const val DEBOUNCE_INTERVAL_MS = 2_000L // 2 seconds
@@ -849,4 +933,21 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             return candNums.size > instNums.size
         }
     }
+}
+
+internal fun readBoundedResponseBody(inputStream: InputStream, maxBytes: Int): String {
+    require(maxBytes > 0) { "maxBytes must be positive" }
+    val output = ByteArrayOutputStream(minOf(maxBytes, 8 * 1024))
+    inputStream.use { input ->
+        val buffer = ByteArray(4 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (output.size() + count > maxBytes) {
+                throw IOException("Release metadata exceeds $maxBytes bytes")
+            }
+            output.write(buffer, 0, count)
+        }
+    }
+    return String(output.toByteArray(), Charsets.UTF_8)
 }

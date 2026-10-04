@@ -510,11 +510,21 @@ internal fun SettingsScreen(
         VrkaSectionContainer {
             componentMap.values.forEachIndexed { index, comp ->
                 if (index > 0) VrkaDivider()
-                val displayVer = ComponentStatusPresentation.versionLabel(comp.installedVersion)
+                val installedVersion = when {
+                    comp.id == ComponentUpdateManager.ID_YTDLP &&
+                        (comp.installedVersion.isBlank() || comp.installedVersion.equals("Unknown", ignoreCase = true)) &&
+                        runtime.version.isNotBlank() -> runtime.version
+                    else -> comp.installedVersion
+                }
+                val displayVer = if (installedVersion.isBlank()) {
+                    "Resolving…"
+                } else {
+                    ComponentStatusPresentation.versionLabel(installedVersion)
+                }
                 val componentStatus = ComponentStatusPresentation.from(comp)
                 VrkaSettingRow(
                     title = comp.name,
-                    subtitle = "Installed $displayVer",
+                    subtitle = "Installed: $displayVer",
                     isSubtitleMono = true,
                 ) {
                     Row(
@@ -562,11 +572,11 @@ internal fun SettingsScreen(
                         }
                     }
                 }
-                if (!comp.error.isNullOrBlank()) {
+                if (comp.message.isNotBlank()) {
                     Text(
-                        comp.error,
+                        comp.message,
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-                        color = VrkaTokens.Error,
+                        color = if (comp.error != null) VrkaTokens.Error else VrkaTokens.TextSecondary,
                         modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
                     )
                 }
@@ -593,19 +603,21 @@ internal fun SettingsScreen(
                 height = 40.dp,
             )
 
+            Spacer(Modifier.height(10.dp))
             VrkaDivider()
 
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "yt-dlp channel",
-                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = VrkaMonoFamily),
+                    "yt-dlp",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
                     fontWeight = FontWeight.SemiBold,
-                    color = VrkaTokens.TextSecondary,
+                    color = VrkaTokens.TextPrimary,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     UpdatePreference.entries.forEach { item ->

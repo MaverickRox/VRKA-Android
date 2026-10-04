@@ -49,6 +49,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,11 +67,14 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalViewConfiguration
 import com.mvrk.vrka.ui.backdrop.drawBackdrop
+import com.mvrk.vrka.ui.backdrop.backdrops.rememberLayerBackdrop
 import com.mvrk.vrka.ui.backdrop.effects.blur
 import com.mvrk.vrka.ui.backdrop.effects.lens
 import com.mvrk.vrka.ui.backdrop.highlight.Highlight
@@ -644,6 +648,9 @@ fun VrkaFloatingNavBar(
     val destinations = remember { VrkaDestination.entries }
     val selectedIndex = destinations.indexOf(selectedDestination).coerceAtLeast(0)
     val coroutineScope = rememberCoroutineScope()
+    val latestSelectedIndex by rememberUpdatedState(selectedIndex)
+    val latestPagerPosition by rememberUpdatedState(pagerPosition)
+    val latestOnDestinationSelected by rememberUpdatedState(onDestinationSelected)
 
     val capsuleBorderBrush = remember(colors.isLight) {
         if (colors.isLight) {
@@ -670,7 +677,7 @@ fun VrkaFloatingNavBar(
     } else {
         Color(0xFF282538)
     }
-    val puckSurfaceAlpha = if (colors.isLight) 0.70f else 0.62f
+    val puckSurfaceAlpha = if (colors.isLight) 0.22f else 0.18f
 
     val puckBorderBrush = remember(colors.isLight) {
         if (colors.isLight) {
@@ -706,11 +713,24 @@ fun VrkaFloatingNavBar(
     var isDragging by remember { mutableStateOf(false) }
     var dragPosition by remember { mutableFloatStateOf(selectedIndex.toFloat()) }
     val indicatorPosition = remember { Animatable(selectedIndex.toFloat()) }
+    var pendingPagerSyncFrom by remember { mutableStateOf<Float?>(null) }
+    var pendingPagerSyncTarget by remember { mutableIntStateOf(-1) }
+    var itemBounds by remember { mutableStateOf(List(destinations.size) { 0f to 0f }) }
+    val capsuleBackdrop = rememberLayerBackdrop()
 
-    LaunchedEffect(pagerPosition, selectedIndex) {
+    LaunchedEffect(pagerPosition, selectedIndex, pendingPagerSyncFrom, pendingPagerSyncTarget, isDragging) {
         if (!isDragging) {
             val target = (pagerPosition ?: selectedIndex.toFloat())
                 .coerceIn(0f, destinations.lastIndex.toFloat())
+            val waitingFrom = pendingPagerSyncFrom
+            if (waitingFrom != null && pendingPagerSyncTarget >= 0 && pagerPosition != null &&
+                kotlin.math.abs(pagerPosition - waitingFrom) < 0.015f &&
+                kotlin.math.abs(pagerPosition - pendingPagerSyncTarget.toFloat()) >= 0.015f
+            ) {
+                return@LaunchedEffect
+            }
+            pendingPagerSyncFrom = null
+            pendingPagerSyncTarget = -1
             if (pagerPosition != null) {
                 indicatorPosition.snapTo(target)
             } else {
@@ -729,10 +749,11 @@ fun VrkaFloatingNavBar(
             .padding(horizontal = NAV_BAR_HORIZONTAL_MARGIN),
     ) {
         val capsuleWidthPx = constraints.maxWidth.toFloat()
-        val slotWidthPx = if (destinations.isNotEmpty()) capsuleWidthPx / destinations.size else 0f
+        val measuredWidths = itemBounds.map { it.second }.filter { it > 0f }
+        val slotWidthPx = measuredWidths.takeIf { it.size == destinations.size }
+            ?.average()?.toFloat() ?: if (destinations.isNotEmpty()) capsuleWidthPx / destinations.size else 0f
         val insetPx = with(density) { NAV_CONCENTRIC_INSET.toPx() }
-        val indicatorWidthPx = (slotWidthPx - (insetPx * 2f)).coerceAtLeast(0f)
-        val indicatorWidthDp = with(density) { indicatorWidthPx.toDp() }
+        val measuredBoundsReady = itemBounds.size == destinations.size && itemBounds.all { it.second > 0f }
         val barCornerRadiusPx = with(density) { NAV_BAR_CORNER_RADIUS.toPx() }
 
         // Outer soft ambient shadow
@@ -763,7 +784,7 @@ fun VrkaFloatingNavBar(
                         Modifier.drawBackdrop(
                             backdrop = backdrop,
                             shape = { RoundedCornerShape(NAV_BAR_CORNER_RADIUS) },
-                            effects = { blur(with(density) { 16.dp.toPx() }) },
+                            effects = { blur(with(density) { (13.dp * 0.75f).toPx() }) },
                             highlight = {
                                 Highlight(
                                     width = 0.7.dp,
@@ -776,18 +797,19 @@ fun VrkaFloatingNavBar(
                             shadow = null,
                             onDrawSurface = {
                                 val veilColor = if (colors.isLight) {
-                                    Color(0xFFF7F6FA).copy(alpha = 0.86f)
+                                    Color(0xFFF7F6FA).copy(alpha = 0.46f)
                                 } else {
-                                    Color(0xFF13121A).copy(alpha = 0.82f)
+                                    Color(0xFF13121A).copy(alpha = 0.42f)
                                 }
                                 drawRect(color = veilColor)
                             },
-                            backdropScale = 1f,
+                            backdropScale = 0.75f,
+                            exportedBackdrop = capsuleBackdrop,
                         )
                     } else if (colors.isLight) {
-                        Modifier.background(Color(0xFFF7F6FA).copy(alpha = 0.94f), RoundedCornerShape(NAV_BAR_CORNER_RADIUS))
+                        Modifier.background(Color(0xFFF7F6FA).copy(alpha = 0.70f), RoundedCornerShape(NAV_BAR_CORNER_RADIUS))
                     } else {
-                        Modifier.background(Color(0xFF13121A).copy(alpha = 0.92f), RoundedCornerShape(NAV_BAR_CORNER_RADIUS))
+                        Modifier.background(Color(0xFF13121A).copy(alpha = 0.68f), RoundedCornerShape(NAV_BAR_CORNER_RADIUS))
                     }
                 )
                 .border(
@@ -795,12 +817,12 @@ fun VrkaFloatingNavBar(
                     brush = capsuleBorderBrush,
                     shape = RoundedCornerShape(NAV_BAR_CORNER_RADIUS),
                 )
-                .pointerInput(slotWidthPx, destinations.size, selectedIndex) {
+                .pointerInput(slotWidthPx, destinations.size) {
                     if (slotWidthPx <= 0f) return@pointerInput
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         var isDrag = false
-                        val basePos = indicatorPosition.value
+                        val basePos = if (isDragging) dragPosition else indicatorPosition.value
                         var lastHaptic = basePos.roundToInt().coerceIn(0, destinations.lastIndex)
 
                         while (true) {
@@ -813,11 +835,14 @@ fun VrkaFloatingNavBar(
                                     val targetIndex = (basePos + shift).roundToInt().coerceIn(0, destinations.lastIndex)
                                     val targetDest = destinations[targetIndex]
                                     val releasePosition = dragPosition
+                                    val releasedFrom = latestPagerPosition
                                     coroutineScope.launch {
                                         indicatorPosition.snapTo(releasePosition)
                                         isDragging = false
-                                        if (targetIndex != selectedIndex) {
-                                            onDestinationSelected(targetDest)
+                                        if (targetIndex != latestSelectedIndex) {
+                                            pendingPagerSyncFrom = releasedFrom
+                                            pendingPagerSyncTarget = if (releasedFrom == null) -1 else targetIndex
+                                            latestOnDestinationSelected(targetDest)
                                         } else {
                                             indicatorPosition.animateTo(
                                                 targetValue = targetIndex.toFloat(),
@@ -857,27 +882,37 @@ fun VrkaFloatingNavBar(
                     }
                 },
         ) {
-            // Concentric indicator capsule
-            if (indicatorWidthPx > 0f) {
+            // The pill is derived from each item’s measured slot, so it remains concentric as widths change.
+            if (measuredBoundsReady) {
+                val activePosition = if (isDragging) dragPosition else indicatorPosition.value
+                val leftIndex = activePosition.toInt().coerceIn(0, destinations.lastIndex)
+                val rightIndex = (leftIndex + 1).coerceAtMost(destinations.lastIndex)
+                val fraction = (activePosition - leftIndex).coerceIn(0f, 1f)
+                val leftBound = itemBounds[leftIndex]
+                val rightBound = itemBounds[rightIndex]
+                val indicatorLeftPx = (leftBound.first + insetPx) +
+                    ((rightBound.first - leftBound.first) * fraction)
+                val indicatorWidthPx = (leftBound.second + (rightBound.second - leftBound.second) * fraction - insetPx * 2f)
+                    .coerceAtLeast(0f)
                 Box(
                     modifier = Modifier
-                        .width(indicatorWidthDp)
+                        .width(with(density) { indicatorWidthPx.toDp() })
                         .height(NAV_INDICATOR_HEIGHT)
                         .align(Alignment.CenterStart)
                         .graphicsLayer {
-                            val position = if (isDragging) dragPosition else indicatorPosition.value
-                            translationX = (position * slotWidthPx) + insetPx
+                            translationX = indicatorLeftPx
                         }
                         .then(
                             if (backdrop != null && isRenderEffectSupported()) {
                                 Modifier.drawBackdrop(
-                                    backdrop = backdrop,
+                                    backdrop = capsuleBackdrop,
                                     shape = { RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS) },
                                     effects = {
-                                        blur(with(density) { 8.dp.toPx() })
+                                        blur(with(density) { (3.dp * 0.75f).toPx() })
                                         lens(
-                                            refractionHeight = with(density) { 4.dp.toPx() },
-                                            refractionAmount = with(density) { 1.5.dp.toPx() },
+                                            refractionHeight = with(density) { (9.dp * 0.75f).toPx() },
+                                            refractionAmount = with(density) { (5.dp * 0.75f).toPx() },
+                                            magnification = 1.12f,
                                             depthEffect = true,
                                         )
                                     },
@@ -894,11 +929,11 @@ fun VrkaFloatingNavBar(
                                     onDrawSurface = {
                                         drawRect(color = puckTintColor.copy(alpha = puckSurfaceAlpha))
                                     },
-                                    backdropScale = 1f,
+                                    backdropScale = 0.75f,
                                 )
                             } else {
                                 Modifier.background(
-                                    puckTintColor.copy(alpha = puckSurfaceAlpha),
+                                    puckTintColor.copy(alpha = if (colors.isLight) 0.34f else 0.30f),
                                     RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS),
                                 )
                             },
@@ -920,17 +955,23 @@ fun VrkaFloatingNavBar(
                             onDestinationSelected(item)
                         }
                     }
-                    val isTabSelected = if (isDragging) {
-                        indicatorPosition.value.roundToInt().coerceIn(0, destinations.lastIndex) == index
-                    } else {
-                        index == selectedIndex
-                    }
+                    val activePosition = if (isDragging) dragPosition else indicatorPosition.value
+                    val isTabSelected = activePosition.roundToInt().coerceIn(0, destinations.lastIndex) == index
+                    val focus = (1f - kotlin.math.abs(activePosition - index).coerceIn(0f, 1f))
                     VrkaNavItem(
                         item = item,
                         isSelected = isTabSelected,
                         isLight = colors.isLight,
+                        focus = focus,
                         onClick = onItemClick,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .onGloballyPositioned { coordinates ->
+                                val measured = coordinates.positionInParent().x to coordinates.size.width.toFloat()
+                                if (itemBounds[index] != measured) {
+                                    itemBounds = itemBounds.toMutableList().also { it[index] = measured }
+                                }
+                            },
                     )
                 }
             }
@@ -943,6 +984,7 @@ private fun VrkaNavItem(
     item: VrkaDestination,
     isSelected: Boolean,
     isLight: Boolean,
+    focus: Float,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -972,6 +1014,13 @@ private fun VrkaNavItem(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .graphicsLayer {
+                    val lift = 1f + (focus.coerceIn(0f, 1f) * 0.045f)
+                    scaleX = lift
+                    scaleY = lift
+                }
+                .padding(horizontal = 4.dp),
         ) {
             androidx.compose.material3.Icon(
                 painter = androidx.compose.ui.res.painterResource(item.iconRes),
@@ -994,6 +1043,7 @@ private fun VrkaNavItem(
                 color = contentColor,
                 maxLines = 1,
                 softWrap = false,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

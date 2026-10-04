@@ -26,7 +26,7 @@ class ComponentStatusPresentationTest {
             checkState = ComponentCheckState.UP_TO_DATE,
         )
 
-        assertEquals("Up to date", ComponentStatusPresentation.from(checked).label)
+        assertEquals("Ready", ComponentStatusPresentation.from(checked).label)
         assertEquals("v2026.10.01", ComponentStatusPresentation.versionLabel(checked.installedVersion))
     }
 
@@ -41,7 +41,22 @@ class ComponentStatusPresentationTest {
         )
         val failed = available.copy(checkState = ComponentCheckState.CHECK_FAILED, latestVersion = null)
 
-        assertEquals("Update available", ComponentStatusPresentation.from(available).label)
+        assertEquals("v1.75.0", ComponentStatusPresentation.from(available).label)
         assertEquals("Error", ComponentStatusPresentation.from(failed).label)
+    }
+
+    @Test
+    fun availableAndCurrentMessagesRetainCheckedVersion() {
+        val checked = ComponentStatus(
+            id = ComponentUpdateManager.ID_YTDLP,
+            name = "yt-dlp",
+            installedVersion = "2026.08.19",
+            latestVersion = "2026.08.19",
+            checkState = ComponentCheckState.UP_TO_DATE,
+            message = "Up to date (v2026.08.19)",
+        )
+
+        assertEquals("Up to date (v2026.08.19)", checked.message)
+        assertEquals("Ready", ComponentStatusPresentation.from(checked).label)
     }
 }

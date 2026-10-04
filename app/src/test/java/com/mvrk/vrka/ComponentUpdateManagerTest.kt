@@ -147,6 +147,21 @@ class ComponentUpdateManagerTest {
         assertFalse(successStatus.isUpdating)
     }
 
+    @Test
+    fun releaseMetadataBodyIsBounded() {
+        val body = "{\"tag_name\":\"v1.2.3\"}"
+        assertEquals(
+            body,
+            readBoundedResponseBody(body.byteInputStream(), body.toByteArray().size),
+        )
+        try {
+            readBoundedResponseBody(body.byteInputStream(), body.toByteArray().size - 1)
+            throw AssertionError("An oversized metadata body must fail")
+        } catch (expected: java.io.IOException) {
+            assertTrue(expected.message.orEmpty().contains("exceeds"))
+        }
+    }
+
     // ==========================================
     // Independent Component Updater Tests
     // ==========================================

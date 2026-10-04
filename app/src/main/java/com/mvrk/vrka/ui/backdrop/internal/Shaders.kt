@@ -65,6 +65,7 @@ uniform float2 offset;
 uniform float4 cornerRadii;
 uniform float refractionHeight;
 uniform float refractionAmount;
+uniform float magnification;
 uniform float depthEffect;
 
 $RoundedRectSDF
@@ -75,20 +76,26 @@ float circleMap(float x) {
 
 half4 main(float2 coord) {
     float2 halfSize = size * 0.5;
+    float2 center = halfSize - offset;
     float2 centeredCoord = (coord + offset) - halfSize;
     float radius = radiusAt(coord, cornerRadii);
     
     float sd = sdRoundedRect(centeredCoord, halfSize, radius);
     if (-sd >= refractionHeight) {
-        return content.eval(coord);
+        float zoom = max(magnification, 1.0);
+        return content.eval(center + centeredCoord / zoom);
     }
     sd = min(sd, 0.0);
+
+    float lensBlend = smoothstep(0.0, refractionHeight, -sd);
+    float zoom = mix(1.0, max(magnification, 1.0), lensBlend);
+    float2 magnifiedCoord = center + centeredCoord / zoom;
     
     float d = circleMap(1.0 - -sd / refractionHeight) * refractionAmount;
     float gradRadius = min(radius * 1.5, min(halfSize.x, halfSize.y));
     float2 grad = normalize(gradSdRoundedRect(centeredCoord, halfSize, gradRadius) + depthEffect * normalize(centeredCoord));
     
-    float2 refractedCoord = coord + d * grad;
+    float2 refractedCoord = magnifiedCoord + d * grad;
     return content.eval(refractedCoord);
 }"""
 
@@ -101,6 +108,7 @@ uniform float2 offset;
 uniform float4 cornerRadii;
 uniform float refractionHeight;
 uniform float refractionAmount;
+uniform float magnification;
 uniform float depthEffect;
 uniform float chromaticAberration;
 
@@ -112,20 +120,26 @@ float circleMap(float x) {
 
 half4 main(float2 coord) {
     float2 halfSize = size * 0.5;
+    float2 center = halfSize - offset;
     float2 centeredCoord = (coord + offset) - halfSize;
     float radius = radiusAt(coord, cornerRadii);
     
     float sd = sdRoundedRect(centeredCoord, halfSize, radius);
     if (-sd >= refractionHeight) {
-        return content.eval(coord);
+        float zoom = max(magnification, 1.0);
+        return content.eval(center + centeredCoord / zoom);
     }
     sd = min(sd, 0.0);
+
+    float lensBlend = smoothstep(0.0, refractionHeight, -sd);
+    float zoom = mix(1.0, max(magnification, 1.0), lensBlend);
+    float2 magnifiedCoord = center + centeredCoord / zoom;
     
     float d = circleMap(1.0 - -sd / refractionHeight) * refractionAmount;
     float gradRadius = min(radius * 1.5, min(halfSize.x, halfSize.y));
     float2 grad = normalize(gradSdRoundedRect(centeredCoord, halfSize, gradRadius) + depthEffect * normalize(centeredCoord));
     
-    float2 refractedCoord = coord + d * grad;
+    float2 refractedCoord = magnifiedCoord + d * grad;
     float dispersionIntensity = chromaticAberration * ((centeredCoord.x * centeredCoord.y) / (halfSize.x * halfSize.y));
     float2 dispersedCoord = d * grad * dispersionIntensity;
     
