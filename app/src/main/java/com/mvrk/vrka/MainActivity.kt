@@ -28,6 +28,10 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
+        if (intent.action == ACTION_OPEN_APP_UPDATE || intent.getBooleanExtra(EXTRA_OPEN_APP_UPDATE, false)) {
+            vrkaApplication.downloads.appUpdateManager.restoreReadyUpdateFlow()
+            intent.removeExtra(EXTRA_OPEN_APP_UPDATE)
+        }
         if (intent.getBooleanExtra(EXTRA_OPEN_QUEUE, false)) {
             openQueueRequests.value = System.currentTimeMillis()
             intent.removeExtra(EXTRA_OPEN_QUEUE)
@@ -50,6 +54,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_QUEUE = "com.mvrk.vrka.OPEN_QUEUE"
         const val EXTRA_URL = "com.mvrk.vrka.URL"
+        const val ACTION_OPEN_APP_UPDATE = "com.mvrk.vrka.action.OPEN_APP_UPDATE"
+        const val EXTRA_OPEN_APP_UPDATE = "com.mvrk.vrka.OPEN_APP_UPDATE"
     }
 }
 

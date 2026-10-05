@@ -10,7 +10,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v5.0.1)</b></a> •
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v5.0.2)</b></a> •
     <a href="#screenshots">Screenshots</a> •
     <a href="#architecture">Architecture</a> •
     <a href="#build-instructions">Build Guide</a> •
@@ -106,7 +106,7 @@ VRKA Android includes an in-app update checker for updates from official GitHub 
 - **24-Hour Automatic Gate**: Automatic startup checks run at most once every 24 hours to reduce network traffic.
 - **Manual Check Bypass**: The `[Check for Updates]` button in Settings bypasses the 24-hour interval to check immediately.
 - **Non-Blocking Startup**: Checks run in the background without slowing down app startup.
-- **Canonical Stable Releases**: Accepts stable three-part tags such as `v5.0.1`, compares numeric version segments, and requires the exact matching asset `VRKA-Android-v5.0.1.apk`.
+- **Canonical Stable Releases**: Accepts stable three-part tags such as `v5.0.2`, compares numeric version segments, and requires the exact matching asset `VRKA-Android-v5.0.2.apk`.
 - **HTTPS-Only Networking & Host Validation**: Streams metadata and APK files over HTTPS from approved GitHub release hosts, rejecting user-info, nonstandard ports, and unapproved hosts.
 - **Redirect Validation**: Validates every redirect target and limits redirect hops to at most 5.
 - **Install Verification**: Requires the APK to remain in the private update cache and verifies package identity, filename/version agreement, non-downgrade version code, and the installed signing certificate before launching Android's installer.
@@ -219,27 +219,27 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-The official v5.0.1 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
+The official v5.0.2 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
 
 ---
 
 ## Release Signing
 
-The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Verify the v5.0.1 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
+The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Verify the v5.0.2 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
 
 ---
 
 ## Installation
 
-1. Download the official `VRKA-Android-v5.0.1.apk` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
+1. Download the official `VRKA-Android-v5.0.2.apk` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
-   (Get-FileHash .\VRKA-Android-v5.0.1.apk -Algorithm SHA256).Hash
+   (Get-FileHash .\VRKA-Android-v5.0.2.apk -Algorithm SHA256).Hash
    ```
-   Expected: `75F7B5EDF514724E21B0237E9E66813F88DF0F51E0E1D620702D6B03D177DBCD`. The same value is recorded in `SHA256SUMS` and the official release page.
+   Expected: `136707980C34EA4242AB3B183571BC24C063A3DDB22BDB0A1CF56258345B9D54`. The same value is recorded in `SHA256SUMS` and the official release page.
 3. Install on your Android device:
    ```bash
-   adb install -r .\VRKA-Android-v5.0.1.apk
+   adb install -r .\VRKA-Android-v5.0.2.apk
    ```
 
 ---

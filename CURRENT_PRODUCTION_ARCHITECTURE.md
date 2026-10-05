@@ -1,6 +1,6 @@
-# VRKA Android 5.0.1 — Current Production Architecture
+# VRKA Android 5.0.2 — Current Production Architecture
 
-This documents the current 5.0.1 production source. Its download and media-processing architecture is the final shipped 5.0 design; 5.0.1 repairs and hardens the application updater. Release-specific build and test evidence is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+This documents the current 5.0.2 production source. Its download and media-processing architecture is the final shipped 5.0 design; 5.0.1 restored canonical release validation, and 5.0.2 hardens persistent background update downloads, retry semantics, and installation flow. Release-specific build and test evidence is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
 
 ## Normal downloads
 
@@ -25,7 +25,7 @@ No dormant transfer route was reconnected by the UI or component cleanup changes
 
 ## Application updater
 
-The updater accepts stable three-part tags and requires the exact `VRKA-Android-vX.Y.Z.apk` asset for the parsed version. It validates HTTPS, approved hosts, standard port, and every redirect hop for release metadata and APK transfers. Invalid release metadata is an error; automatic checks keep it quiet while a manual check exposes it. WorkManager downloads into the private update cache. Before the Android installer opens, VRKA verifies the cache location, package ID, filename/version agreement, increasing version code, and a matching signing-certificate fingerprint.
+The updater accepts stable three-part tags and requires the exact `VRKA-Android-vX.Y.Z.apk` asset for the parsed version. It validates HTTPS, approved hosts, standard port, and every redirect hop for release metadata and APK transfers. Invalid release metadata is an error; automatic checks keep it quiet while a manual check exposes it. WorkManager executes persistent background downloads into the private update directory with bounded exponential retry for transient network failures. Before the Android installer opens, VRKA verifies the cache location, package ID, filename/version agreement, increasing version code, and a matching signing-certificate fingerprint.
 
 ## Custom yt-dlp templates and headers
 

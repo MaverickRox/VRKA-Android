@@ -1,4 +1,4 @@
-# Known Limitations — VRKA Android 5.0.1
+# Known Limitations — VRKA Android 5.0.2
 
 - The app and packaged native media libraries target `arm64-v8a`; other ABIs are not shipped.
 - VRKA does not bypass DRM, login, payment, CAPTCHA, consent, or other access controls. Site changes may require a yt-dlp or app update.
@@ -9,8 +9,8 @@
 - An upgrade from the previous release may carry retired extension and update state; the app cleans that state during migration. The final APK includes no corresponding extension asset or active update/registration path. Media3 custom transfer code is dormant; N_m3u8DL-RE is gated off.
 - Component version is shown as unknown when the app cannot read a runtime, packaged-file or verified-update version. “Up to date” appears only after a check or verified component update.
 - Android may stop the application process; interrupted work may need to be retried. Network access and available storage affect downloads and updates.
-- The 5.0.1 APK has not been physically validated. The OnePlus 11 report documents only the earlier 5.0 artifact and does not establish validation for 5.0.1.
+- The 5.0.2 APK has not been physically validated. The OnePlus 11 report documents only the earlier 5.0 artifact and does not establish validation for 5.0.2.
 
 ## Validation Scope
 
-Automated test/build results are recorded in `RELEASE_EVIDENCE.md`. No emulator, ADB, or device automation was used for 5.0.1, and no physical-device validation is claimed for this release.
+Automated test/build results are recorded in `RELEASE_EVIDENCE.md`. No emulator, ADB, or device automation was used for 5.0.2, and no physical-device validation is claimed for this release.

@@ -96,6 +96,7 @@ class AppUpdateManagerTest {
                     {
                         "name": "VRKA-Android-v4.5.2.apk",
                         "size": 25000000,
+                        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                         "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk"
                     }
                 ]
@@ -110,6 +111,7 @@ class AppUpdateManagerTest {
         assertTrue(release.body.contains("Bug fixes"))
         assertEquals("VRKA-Android-v4.5.2.apk", release.apkFileName)
         assertEquals(25000000L, release.apkSizeBytes)
+        assertEquals("a".repeat(64), release.apkSha256)
         assertEquals(
             "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk",
             release.apkDownloadUrl,
@@ -176,6 +178,7 @@ class AppUpdateManagerTest {
                         {
                             "name": "VRKA-Android-v4.5.2.apk",
                             "size": 30000000,
+                            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                             "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk"
                         }
                     ]
@@ -320,6 +323,40 @@ class AppUpdateManagerTest {
         assertTrue(v501.isNewerThan(SemanticVersion.parseOrNull("5.0")!!))
         assertFalse(v501.isNewerThan(SemanticVersion(5, 0, 1)))
         assertTrue(SemanticVersion(5, 0, 1).compareTo(v501) == 0)
+    }
+
+    @Test
+    fun test502VersionParsesAndComparesNumericallyAgainstSupportedVersions() {
+        val v502 = SemanticVersion.parseOrNull("5.0.2")
+        assertEquals(SemanticVersion(5, 0, 2), v502)
+        assertTrue(v502!!.isNewerThan(SemanticVersion.parseOrNull("4.5.3")!!))
+        assertTrue(v502.isNewerThan(SemanticVersion.parseOrNull("5.0.1")!!))
+        assertTrue(v502.isNewerThan(SemanticVersion.parseOrNull("5.0")!!))
+        assertFalse(v502.isNewerThan(SemanticVersion(5, 0, 2)))
+        assertTrue(SemanticVersion(5, 0, 2).compareTo(v502) == 0)
+    }
+
+    @Test
+    fun test501UpdaterCanSelectCanonical502ReleaseAndAsset() {
+        val release = AppUpdateManager.parseReleaseJson(
+            releaseJson(
+                tag = "v5.0.2",
+                assets = listOf(
+                    "VRKA-Android-v5.0.2.apk" to
+                        "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.2/VRKA-Android-v5.0.2.apk",
+                ),
+            ),
+        )!!
+
+        assertEquals(SemanticVersion(5, 0, 2), release.version)
+        assertEquals("VRKA-Android-v5.0.2.apk", release.apkFileName)
+        assertTrue(release.version.isNewerThan(SemanticVersion(5, 0, 1)))
+        assertTrue(AppUpdateManager.isValidDownloadTarget("5.0.2", release.apkFileName))
+        assertTrue(AppUpdateManager.isValidReleaseForDownload(release))
+        assertTrue(
+            AppUpdateManager.resolveCheckState(release, SemanticVersion(5, 0, 1), "5.0.1") is
+                AppUpdateCheckState.UpdateAvailable,
+        )
     }
 
     @Test
@@ -488,6 +525,40 @@ class AppUpdateManagerTest {
         assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(apkFileName = "VRKA-Android-v5.0.1-debug.apk")))
         assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(apkDownloadUrl = "http://github.com/asset.apk")))
         assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(tagName = "v5.0")))
+        assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(apkSha256 = "invalid")))
+    }
+
+    @Test
+    fun test453UpdaterCanSelectCanonical502ReleaseAndAsset() {
+        val release = AppUpdateManager.parseReleaseJson(
+            releaseJson(
+                tag = "v5.0.2",
+                assets = listOf(
+                    "VRKA-Android-v5.0.2.apk" to
+                        "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.2/VRKA-Android-v5.0.2.apk",
+                ),
+            ),
+        )!!
+
+        assertEquals(SemanticVersion(5, 0, 2), release.version)
+        assertEquals("VRKA-Android-v5.0.2.apk", release.apkFileName)
+        assertTrue(release.version.isNewerThan(SemanticVersion(4, 5, 3)))
+        assertTrue(AppUpdateManager.isValidDownloadTarget("5.0.2", release.apkFileName))
+        assertTrue(AppUpdateManager.isValidReleaseForDownload(release))
+    }
+
+    @Test
+    fun testReleaseMetadataRequiresGitHubSha256AndPositiveAssetSize() {
+        val valid = releaseJson(
+            tag = "v5.0.2",
+            assets = listOf(
+                "VRKA-Android-v5.0.2.apk" to
+                    "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.2/VRKA-Android-v5.0.2.apk",
+            ),
+        )
+        assertNotNull(AppUpdateManager.parseReleaseJson(valid))
+        assertNull(AppUpdateManager.parseReleaseJson(valid.replace(Regex("\\\"digest\\\":\\\"[^\\\"]+\\\",?"), "")))
+        assertNull(AppUpdateManager.parseReleaseJson(valid.replace("\"size\":100", "\"size\":0")))
     }
 
     @Test
@@ -599,7 +670,7 @@ class AppUpdateManagerTest {
         prerelease: Boolean = false,
     ): String {
         val assetJson = assets.joinToString(",") { (name, url) ->
-            """{"name":"$name","size":100,"browser_download_url":"$url"}"""
+            """{"name":"$name","size":100,"digest":"sha256:${"a".repeat(64)}","browser_download_url":"$url"}"""
         }
         return """
             {
