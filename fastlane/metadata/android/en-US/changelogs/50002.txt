@@ -1,0 +1,6 @@
+VRKA Android 5.0.2
+
+- Improved background application updates.
+- Application update downloads now retry temporary network failures more reliably.
+- Improved update download persistence and completion handling.
+- Improved update-ready notifications and installation flow.

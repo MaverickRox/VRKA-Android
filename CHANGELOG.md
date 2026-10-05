@@ -2,6 +2,14 @@
 
 All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
 
+## [5.0.2] - 2026-10-05
+
+### Improved
+- Persistent application update downloads running under WorkManager now persist and continue reliably when the application is backgrounded.
+- Update downloads automatically retry transient network failures (such as connection aborts, resets, or server throttle responses) using bounded exponential backoff.
+- Verified APKs are staged safely in private storage and preserved across worker and process recreation.
+- Added update-ready notifications with direct launch into the installation flow, and automatic display of the ready-to-install dialog upon returning to the app.
+
 ## [5.0.1] - 2026-10-05
 
 ### Fixed

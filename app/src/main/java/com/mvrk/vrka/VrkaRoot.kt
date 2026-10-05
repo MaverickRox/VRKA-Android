@@ -63,6 +63,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mvrk.vrka.ui.AppUpdateDialog
 import com.mvrk.vrka.update.AppUpdateCheckState
+import com.mvrk.vrka.update.AppReleaseInfo
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -90,6 +91,7 @@ fun VrkaRoot(
     )
     val destination = destinations[pagerState.currentPage]
     var pendingRequest by remember { mutableStateOf<DownloadRequest?>(null) }
+    var pendingAppUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -110,6 +112,8 @@ fun VrkaRoot(
     ) {
         pendingRequest?.let(manager::enqueue)
         pendingRequest = null
+        pendingAppUpdate?.let(manager.appUpdateManager::downloadAndInstall)
+        pendingAppUpdate = null
     }
 
     fun enqueue(request: DownloadRequest) {
@@ -126,6 +130,20 @@ fun VrkaRoot(
         }
         scope.launch {
             pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
+        }
+    }
+
+    fun downloadAppUpdate(release: AppReleaseInfo) {
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            pendingAppUpdate = release
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            manager.appUpdateManager.downloadAndInstall(release)
         }
     }
 
@@ -358,13 +376,13 @@ fun VrkaRoot(
                     AppUpdateDialog(
                         release = release,
                         downloadState = appUpdateDownloadState,
-                        onDownloadClick = { manager.appUpdateManager.downloadAndInstall(release) },
+                        onDownloadClick = { downloadAppUpdate(release) },
                         onDismissClick = manager.appUpdateManager::dismissUpdate,
                         onInstallClick = {
                             if (appUpdateDownloadState is com.mvrk.vrka.update.AppUpdateDownloadState.ReadyToInstall) {
                                 manager.appUpdateManager.installApk((appUpdateDownloadState as com.mvrk.vrka.update.AppUpdateDownloadState.ReadyToInstall).file)
                             } else {
-                                manager.appUpdateManager.downloadAndInstall(release)
+                                downloadAppUpdate(release)
                             }
                         },
                     )
