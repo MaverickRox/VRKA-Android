@@ -31,8 +31,10 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.URI
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 class AppUpdateManager(
     private val context: Context,
@@ -117,7 +119,7 @@ class AppUpdateManager(
                 if (!isManual) {
                     val lastCheck = settingsRepository.getLastAppUpdateCheckTimestamp()
                     val now = System.currentTimeMillis()
-                    if (now - lastCheck < TWENTY_FOUR_HOURS_MS) {
+                    if (shouldSkipAutomaticCheck(isManual, lastCheck, now)) {
                         Log.d(TAG, "Skipping background update check; within 24h gate")
                         return@launch
                     }
@@ -129,13 +131,16 @@ class AppUpdateManager(
                 val now = System.currentTimeMillis()
                 settingsRepository.setLastAppUpdateCheckTimestamp(now)
 
-                if (release != null && release.version.isNewerThan(currentVersion)) {
-                    Log.i(TAG, "Update available: ${release.version} (current: $currentVersion)")
-                    _checkState.value = AppUpdateCheckState.UpdateAvailable(release)
-                } else {
+                val result = resolveCheckState(release, currentVersion, BuildConfig.VERSION_NAME)
+                if (result is AppUpdateCheckState.UpdateAvailable) {
+                    Log.i(TAG, "Update available: ${release?.version} (current: $currentVersion)")
+                } else if (result is AppUpdateCheckState.UpToDate) {
                     Log.i(TAG, "App is up-to-date (version: $currentVersion)")
-                    _checkState.value = AppUpdateCheckState.UpToDate(BuildConfig.VERSION_NAME)
                 }
+                // Startup checks remain silent on invalid metadata; manual checks surface the error.
+                _checkState.value = if (!isManual && result is AppUpdateCheckState.Error) {
+                    AppUpdateCheckState.Idle
+                } else result
             } catch (ce: CancellationException) {
                 Log.d(TAG, "Update check cancelled")
             } catch (e: Exception) {
@@ -172,6 +177,10 @@ class AppUpdateManager(
     }
 
     fun downloadAndInstall(release: AppReleaseInfo) {
+        if (!isValidReleaseForDownload(release)) {
+            _downloadState.value = AppUpdateDownloadState.Error("Update release metadata failed security validation")
+            return
+        }
         if (_downloadState.value is AppUpdateDownloadState.Downloading) return
 
         _downloadState.value = AppUpdateDownloadState.Downloading(0f, 0L, release.apkSizeBytes)
@@ -201,49 +210,41 @@ class AppUpdateManager(
 
     fun installApk(file: File) {
         try {
-            // Security verification: Pre-verify APK package name and signing certificate before handoff
-            val pm = context.packageManager
-            val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
-            } else {
-                @Suppress("DEPRECATION")
-                pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            val updatesDirectory = File(context.cacheDir, "updates").canonicalFile
+            val canonicalFile = file.canonicalFile
+            if (canonicalFile.parentFile != updatesDirectory || !canonicalFile.isFile || canonicalFile.length() <= 0L) {
+                _downloadState.value = AppUpdateDownloadState.Error("APK verification failed: update file is not in private update cache")
+                return
             }
+
+            // Verify package identity, canonical version metadata, and monotonic version code before handoff.
+            val pm = context.packageManager
+            val archiveInfo = packageArchiveInfo(pm, canonicalFile.absolutePath)
 
             if (archiveInfo == null) {
                 _downloadState.value = AppUpdateDownloadState.Error("APK verification failed: corrupt or invalid package archive")
                 return
             }
 
-            if (archiveInfo.packageName != context.packageName) {
-                _downloadState.value = AppUpdateDownloadState.Error("APK verification failed: package name mismatch (${archiveInfo.packageName} != ${context.packageName})")
+            val currentPkgInfo = packageInfo(pm, context.packageName)
+            val metadataError = validateInstallMetadata(
+                apkFileName = canonicalFile.name,
+                apkPackageName = archiveInfo.packageName,
+                apkVersionName = archiveInfo.versionName,
+                apkVersionCode = packageVersionCode(archiveInfo),
+                installedPackageName = currentPkgInfo.packageName,
+                installedVersionName = currentPkgInfo.versionName,
+                installedVersionCode = packageVersionCode(currentPkgInfo),
+            )
+            if (metadataError != null) {
+                _downloadState.value = AppUpdateDownloadState.Error(metadataError)
                 return
             }
 
-            // Verify certificate matches installed app
-            val currentPkgInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-            } else {
-                @Suppress("DEPRECATION")
-                pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
-            }
-
-            val currentSigners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                currentPkgInfo.signingInfo?.apkContentsSigners?.map { it.toByteArray().contentHashCode() }?.toSet().orEmpty()
-            } else {
-                @Suppress("DEPRECATION")
-                currentPkgInfo.signatures?.map { it.toByteArray().contentHashCode() }?.toSet().orEmpty()
-            }
-
-            val candidateSigners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                archiveInfo.signingInfo?.apkContentsSigners?.map { it.toByteArray().contentHashCode() }?.toSet().orEmpty()
-            } else {
-                @Suppress("DEPRECATION")
-                archiveInfo.signatures?.map { it.toByteArray().contentHashCode() }?.toSet().orEmpty()
-            }
-
-            if (currentSigners.isNotEmpty() && candidateSigners.isNotEmpty() && currentSigners.intersect(candidateSigners).isEmpty()) {
-                _downloadState.value = AppUpdateDownloadState.Error("APK verification failed: signing certificate mismatch. Update rejected.")
+            val currentSigners = packageSignerFingerprints(currentPkgInfo)
+            val candidateSigners = packageSignerFingerprints(archiveInfo)
+            if (!haveSameSignerSet(currentSigners, candidateSigners)) {
+                _downloadState.value = AppUpdateDownloadState.Error("APK verification failed: signing certificate mismatch or unavailable signer metadata")
                 return
             }
 
@@ -282,11 +283,11 @@ class AppUpdateManager(
         parseReleaseJson(jsonStr)
     }
 
-    private fun httpGet(urlString: String, maxRedirects: Int = 5): String {
+    private fun httpGet(urlString: String): String {
         var currentUrl = urlString
         var redirects = 0
 
-        while (redirects < maxRedirects) {
+        while (true) {
             val url = validateHttpsUrl(currentUrl)
             val conn = url.openConnection() as HttpURLConnection
             conn.instanceFollowRedirects = false
@@ -306,9 +307,8 @@ class AppUpdateManager(
                     307, 308 -> {
                         val location = conn.getHeaderField("Location")
                             ?: throw IOException("HTTP redirect $code without Location header")
-                        val nextUrl = resolveRedirectUrl(url, location)
-                        validateHttpsUrl(nextUrl)
-                        currentUrl = nextUrl
+                        if (!canFollowRedirect(redirects)) throw IOException("Too many redirects: $redirects")
+                        currentUrl = validateRedirectTarget(url, location).toExternalForm()
                         redirects++
                     }
                     HttpURLConnection.HTTP_FORBIDDEN -> {
@@ -321,7 +321,6 @@ class AppUpdateManager(
                 conn.disconnect()
             }
         }
-        throw IOException("Too many redirects: $redirects")
     }
 
     private suspend fun downloadFileWithProgress(
@@ -331,9 +330,8 @@ class AppUpdateManager(
     ) = withContext(Dispatchers.IO) {
         var currentUrl = urlStr
         var redirects = 0
-        val maxRedirects = 5
 
-        while (redirects < maxRedirects) {
+        while (true) {
             val url = validateHttpsUrl(currentUrl)
             val conn = url.openConnection() as HttpURLConnection
             conn.instanceFollowRedirects = false
@@ -383,9 +381,8 @@ class AppUpdateManager(
                     307, 308 -> {
                         val location = conn.getHeaderField("Location")
                             ?: throw IOException("HTTP redirect $code without Location header")
-                        val nextUrl = resolveRedirectUrl(url, location)
-                        validateHttpsUrl(nextUrl)
-                        currentUrl = nextUrl
+                        if (!canFollowRedirect(redirects)) throw IOException("Too many redirects downloading APK")
+                        currentUrl = validateRedirectTarget(url, location).toExternalForm()
                         redirects++
                     }
                     else -> throw IOException("Download failed with HTTP $code")
@@ -394,7 +391,6 @@ class AppUpdateManager(
                 conn.disconnect()
             }
         }
-        throw IOException("Too many redirects downloading APK")
     }
 
     companion object {
@@ -407,6 +403,7 @@ class AppUpdateManager(
         private const val READ_TIMEOUT_MS = 6000
         private const val DOWNLOAD_READ_TIMEOUT_MS = 30000
         private const val BUFFER_SIZE = 8192
+        const val MAX_REDIRECTS = 5
 
         val ALLOWED_UPDATE_HOSTS = setOf(
             "api.github.com",
@@ -416,7 +413,72 @@ class AppUpdateManager(
             "raw.githubusercontent.com",
         )
 
-        val APK_NAME_PATTERN = Regex("""^VRKA-Android-v\d+\.\d+\.\d+\.apk$""", RegexOption.IGNORE_CASE)
+        private val CANONICAL_VERSION_PATTERN = Regex("""^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$""")
+        private val RELEASE_TAG_PATTERN = Regex("""^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$""")
+        val APK_NAME_PATTERN = Regex("""^VRKA-Android-v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.apk$""")
+
+        fun shouldSkipAutomaticCheck(isManual: Boolean, lastCheckMillis: Long, nowMillis: Long): Boolean =
+            !isManual && nowMillis - lastCheckMillis < TWENTY_FOUR_HOURS_MS
+
+        fun resolveCheckState(
+            release: AppReleaseInfo?,
+            currentVersion: SemanticVersion,
+            currentVersionName: String,
+        ): AppUpdateCheckState = when {
+            release == null -> AppUpdateCheckState.Error("Latest release metadata is invalid or has no canonical APK")
+            release.version.isNewerThan(currentVersion) -> AppUpdateCheckState.UpdateAvailable(release)
+            else -> AppUpdateCheckState.UpToDate(currentVersionName)
+        }
+
+        fun canFollowRedirect(redirectsFollowed: Int): Boolean = redirectsFollowed in 0 until MAX_REDIRECTS
+
+        fun validateRedirectTarget(baseUrl: URL, location: String): URL =
+            validateHttpsUrl(resolveRedirectUrl(baseUrl, location))
+
+        fun isValidDownloadTarget(targetVersion: String, apkFileName: String): Boolean {
+            val version = parseCanonicalVersion(targetVersion) ?: return false
+            return apkFileName == canonicalApkName(version)
+        }
+
+        fun isValidReleaseForDownload(release: AppReleaseInfo): Boolean {
+            val tagVersion = parseReleaseTag(release.tagName) ?: return false
+            if (tagVersion != release.version || release.apkFileName != canonicalApkName(tagVersion)) return false
+            return runCatching { validateHttpsUrl(release.apkDownloadUrl) }.isSuccess
+        }
+
+        fun validateInstallMetadata(
+            apkFileName: String,
+            apkPackageName: String?,
+            apkVersionName: String?,
+            apkVersionCode: Long,
+            installedPackageName: String?,
+            installedVersionName: String?,
+            installedVersionCode: Long,
+        ): String? {
+            val filenameMatch = APK_NAME_PATTERN.matchEntire(apkFileName)
+                ?: return "APK verification failed: non-canonical APK filename"
+            val apkVersion = versionFromGroups(filenameMatch.groupValues)
+                ?: return "APK verification failed: malformed APK version"
+            if (apkPackageName.isNullOrBlank() || apkPackageName != installedPackageName) {
+                return "APK verification failed: package name mismatch"
+            }
+            if (apkVersionName != apkVersion.toString()) {
+                return "APK verification failed: version name does not match the canonical APK filename"
+            }
+            if (installedVersionName != null) {
+                val installedVersion = SemanticVersion.parseOrNull(installedVersionName)
+                if (installedVersion != null && !apkVersion.isNewerThan(installedVersion)) {
+                    return "APK verification failed: downgrade or same-version installation rejected"
+                }
+            }
+            if (apkVersionCode <= installedVersionCode) {
+                return "APK verification failed: version code is not newer than the installed app"
+            }
+            return null
+        }
+
+        fun haveSameSignerSet(installedSigners: Set<String>, candidateSigners: Set<String>): Boolean =
+            installedSigners.isNotEmpty() && candidateSigners.isNotEmpty() && installedSigners == candidateSigners
 
         fun isApprovedHost(host: String): Boolean {
             val h = host.lowercase()
@@ -432,7 +494,15 @@ class AppUpdateManager(
             if (!url.protocol.equals("https", ignoreCase = true)) {
                 throw SecurityException("Insecure protocol '${url.protocol}' rejected (HTTPS required): $urlString")
             }
-            val host = url.host.lowercase()
+            val uri = try {
+                url.toURI()
+            } catch (e: Exception) {
+                throw SecurityException("Malformed update URL: $urlString", e)
+            }
+            if (!uri.rawUserInfo.isNullOrEmpty() || (uri.port != -1 && uri.port != 443) || uri.rawFragment != null) {
+                throw SecurityException("Unsafe URL authority or fragment rejected: $urlString")
+            }
+            val host = url.host.lowercase(java.util.Locale.ROOT)
             if (!isApprovedHost(host)) {
                 throw SecurityException("Host '$host' is not an approved GitHub update host: $urlString")
             }
@@ -461,6 +531,14 @@ class AppUpdateManager(
         }
 
         fun parseReleaseJson(jsonString: String): AppReleaseInfo? {
+            return try {
+                parseReleaseJsonUnchecked(jsonString)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        private fun parseReleaseJsonUnchecked(jsonString: String): AppReleaseInfo? {
             val trimmed = jsonString.trim()
             val json = if (trimmed.startsWith("[")) {
                 val array = JSONArray(trimmed)
@@ -484,7 +562,7 @@ class AppUpdateManager(
             if (json.optBoolean("prerelease", false)) return null
 
             val tagName = json.optString("tag_name", "").trim()
-            val version = SemanticVersion.parseOrNull(tagName) ?: return null
+            val version = parseReleaseTag(tagName) ?: return null
 
             val name = json.optString("name", "").ifBlank { tagName }
             val body = json.optString("body", "")
@@ -492,20 +570,16 @@ class AppUpdateManager(
 
             val assets = json.optJSONArray("assets") ?: return null
             var chosenAsset: JSONObject? = null
-            val expectedVersionApk = "VRKA-Android-v$version.apk"
+            val expectedVersionApk = canonicalApkName(version)
 
             // APK asset selection must require the expected VRKA Android APK naming convention:
             // VRKA-Android-vX.Y.Z.apk. Reject unrelated APK assets and non-APK assets.
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val assetName = asset.optString("name", "")
-                if (APK_NAME_PATTERN.matches(assetName)) {
-                    if (assetName.equals(expectedVersionApk, ignoreCase = true)) {
-                        chosenAsset = asset
-                        break
-                    } else if (chosenAsset == null) {
-                        chosenAsset = asset
-                    }
+                if (assetName == expectedVersionApk) {
+                    if (chosenAsset != null) return null
+                    chosenAsset = asset
                 }
             }
 
@@ -531,6 +605,59 @@ class AppUpdateManager(
                 apkFileName = apkFileName,
                 apkSizeBytes = apkSizeBytes,
             )
+        }
+
+        private fun parseReleaseTag(tagName: String): SemanticVersion? {
+            val match = RELEASE_TAG_PATTERN.matchEntire(tagName) ?: return null
+            return versionFromGroups(match.groupValues)
+        }
+
+        private fun parseCanonicalVersion(version: String): SemanticVersion? {
+            val match = CANONICAL_VERSION_PATTERN.matchEntire(version) ?: return null
+            return versionFromGroups(match.groupValues)
+        }
+
+        private fun versionFromGroups(groups: List<String>): SemanticVersion? {
+            if (groups.size < 4) return null
+            val major = groups[1].toIntOrNull() ?: return null
+            val minor = groups[2].toIntOrNull() ?: return null
+            val patch = groups[3].toIntOrNull() ?: return null
+            return SemanticVersion(major, minor, patch)
+        }
+
+        private fun canonicalApkName(version: SemanticVersion): String = "VRKA-Android-v$version.apk"
+
+        private fun packageArchiveInfo(pm: PackageManager, path: String) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pm.getPackageArchiveInfo(path, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageArchiveInfo(path, PackageManager.GET_SIGNATURES)
+        }
+
+        private fun packageInfo(pm: PackageManager, packageName: String) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+        }
+
+        private fun packageVersionCode(info: android.content.pm.PackageInfo): Long {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return info.longVersionCode
+            @Suppress("DEPRECATION")
+            return info.versionCode.toLong()
+        }
+
+        private fun packageSignerFingerprints(info: android.content.pm.PackageInfo): Set<String> {
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                info.signatures
+            }
+            return signatures.orEmpty().map { signature ->
+                MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+                    .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            }.toSet()
         }
     }
 

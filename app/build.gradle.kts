@@ -41,8 +41,8 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 50000
-        versionName = "5.0"
+        versionCode = 50001
+        versionName = "5.0.1"
         buildConfigField("String", "GECKOVIEW_VERSION", "\"$geckoViewVersion\"")
 
         ndk {

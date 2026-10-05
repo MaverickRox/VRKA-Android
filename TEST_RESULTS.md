@@ -1,26 +1,27 @@
-# VRKA Android 5.0 — Test Results
+# VRKA Android 5.0.1 — Test Results
 
-Date: 2026-10-04
+Date: 2026-10-05
 
 ## Automated checks
 
 | Check | Result |
 |---|---|
-| .\gradlew.bat clean --no-daemon | PASS |
-| .\gradlew.bat testDebugUnitTest --no-daemon | PASS: 348 tests, 33 suites, 0 failures, 0 errors, 0 skipped |
-| .\gradlew.bat lintRelease --no-daemon | PASS: 67 warnings, 1 hint, no Error/Fatal issues |
-| JavaScript syntax check | PASS: 2 app asset scripts |
-| Media-detector manifest JSON | PASS |
-| .\gradlew.bat assembleRelease --no-daemon | PASS |
+| `:app:testDebugUnitTest` | PASS: 364 tests, 33 suites, 0 failures, 0 errors, 0 skipped |
+| `:app:lintRelease` | PASS: 68 warnings, 1 hint, no Error/Fatal issues |
+| `:app:assembleRelease` | PASS: production-signed APK |
 
-The suite covers dynamic yt-dlp installed-version extraction, component update state machines, batch check concurrency and timeout/cancellation handling, equal slot-based navbar indicator geometry and liquid-glass optical parameters, custom-command and Browser Fallback routing/isolation, private candidate handling, template deletion, component/version status presentation, H.264 persistence, header validation, candidate ranking, output validation, and subtitle boundaries.
+Combined command: `.\gradlew.bat :app:testDebugUnitTest :app:lintRelease :app:assembleRelease --offline --no-daemon`. Gradle reported `BUILD SUCCESSFUL`.
 
-Remaining lint findings are non-fatal baseline warnings and one hint recorded in the Gradle report.
+The added updater coverage checks semantic-version ordering, canonical release tags and APK assets, malformed/draft/prerelease data, manual and automatic check behavior, update state selection, secure download URLs and redirects, install metadata, non-downgrade version codes, and signer fingerprints. Existing repository tests also ran in the same 33 suites.
 
 ## Device boundary
 
-The maintainer has physically validated and approved the final production-signed release APK on the OnePlus 11. No automated emulator or ADB test framework was used during engineering runs.
+No emulator, ADB, device farm, or physical-device testing was performed for 5.0.1. The separate [5.0 physical validation report](PHYSICAL_VALIDATION_REPORT.md) is historical and applies only to that release APK.
 
 ## APK
 
-Clean release output: app/build/outputs/apk/release/app-release.apk. Package com.mvrk.vrka, version 5.0 (50000), ABI arm64-v8a. Size: 155,334,093 bytes. SHA-256: D821B65BE0D054F3232E7A3BB051408BC0150EB2A66CDF5E7D3FC9170D8DA487. Production-signed with RSA 4096-bit key (v2 scheme).
+Canonical file: `VRKA-Android-v5.0.1.apk`. Package `com.mvrk.vrka`, version `5.0.1` (`50001`), ABI `arm64-v8a`. Size: 155,335,005 bytes. SHA-256: `75F7B5EDF514724E21B0237E9E66813F88DF0F51E0E1D620702D6B03D177DBCD`. `apksigner` verified the production RSA 4096-bit certificate using APK Signature Scheme v2. Full metadata is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+
+## Historical 5.0 checks
+
+The 5.0 release record reported 348 tests across 33 suites, 67 lint warnings plus one hint, and a separate OnePlus 11 inspection of the 5.0 APK. Those results do not apply to 5.0.1.

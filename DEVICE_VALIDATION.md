@@ -1,7 +1,7 @@
-# Device Validation — Final Local Build
+# Device Validation — VRKA Android 5.0.1
 
-The final v5.0 release APK has not been installed or tested on a device. Maintainer validation on the OnePlus 11 is pending and must be associated with the APK SHA-256 in [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md).
+The 5.0.1 release APK has not been installed or tested on a device. No physical-device validation is claimed for 5.0.1. The [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md) records a separate, historical inspection of the 5.0 APK and does not validate this release.
 
 The maintainer previously reported Browser Fallback results for MissAV, Anikoto, StreamingUnity, and JAV Guru on an earlier build. Those results remain historical context and are not evidence for the final production-signed artifact.
 
-This release-engineering pass used unit tests, release lint, resource/Kotlin/Java compilation, JavaScript syntax checks, JSON parsing, APK metadata inspection, and `apksigner`. No emulator, ADB, device farm, or physical-device automation was used.
+This release-engineering pass uses automated unit tests, lint, build, APK metadata inspection, and `apksigner`. No emulator, ADB, device farm, or physical-device automation was used.
