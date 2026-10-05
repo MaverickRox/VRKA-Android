@@ -3,6 +3,7 @@ package com.mvrk.vrka
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -28,9 +29,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -41,8 +47,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,10 +67,20 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalViewConfiguration
 import com.mvrk.vrka.ui.backdrop.drawBackdrop
+import com.mvrk.vrka.ui.backdrop.isRuntimeShaderSupported
 import com.mvrk.vrka.ui.backdrop.effects.blur
+import com.mvrk.vrka.ui.backdrop.effects.lens
+import com.mvrk.vrka.ui.backdrop.highlight.Highlight
+import com.mvrk.vrka.ui.backdrop.highlight.HighlightStyle
 import com.mvrk.vrka.ui.backdrop.isRenderEffectSupported
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -457,14 +477,16 @@ fun VrkaOutlinedButton(
     enabled: Boolean = true,
     height: Dp = 38.dp,
     contentPadding: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+    contentColor: Color = VrkaTokens.TextPrimary,
+    borderColor: Color = VrkaTokens.BorderSubtle,
 ) {
     androidx.compose.material3.OutlinedButton(
         onClick = onClick,
         enabled = enabled,
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+        border = BorderStroke(1.dp, borderColor),
         colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-            contentColor = VrkaTokens.TextPrimary,
+            contentColor = contentColor,
             disabledContentColor = VrkaTokens.TextTertiary,
         ),
         modifier = modifier.height(height),
@@ -487,10 +509,12 @@ fun VrkaTextButton(
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
     contentPadding: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+    enabled: Boolean = true,
 ) {
     val resolvedColor = if (color != Color.Unspecified) color else VrkaTokens.TextSecondary
     androidx.compose.material3.TextButton(
         onClick = onClick,
+        enabled = enabled,
         shape = RoundedCornerShape(10.dp),
         modifier = modifier,
         contentPadding = contentPadding,
@@ -498,7 +522,7 @@ fun VrkaTextButton(
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
-            color = resolvedColor,
+            color = if (enabled) resolvedColor else VrkaTokens.TextTertiary,
             maxLines = 1,
             softWrap = false,
         )
@@ -598,108 +622,164 @@ fun VrkaSectionContainer(
     }
 }
 
-val NAV_BAR_HEIGHT = 66.dp
-val NAV_BAR_CORNER_RADIUS = 33.dp
-val NAV_BAR_HORIZONTAL_MARGIN = 8.dp
+val NAV_BAR_HEIGHT = 64.dp
+val NAV_BAR_CORNER_RADIUS = 32.dp
+val NAV_BAR_HORIZONTAL_MARGIN = 16.dp
 
-val NAV_CONCENTRIC_INSET = 4.5.dp
-val NAV_INDICATOR_HEIGHT = NAV_BAR_HEIGHT - (NAV_CONCENTRIC_INSET * 2)
-val NAV_INDICATOR_CORNER_RADIUS = NAV_INDICATOR_HEIGHT / 2
+val NAV_CONCENTRIC_INSET = 4.dp
+val NAV_INDICATOR_HEIGHT = NAV_BAR_HEIGHT - (NAV_CONCENTRIC_INSET * 2) // 56.dp
+val NAV_INDICATOR_CORNER_RADIUS = NAV_BAR_CORNER_RADIUS - NAV_CONCENTRIC_INSET // 28.dp
+private val NAV_ITEM_HORIZONTAL_CONTENT_PADDING = 8.dp
+private val NAV_INDICATOR_CONTENT_INSET = 4.dp
 
-val NAV_ACTIVE_COLOR = VRKA_PURPLE
-val NAV_UNSELECTED_DARK = Color(0xFFA5A1B2)
-val NAV_UNSELECTED_LIGHT = Color(0xFF6B6678)
+internal data class NavItemMeasuredBounds(
+    val slotLeftPx: Float = 0f,
+    val slotWidthPx: Float = 0f,
+    val contentLeftInSlotPx: Float = 0f,
+    val contentWidthPx: Float = 0f,
+)
+
+internal data class NavIndicatorBounds(val leftPx: Float, val widthPx: Float)
+
+internal fun calculateNavIndicatorBounds(
+    position: Float,
+    items: List<NavItemMeasuredBounds>,
+    contentInsetPx: Float = 0f,
+    slotInsetPx: Float = 4f,
+): NavIndicatorBounds? {
+    if (items.isEmpty() || items.any { it.slotWidthPx <= 0f }) return null
+    val activePosition = position.coerceIn(0f, items.lastIndex.toFloat())
+    val leftIndex = activePosition.toInt().coerceIn(0, items.lastIndex)
+    val rightIndex = (leftIndex + 1).coerceAtMost(items.lastIndex)
+    val fraction = (activePosition - leftIndex).coerceIn(0f, 1f)
+
+    fun slotIndicator(index: Int): NavIndicatorBounds {
+        val item = items[index]
+        val slotInset = slotInsetPx.coerceAtLeast(0f)
+        val width = (item.slotWidthPx - (slotInset * 2f)).coerceAtLeast(0f)
+        val left = item.slotLeftPx + slotInset
+        return NavIndicatorBounds(left, width)
+    }
+
+    val start = slotIndicator(leftIndex)
+    val end = slotIndicator(rightIndex)
+    return NavIndicatorBounds(
+        leftPx = start.leftPx + (end.leftPx - start.leftPx) * fraction,
+        widthPx = start.widthPx + (end.widthPx - start.widthPx) * fraction,
+    )
+}
+
+
+val NAV_ACTIVE_DARK = Color(0xFFF5F3FF)
+val NAV_ACTIVE_LIGHT = Color(0xFF1E1B2E)
+val NAV_UNSELECTED_DARK = Color(0xFF888496)
+val NAV_UNSELECTED_LIGHT = Color(0xFF6B6778)
 
 @Composable
 fun VrkaFloatingNavBar(
     selectedDestination: VrkaDestination,
     onDestinationSelected: (VrkaDestination) -> Unit,
     modifier: Modifier = Modifier,
+    pagerPosition: Float? = null,
 ) {
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
+    val viewConfiguration = LocalViewConfiguration.current
     val colors = LocalVrkaColors.current
     val backdrop = LocalAppBackdrop.current
     val destinations = remember { VrkaDestination.entries }
     val selectedIndex = destinations.indexOf(selectedDestination).coerceAtLeast(0)
-
-    val textMeasurer = rememberTextMeasurer()
-    val navLabelStyle = MaterialTheme.typography.labelSmall.copy(
-        fontFamily = VrkaMonoFamily,
-        fontSize = 11.5.sp,
-        fontWeight = FontWeight.Bold,
-        lineHeight = 13.sp,
-        platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-            includeFontPadding = false,
-        ),
-    )
-    val downloadWidthPx = remember(textMeasurer, navLabelStyle) {
-        textMeasurer.measure(text = "Download", style = navLabelStyle).size.width
-    }
-    val settingsWidthPx = remember(textMeasurer, navLabelStyle) {
-        textMeasurer.measure(text = "Settings", style = navLabelStyle).size.width
-    }
-    val downloadWidthDp = with(density) { downloadWidthPx.toDp() }
-    val settingsWidthDp = with(density) { settingsWidthPx.toDp() }
-
-    LaunchedEffect(downloadWidthPx, settingsWidthPx) {
-        android.util.Log.d(
-            "VrkaNavPerf",
-            "Measured Space Mono 11.5sp bounds - Download: ${downloadWidthPx}px (${downloadWidthDp}), Settings: ${settingsWidthPx}px (${settingsWidthDp})",
-        )
-    }
+    val coroutineScope = rememberCoroutineScope()
+    val latestSelectedIndex by rememberUpdatedState(selectedIndex)
+    val latestPagerPosition by rememberUpdatedState(pagerPosition)
+    val latestOnDestinationSelected by rememberUpdatedState(onDestinationSelected)
 
     val capsuleBorderBrush = remember(colors.isLight) {
         if (colors.isLight) {
             Brush.verticalGradient(
                 listOf(
-                    Color(0x42000000),
-                    Color(0x1C000000),
-                    Color(0x32000000),
+                    Color(0x28000000),
+                    Color(0x0E000000),
+                    Color(0x18000000),
                 ),
             )
         } else {
             Brush.verticalGradient(
                 listOf(
-                    Color(0x45FFFFFF),
+                    Color(0x33FFFFFF),
                     Color(0x12FFFFFF),
-                    Color(0x24FFFFFF),
+                    Color(0x0AFFFFFF),
                 ),
             )
         }
     }
+
+    val puckTintColor = if (colors.isLight) {
+        Color(0xFFE5E2EE)
+    } else {
+        Color(0xFF282538)
+    }
+    val puckSurfaceAlpha = if (colors.isLight) 0.10f else 0.08f
 
     val puckBorderBrush = remember(colors.isLight) {
         if (colors.isLight) {
             Brush.verticalGradient(
                 listOf(
-                    Color(0x35000000),
-                    Color(0x12000000),
-                    Color.Transparent,
+                    Color(0x1F000000),
+                    Color(0x08000000),
                 ),
             )
         } else {
             Brush.verticalGradient(
                 listOf(
-                    Color.White.copy(alpha = 0.35f),
-                    Color(0x15FFFFFF),
-                    Color.Transparent,
+                    Color(0x50FFFFFF),
+                    Color(0x20FFFFFF),
                 ),
             )
         }
     }
 
-    val ambientHaloPaint = remember(colors.isLight, density) {
-        val haloAlpha = if (colors.isLight) 0x22 else 0x28
+    val ambientShadowPaint = remember(colors.isLight, density) {
+        val shadowAlpha = if (colors.isLight) 0x18 else 0x2A
         android.graphics.Paint().apply {
-            color = android.graphics.Color.argb(haloAlpha, 0x6F, 0x30, 0xD5)
+            color = android.graphics.Color.argb(shadowAlpha, 0x00, 0x00, 0x00)
             isAntiAlias = true
-            style = android.graphics.Paint.Style.STROKE
-            strokeWidth = with(density) { 2.dp.toPx() }
+            style = android.graphics.Paint.Style.FILL
             maskFilter = android.graphics.BlurMaskFilter(
                 with(density) { 10.dp.toPx() },
                 android.graphics.BlurMaskFilter.Blur.NORMAL,
             )
+        }
+    }
+
+    var isDragging by remember { mutableStateOf(false) }
+    var dragPosition by remember { mutableFloatStateOf(selectedIndex.toFloat()) }
+    val indicatorPosition = remember { Animatable(selectedIndex.toFloat()) }
+    var pendingPagerSyncFrom by remember { mutableStateOf<Float?>(null) }
+    var pendingPagerSyncTarget by remember { mutableIntStateOf(-1) }
+    var itemBounds by remember { mutableStateOf(List(destinations.size) { NavItemMeasuredBounds() }) }
+
+    LaunchedEffect(pagerPosition, selectedIndex, pendingPagerSyncFrom, pendingPagerSyncTarget, isDragging) {
+        if (!isDragging) {
+            val target = (pagerPosition ?: selectedIndex.toFloat())
+                .coerceIn(0f, destinations.lastIndex.toFloat())
+            val waitingFrom = pendingPagerSyncFrom
+            if (waitingFrom != null && pendingPagerSyncTarget >= 0 && pagerPosition != null &&
+                kotlin.math.abs(pagerPosition - waitingFrom) < 0.015f &&
+                kotlin.math.abs(pagerPosition - pendingPagerSyncTarget.toFloat()) >= 0.015f
+            ) {
+                return@LaunchedEffect
+            }
+            pendingPagerSyncFrom = null
+            pendingPagerSyncTarget = -1
+            if (pagerPosition != null) {
+                indicatorPosition.snapTo(target)
+            } else {
+                indicatorPosition.animateTo(
+                    targetValue = target,
+                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+                )
+            }
         }
     }
 
@@ -710,26 +790,17 @@ fun VrkaFloatingNavBar(
             .padding(horizontal = NAV_BAR_HORIZONTAL_MARGIN),
     ) {
         val capsuleWidthPx = constraints.maxWidth.toFloat()
-        val slotWidthPx = capsuleWidthPx / destinations.size
-        val concentricInsetPx = with(density) { NAV_CONCENTRIC_INSET.toPx() }
-        val indicatorWidthPx = (slotWidthPx - (concentricInsetPx * 2f)).coerceAtLeast(0f)
-        val indicatorWidthDp = with(density) { indicatorWidthPx.toDp() }
+        val measuredWidths = itemBounds.map { it.slotWidthPx }.filter { it > 0f }
+        val slotWidthPx = measuredWidths.takeIf { it.size == destinations.size }
+            ?.average()?.toFloat() ?: if (destinations.isNotEmpty()) capsuleWidthPx / destinations.size else 0f
+        val insetPx = with(density) { NAV_CONCENTRIC_INSET.toPx() }
+        val contentInsetPx = with(density) { NAV_INDICATOR_CONTENT_INSET.toPx() }
+        val measuredBoundsReady = itemBounds.size == destinations.size && itemBounds.all {
+            it.slotWidthPx > 0f
+        }
         val barCornerRadiusPx = with(density) { NAV_BAR_CORNER_RADIUS.toPx() }
 
-        val targetOffsetPx = (selectedIndex * slotWidthPx) + concentricInsetPx
-
-        val indicatorOffset = remember { Animatable(targetOffsetPx) }
-
-        LaunchedEffect(targetOffsetPx) {
-            indicatorOffset.animateTo(
-                targetValue = targetOffsetPx,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
-            )
-        }
-
+        // Outer soft ambient shadow
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -737,17 +808,18 @@ fun VrkaFloatingNavBar(
                     drawIntoCanvas { canvas ->
                         canvas.nativeCanvas.drawRoundRect(
                             0f,
-                            0f,
+                            with(density) { 2.dp.toPx() },
                             size.width,
-                            size.height,
+                            size.height + with(density) { 2.dp.toPx() },
                             barCornerRadiusPx,
                             barCornerRadiusPx,
-                            ambientHaloPaint,
+                            ambientShadowPaint,
                         )
                     }
                 },
         )
 
+        // Floating glass capsule container
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -756,52 +828,173 @@ fun VrkaFloatingNavBar(
                         Modifier.drawBackdrop(
                             backdrop = backdrop,
                             shape = { RoundedCornerShape(NAV_BAR_CORNER_RADIUS) },
-                            effects = { blur(with(density) { 20.dp.toPx() }) },
-                            highlight = null,
+                            effects = { blur(with(density) { (13.dp * 0.75f).toPx() }) },
+                            highlight = {
+                                Highlight(
+                                    width = 0.7.dp,
+                                    style = HighlightStyle.Default(
+                                        color = Color.White.copy(alpha = if (colors.isLight) 0.14f else 0.12f),
+                                        angle = 50f,
+                                    ),
+                                )
+                            },
                             shadow = null,
                             onDrawSurface = {
                                 val veilColor = if (colors.isLight) {
-                                    Color(0xFFFFFFFF).copy(alpha = 0.35f)
+                                    Color(0xFFF7F6FA).copy(alpha = 0.46f)
                                 } else {
-                                    Color(0xFF0F0F14).copy(alpha = 0.45f)
+                                    Color(0xFF13121A).copy(alpha = 0.42f)
                                 }
                                 drawRect(color = veilColor)
                             },
-                            backdropScale = 1f,
+                            backdropScale = 0.75f,
                         )
                     } else if (colors.isLight) {
-                        Modifier.background(Color(0xFFFFFFFF).copy(alpha = 0.85f), RoundedCornerShape(NAV_BAR_CORNER_RADIUS))
+                        Modifier.background(Color(0xFFF7F6FA).copy(alpha = 0.70f), RoundedCornerShape(NAV_BAR_CORNER_RADIUS))
                     } else {
-                        Modifier.background(Color(0xFF0F0F14).copy(alpha = 0.85f), RoundedCornerShape(NAV_BAR_CORNER_RADIUS))
+                        Modifier.background(Color(0xFF13121A).copy(alpha = 0.68f), RoundedCornerShape(NAV_BAR_CORNER_RADIUS))
                     }
                 )
                 .border(
                     width = 1.dp,
                     brush = capsuleBorderBrush,
                     shape = RoundedCornerShape(NAV_BAR_CORNER_RADIUS),
-                ),
-        ) {
-            if (indicatorWidthPx > 0f) {
-                Box(
-                    modifier = Modifier
-                        .width(indicatorWidthDp)
-                        .height(NAV_INDICATOR_HEIGHT)
-                        .align(Alignment.CenterStart)
-                        .graphicsLayer {
-                            translationX = indicatorOffset.value
-                        }
-                        .clip(RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS))
-                        .then(
-                            if (colors.isLight) {
-                                Modifier.background(Color(0x18FFFFFF), RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS))
-                            } else {
-                                Modifier.background(Color(0x0CFFFFFF), RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS))
-                            }
-                        )
-                        .border(1.dp, puckBorderBrush, RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS)),
                 )
+                .pointerInput(slotWidthPx, destinations.size) {
+                    if (slotWidthPx <= 0f) return@pointerInput
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var isDrag = false
+                        val basePos = if (isDragging) dragPosition else indicatorPosition.value
+                        var lastHaptic = basePos.roundToInt().coerceIn(0, destinations.lastIndex)
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                if (isDrag) {
+                                    change.consume()
+                                    val shift = (change.position.x - down.position.x) / slotWidthPx
+                                    val targetIndex = (basePos + shift).roundToInt().coerceIn(0, destinations.lastIndex)
+                                    val targetDest = destinations[targetIndex]
+                                    val releasePosition = dragPosition
+                                    val releasedFrom = latestPagerPosition
+                                    coroutineScope.launch {
+                                        indicatorPosition.snapTo(releasePosition)
+                                        isDragging = false
+                                        if (targetIndex != latestSelectedIndex) {
+                                            pendingPagerSyncFrom = releasedFrom
+                                            pendingPagerSyncTarget = if (releasedFrom == null) -1 else targetIndex
+                                            latestOnDestinationSelected(targetDest)
+                                        } else {
+                                            indicatorPosition.animateTo(
+                                                targetValue = targetIndex.toFloat(),
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMedium,
+                                                ),
+                                            )
+                                        }
+                                    }
+                                    if (targetIndex != lastHaptic) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    }
+                                }
+                                break
+                            }
+
+                            val dx = change.position.x - down.position.x
+                            if (!isDrag && kotlin.math.abs(dx) > viewConfiguration.touchSlop) {
+                                isDrag = true
+                                dragPosition = basePos
+                                isDragging = true
+                            }
+
+                            if (isDrag) {
+                                change.consume()
+                                val newPosition = (basePos + (dx / slotWidthPx))
+                                    .coerceIn(0f, destinations.lastIndex.toFloat())
+                                dragPosition = newPosition
+                                val currentTab = newPosition.roundToInt().coerceIn(0, destinations.lastIndex)
+                                if (currentTab != lastHaptic) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    lastHaptic = currentTab
+                                }
+                            }
+                        }
+                    }
+                },
+        ) {
+            // Equal navigation slot geometry: every pill has identical width, height,
+            // and radius, and glides precisely between slot positions with live optical lens.
+            if (measuredBoundsReady) {
+                val activePosition = if (isDragging) dragPosition else indicatorPosition.value
+                val indicatorBounds = calculateNavIndicatorBounds(
+                    position = activePosition,
+                    items = itemBounds,
+                    contentInsetPx = contentInsetPx,
+                    slotInsetPx = insetPx,
+                )
+                if (indicatorBounds != null) {
+                    Box(
+                        modifier = Modifier
+                            .width(with(density) { indicatorBounds.widthPx.toDp() })
+                            .height(NAV_INDICATOR_HEIGHT)
+                            .align(Alignment.CenterStart)
+                            .offset { IntOffset(indicatorBounds.leftPx.roundToInt(), 0) }
+                            .then(
+                                if (backdrop != null && isRenderEffectSupported()) {
+                                    Modifier.drawBackdrop(
+                                        backdrop = backdrop,
+                                        shape = { RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS) },
+                                        effects = {
+                                            blur(with(density) { 0.5.dp.toPx() })
+                                            if (isRuntimeShaderSupported()) {
+                                                lens(
+                                                    refractionHeight = with(density) { 20.dp.toPx() },
+                                                    refractionAmount = with(density) { 14.dp.toPx() },
+                                                    magnification = 1.35f,
+                                                    depthEffect = true,
+                                                    chromaticAberration = true,
+                                                )
+                                            }
+                                        },
+                                        highlight = {
+                                            Highlight(
+                                                width = 1.2.dp,
+                                                style = HighlightStyle.Default(
+                                                    color = Color.White.copy(alpha = if (colors.isLight) 0.45f else 0.40f),
+                                                    angle = 50f,
+                                                ),
+                                            )
+                                        },
+                                        shadow = null,
+                                        onDrawSurface = {
+                                            val lensSheen = if (colors.isLight) {
+                                                Color.White.copy(alpha = 0.08f)
+                                            } else {
+                                                Color.White.copy(alpha = 0.05f)
+                                            }
+                                            drawRect(color = lensSheen)
+                                        },
+                                        backdropScale = 1f,
+                                    )
+                                } else {
+                                    Modifier.background(
+                                        if (colors.isLight) Color(0x30FFFFFF) else Color(0x20FFFFFF),
+                                        RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS),
+                                    )
+                                }
+                            )
+                            .clip(RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS))
+                            .border(1.dp, puckBorderBrush, RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS)),
+                    )
+
+                }
             }
 
+
+            // Tab items row
             Row(
                 modifier = Modifier.fillMaxSize(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -809,23 +1002,39 @@ fun VrkaFloatingNavBar(
                 destinations.forEachIndexed { index, item ->
                     val onItemClick = remember(item, onDestinationSelected) {
                         {
-                            val tapStartNs = System.nanoTime()
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onDestinationSelected(item)
-                            val mutationElapsedMs = (System.nanoTime() - tapStartNs) / 1_000_000.0
-                            android.util.Log.d(
-                                "VrkaNavPerf",
-                                "Nav Tap -> State Mutation [${item.name}]: ${String.format("%.3f", mutationElapsedMs)} ms",
-                            )
-                            Unit
                         }
                     }
+                    val activePosition = if (isDragging) dragPosition else indicatorPosition.value
+                    val isTabSelected = activePosition.roundToInt().coerceIn(0, destinations.lastIndex) == index
+                    val focus = (1f - kotlin.math.abs(activePosition - index).coerceIn(0f, 1f))
                     VrkaNavItem(
                         item = item,
-                        isSelected = index == selectedIndex,
+                        isSelected = isTabSelected,
                         isLight = colors.isLight,
+                        focus = focus,
                         onClick = onItemClick,
-                        modifier = Modifier.weight(1f),
+                        onContentMeasured = { contentLeft, contentWidth ->
+                            val measured = itemBounds[index].copy(
+                                contentLeftInSlotPx = contentLeft,
+                                contentWidthPx = contentWidth,
+                            )
+                            if (itemBounds[index] != measured) {
+                                itemBounds = itemBounds.toMutableList().also { it[index] = measured }
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .onGloballyPositioned { coordinates ->
+                                val measured = itemBounds[index].copy(
+                                    slotLeftPx = coordinates.positionInParent().x,
+                                    slotWidthPx = coordinates.size.width.toFloat(),
+                                )
+                                if (itemBounds[index] != measured) {
+                                    itemBounds = itemBounds.toMutableList().also { it[index] = measured }
+                                }
+                            },
                     )
                 }
             }
@@ -838,15 +1047,22 @@ private fun VrkaNavItem(
     item: VrkaDestination,
     isSelected: Boolean,
     isLight: Boolean,
+    focus: Float,
     onClick: () -> Unit,
+    onContentMeasured: (leftInSlotPx: Float, widthPx: Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val activeColor = NAV_ACTIVE_COLOR
+    val activeColor = if (isLight) NAV_ACTIVE_LIGHT else NAV_ACTIVE_DARK
     val inactiveColor = if (isLight) NAV_UNSELECTED_LIGHT else NAV_UNSELECTED_DARK
     val contentColor by animateColorAsState(
         targetValue = if (isSelected) activeColor else inactiveColor,
-        animationSpec = tween(90),
+        animationSpec = tween(120),
         label = "navItemColor",
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (isSelected) VRKA_PURPLE else inactiveColor,
+        animationSpec = tween(120),
+        label = "navIconTint",
     )
 
     Box(
@@ -862,20 +1078,30 @@ private fun VrkaNavItem(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .graphicsLayer {
+                    val lift = 1f + (focus.coerceIn(0f, 1f) * 0.045f)
+                    scaleX = lift
+                    scaleY = lift
+                }
+                .onGloballyPositioned { coordinates ->
+                    onContentMeasured(coordinates.positionInParent().x, coordinates.size.width.toFloat())
+                }
+                .padding(horizontal = NAV_ITEM_HORIZONTAL_CONTENT_PADDING),
         ) {
             androidx.compose.material3.Icon(
                 painter = androidx.compose.ui.res.painterResource(item.iconRes),
                 contentDescription = item.label,
-                tint = contentColor,
-                modifier = Modifier.size(22.dp),
+                tint = iconTint,
+                modifier = Modifier.size(24.dp),
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = item.label,
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = VrkaMonoFamily,
-                    fontSize = 11.5.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    fontSize = 11.sp,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                     lineHeight = 13.sp,
                     platformStyle = androidx.compose.ui.text.PlatformTextStyle(
                         includeFontPadding = false,
@@ -884,6 +1110,7 @@ private fun VrkaNavItem(
                 color = contentColor,
                 maxLines = 1,
                 softWrap = false,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -108,6 +109,8 @@ class HttpHeaderE2ETest {
                 "Cookie" to "auth_token=super_secret_session_token",
                 "Authorization" to "Bearer access_token_xyz",
             ),
+            resolvedMediaUrl = "http://127.0.0.1:$serverPort/manifest.m3u8",
+            resolvedHeadersOrigin = "http://127.0.0.1:$serverPort/manifest.m3u8",
         )
 
         val job = DownloadJob(
@@ -129,7 +132,6 @@ class HttpHeaderE2ETest {
             "X-Device-Id:test-device-client-01",
             "User-Agent:CustomVRKA/4.5.1",
             "Cookie:auth_token=super_secret_session_token",
-            "Authorization:Bearer access_token_xyz",
         )
 
         for (expected in expectedHeaders) {
@@ -150,6 +152,8 @@ class HttpHeaderE2ETest {
             }
             assertTrue("Expected info args to contain --add-header for '$expected'. Args: $infoArgs", hasHeaderOption)
         }
+        assertFalse(commandArgs.any { it.contains("Authorization:", ignoreCase = true) })
+        assertFalse(infoArgs.any { it.contains("Authorization:", ignoreCase = true) })
     }
 
 
@@ -201,6 +205,8 @@ class HttpHeaderE2ETest {
             resolvedHeaders = mapOf(
                 "Cookie" to "session_id=12345",
             ),
+            resolvedMediaUrl = "http://127.0.0.1:$serverPort/manifest.m3u8",
+            resolvedHeadersOrigin = "http://127.0.0.1:$serverPort/manifest.m3u8",
         )
 
         val effectiveHeaders = HeaderValidation.resolveEffectiveHeaders(request)

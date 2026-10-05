@@ -17,23 +17,28 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 enum class ComponentCheckState {
     CHECK_IDLE,
@@ -102,18 +107,21 @@ data class ComponentStatus(
 ) {
     val isChecking: Boolean get() = checkState == ComponentCheckState.CHECKING ||
         lifecycleState == ComponentLifecycleState.CHECKING
-    val isUpdating: Boolean get() = updateState in setOf(
-        ComponentUpdateState.DOWNLOADING,
-        ComponentUpdateState.VERIFYING,
-        ComponentUpdateState.INSTALLING,
-    ) || lifecycleState in setOf(
-        ComponentLifecycleState.DOWNLOADING,
-        ComponentLifecycleState.VERIFYING,
-        ComponentLifecycleState.STAGING,
-        ComponentLifecycleState.INSTALLING,
-        ComponentLifecycleState.VERIFYING_INSTALL,
-        ComponentLifecycleState.ROLLING_BACK,
-    )
+    val isUpdating: Boolean get() = (
+        updateState in setOf(
+            ComponentUpdateState.DOWNLOADING,
+            ComponentUpdateState.VERIFYING,
+            ComponentUpdateState.INSTALLING,
+        ) || lifecycleState in setOf(
+            ComponentLifecycleState.DOWNLOADING,
+            ComponentLifecycleState.VERIFYING,
+            ComponentLifecycleState.STAGING,
+            ComponentLifecycleState.INSTALLING,
+            ComponentLifecycleState.VERIFYING_INSTALL,
+            ComponentLifecycleState.ROLLING_BACK,
+        )
+    ) && updateState != ComponentUpdateState.UPDATE_SUCCESS &&
+        lifecycleState !in setOf(ComponentLifecycleState.UP_TO_DATE, ComponentLifecycleState.UPDATED)
 }
 
 class ComponentUpdateManager private constructor(private val context: Context) {
@@ -148,7 +156,16 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     @Volatile
     private var rateLimitErrorMessage: String? = null
 
-    private fun getInstalledYtDlpVersion(): String {
+    internal fun getInstalledYtDlpVersion(): String {
+        val installedZipAppVersion = runCatching {
+            val installedZipApp = java.io.File(SecureComponentUpdater.getYoutubeDLDir(context), "yt-dlp")
+            InstalledComponentVersionReader.readYtDlpVersion(installedZipApp)
+        }.getOrNull()?.ifBlank { null }
+        if (installedZipAppVersion != null) {
+            prefs.edit().putString(KEY_YTDLP_VER, installedZipAppVersion).apply()
+            return installedZipAppVersion
+        }
+
         val runtimeVer = runCatching {
             YoutubeDL.getInstance().versionName(context)?.removePrefix("yt-dlp ")?.trim()
         }.getOrNull()?.ifBlank { null }
@@ -157,12 +174,36 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             return runtimeVer
         }
         val prefVer = prefs.getString(KEY_YTDLP_VER, null)
-        if (!prefVer.isNullOrBlank()) return prefVer
+        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) return prefVer
         val ytdlPrefs = context.getSharedPreferences("youtubedl-android", Context.MODE_PRIVATE)
         val ytdlVer = ytdlPrefs.getString("dlpVersionName", null)
             ?: ytdlPrefs.getString("dlpVersion", null)
-        if (!ytdlVer.isNullOrBlank()) return ytdlVer.removePrefix("yt-dlp ").trim()
-        return DEFAULT_YTDLP_VER
+        if (!ytdlVer.isNullOrBlank()) {
+            val clean = ytdlVer.removePrefix("yt-dlp ").trim()
+            prefs.edit().putString(KEY_YTDLP_VER, clean).apply()
+            return clean
+        }
+
+        val bundledVer = InstalledComponentVersionReader.readBundledYtDlpVersion(context)
+        if (!bundledVer.isNullOrBlank()) {
+            prefs.edit().putString(KEY_YTDLP_VER, bundledVer).apply()
+            return bundledVer
+        }
+
+        return "Unknown"
+    }
+
+
+    private fun readXpiManifestVersion(file: java.io.File): String? {
+        return runCatching {
+            java.util.zip.ZipFile(file).use { zip ->
+                val entry = zip.getEntry("manifest.json") ?: return@runCatching null
+                zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).use { reader ->
+                    val json = org.json.JSONObject(reader.readText())
+                    json.optString("version").trim().takeIf { it.isNotBlank() }
+                }
+            }
+        }.getOrNull()
     }
 
     private suspend fun getInstalledUBlockVersion(): String {
@@ -172,18 +213,27 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             prefs.edit().putString(KEY_UBLOCK_VER, runtimeVer).apply()
             return runtimeVer
         }
-        // If GeckoView extension cannot be queried, fail closed or report "Unknown", never assume bundled version.
-        return "Unknown"
-    }
-
-    private suspend fun getInstalledPuemosVersion(): String {
-        val geckoManager = runCatching { GeckoRuntimeManager.getInstance(context) }.getOrNull()
-        val runtimeVer = geckoManager?.getInstalledExtensionVersion(GeckoRuntimeManager.PUEMOS_ID)
-        if (!runtimeVer.isNullOrBlank()) {
-            prefs.edit().putString(KEY_PUEMOS_VER, runtimeVer).apply()
-            return runtimeVer
+        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
+        if (ublockXpi.exists() && ublockXpi.length() > 0L) {
+            val fileVer = readXpiManifestVersion(ublockXpi)
+            if (!fileVer.isNullOrBlank()) {
+                prefs.edit().putString(KEY_UBLOCK_VER, fileVer).apply()
+                return fileVer
+            }
         }
-        // If GeckoView extension cannot be queried, fail closed or report "Unknown", never assume bundled version.
+        geckoManager?.seedBundledExtensionsIfMissing()
+        if (ublockXpi.exists() && ublockXpi.length() > 0L) {
+            val fileVer = readXpiManifestVersion(ublockXpi)
+            if (!fileVer.isNullOrBlank()) {
+                prefs.edit().putString(KEY_UBLOCK_VER, fileVer).apply()
+                return fileVer
+            }
+        }
+        val prefVer = prefs.getString(KEY_UBLOCK_VER, null)
+        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) {
+            return prefVer
+        }
         return "Unknown"
     }
 
@@ -191,29 +241,42 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         mapOf(
             ID_YTDLP to ComponentStatus(
                 id = ID_YTDLP,
-                name = "yt-dlp Engine",
-                installedVersion = getInstalledYtDlpVersion(),
-                message = "Ready",
+                name = "yt-dlp",
+                installedVersion = getInstalledYtDlpVersion().takeUnless {
+                    it.isBlank() || it.equals("Unknown", ignoreCase = true)
+                }.orEmpty(),
             ),
             ID_UBLOCK to ComponentStatus(
                 id = ID_UBLOCK,
                 name = "uBlock Origin",
-                installedVersion = prefs.getString(KEY_UBLOCK_VER, null) ?: "Unknown",
-                message = "Ready",
-            ),
-            ID_PUEMOS to ComponentStatus(
-                id = ID_PUEMOS,
-                name = "Puemos",
-                installedVersion = prefs.getString(KEY_PUEMOS_VER, null) ?: "Unknown",
-                message = "Ready",
+                installedVersion = prefs.getString(KEY_UBLOCK_VER, null)
+                    ?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                    .orEmpty(),
             ),
         ),
     )
     val components: StateFlow<Map<String, ComponentStatus>> = _components.asStateFlow()
 
     init {
+        clearRetiredComponentState()
         refreshInstalledVersions()
         observeComponentWorkers()
+    }
+
+    private fun clearRetiredComponentState() {
+        runCatching {
+            WorkManager.getInstance(context).cancelUniqueWork(LEGACY_PUEMOS_WORK_NAME)
+        }.onFailure { error ->
+            Log.w(TAG, "Could not cancel a retired component update: ${error.message}")
+        }
+        prefs.edit().remove(LEGACY_PUEMOS_VERSION_KEY).apply()
+        context.getSharedPreferences(ComponentUpdateWorker.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove("puemos.state")
+            .remove("puemos.targetVersion")
+            .remove("puemos.error")
+            .remove("puemos.installedVersion")
+            .apply()
     }
 
     private fun ensureYtdlpInitialized(): Boolean {
@@ -225,21 +288,32 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         }
     }
 
+    private suspend fun resolveAndPublishInstalledVersion(id: String): String {
+        val version = when (id) {
+            ID_YTDLP -> {
+                ensureYtdlpInitialized()
+                getInstalledYtDlpVersion()
+            }
+            ID_UBLOCK -> getInstalledUBlockVersion()
+            else -> throw IllegalArgumentException("Unknown component $id")
+        }
+        val installed = version.takeUnless {
+            it.isBlank() || it.equals("Unknown", ignoreCase = true)
+        } ?: "Unknown"
+        updateState(id) { current -> ComponentStatusTransitions.installedVersionResolved(current, installed) }
+        return installed
+    }
+
     fun refreshInstalledVersions() {
         scope.launch {
-            val ytdlpVer = getInstalledYtDlpVersion()
-            val ublockVer = getInstalledUBlockVersion()
-            val puemosVer = getInstalledPuemosVersion()
-
-            updateState(ID_YTDLP) { it.copy(installedVersion = ytdlpVer) }
-            updateState(ID_UBLOCK) { it.copy(installedVersion = ublockVer) }
-            updateState(ID_PUEMOS) { it.copy(installedVersion = puemosVer) }
+            resolveAndPublishInstalledVersion(ID_YTDLP)
+            resolveAndPublishInstalledVersion(ID_UBLOCK)
         }
     }
 
     private fun observeComponentWorkers() {
         val workManager = runCatching { WorkManager.getInstance(context) }.getOrNull() ?: return
-        listOf(ID_YTDLP, ID_UBLOCK, ID_PUEMOS).forEach { compId ->
+        listOf(ID_YTDLP, ID_UBLOCK).forEach { compId ->
             val workName = ComponentUpdateWorker.getWorkName(compId)
             scope.launch {
                 workManager.getWorkInfosForUniqueWorkFlow(workName).collect { workInfos ->
@@ -264,19 +338,19 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                         WorkInfo.State.SUCCEEDED -> {
                             val verifiedVer = workInfo.outputData.getString(ComponentUpdateWorker.KEY_INSTALLED_VERSION)
                             if (!verifiedVer.isNullOrBlank()) {
-                                val cleanVer = cleanVersionString(verifiedVer)
                                 when (compId) {
                                     ID_YTDLP -> prefs.edit().putString(KEY_YTDLP_VER, verifiedVer).apply()
                                     ID_UBLOCK -> prefs.edit().putString(KEY_UBLOCK_VER, verifiedVer).apply()
-                                    ID_PUEMOS -> prefs.edit().putString(KEY_PUEMOS_VER, verifiedVer).apply()
                                 }
                                 updateState(compId) {
+                                    ComponentStatusTransitions.updateSucceeded(it, verifiedVer)
+                                }
+                            } else {
+                                updateState(compId) {
                                     it.copy(
+                                        lifecycleState = ComponentLifecycleState.UPDATED,
                                         updateState = ComponentUpdateState.UPDATE_SUCCESS,
                                         checkState = ComponentCheckState.UP_TO_DATE,
-                                        installedVersion = verifiedVer,
-                                        latestVersion = cleanVer,
-                                        message = "Updated successfully to v$cleanVer",
                                         error = null,
                                     )
                                 }
@@ -291,6 +365,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                             val error = workInfo.outputData.getString(ComponentUpdateWorker.KEY_ERROR) ?: "Update failed"
                             updateState(compId) {
                                 it.copy(
+                                    lifecycleState = ComponentLifecycleState.FAILED,
                                     updateState = ComponentUpdateState.UPDATE_FAILED,
                                     error = error,
                                     message = "Update failed: $error",
@@ -305,9 +380,15 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                         WorkInfo.State.CANCELLED -> {
                             updateState(compId) {
                                 it.copy(
+                                    lifecycleState = ComponentLifecycleState.UNKNOWN,
                                     updateState = ComponentUpdateState.UPDATE_IDLE,
                                     message = "Update cancelled",
                                 )
+                            }
+                            if (_batchState.value == BatchOperationState.UPDATING &&
+                                _components.value.values.none { it.isUpdating }
+                            ) {
+                                _batchState.value = BatchOperationState.CANCELLED
                             }
                         }
                         else -> Unit
@@ -319,7 +400,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
     fun onChannelChanged(preference: UpdatePreference) {
         // Cancel in-flight yt-dlp check and update state cleanly, clearing any old failed state
-        activeCheckJobs[ID_YTDLP]?.cancel()
+        activeCheckJobs.remove(ID_YTDLP)?.cancel()
         checkGenerations.compute(ID_YTDLP) { _, v -> (v ?: 0L) + 1L }
         updateState(ID_YTDLP) {
             it.copy(
@@ -367,16 +448,19 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         channel: UpdatePreference = UpdatePreference.STABLE,
         generation: Long = checkGenerations.compute(id) { _, v -> (v ?: 0L) + 1L }!!,
     ) {
-        updateState(id) {
-            it.copy(
-                checkState = ComponentCheckState.CHECKING,
-                message = "Checking for updates...",
-                error = null,
-            )
-        }
+        updateState(id, ComponentStatusTransitions::beginCheck)
 
         try {
             withTimeout(CHECK_TIMEOUT_MS) {
+                // Resolve and publish the currently installed version.
+                // This is a best-effort read: if the version cannot be read (e.g. on first
+                // launch before the bundled library has been extracted) we continue with
+                // whatever was stored previously rather than aborting the whole check with
+                // a confusing "cannot compare" error.  A genuine local-resolution failure
+                // is already reflected in the installedVersion field published by
+                // resolveAndPublishInstalledVersion.
+                resolveAndPublishInstalledVersion(id)
+
                 val latest = when (id) {
                     ID_YTDLP -> {
                         val repo = if (channel == UpdatePreference.NIGHTLY) "yt-dlp-nightly-builds" else "yt-dlp"
@@ -385,17 +469,12 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                     ID_UBLOCK -> {
                         fetchLatestGithubRelease("gorhill", "uBlock")
                     }
-                    ID_PUEMOS -> {
-                        fetchLatestGithubRelease("puemos", "hls-downloader")
-                    }
                     else -> throw IllegalArgumentException("Unknown component $id")
                 }
 
                 if (checkGenerations[id] != generation) return@withTimeout
 
                 val current = _components.value[id] ?: return@withTimeout
-                val isNewer = isNewerVersion(candidate = latest, installed = current.installedVersion)
-
                 // Channel switch check for yt-dlp:
                 // Stable -> Nightly or Nightly -> Stable channel switches allow explicit replacement
                 val isChannelSwitch = if (id == ID_YTDLP) {
@@ -404,40 +483,31 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                     isInstalledNightly != isTargetNightly
                 } else false
 
-                val hasUpdate = isNewer || isChannelSwitch
-
-                val cleanCandidate = cleanVersionString(latest)
-                val cleanInstalled = cleanVersionString(current.installedVersion)
-
                 updateState(id) {
-                    it.copy(
-                        checkState = if (hasUpdate) ComponentCheckState.UPDATE_AVAILABLE else ComponentCheckState.UP_TO_DATE,
-                        latestVersion = cleanCandidate,
-                        message = if (hasUpdate) {
-                            if (isChannelSwitch) "Channel switch: v$cleanCandidate (${channel.label})"
-                            else "Update available: v$cleanCandidate"
-                        } else {
-                            "Up to date (v$cleanInstalled)"
-                        },
-                        error = null,
-                        lastChecked = System.currentTimeMillis(),
+                    ComponentStatusTransitions.checkSucceeded(
+                        status = it,
+                        candidateVersion = latest,
+                        channelSwitch = isChannelSwitch,
+                        channelLabel = channel.label,
                     )
                 }
             }
         } catch (te: kotlinx.coroutines.TimeoutCancellationException) {
+            // A parent batch timeout is cancellation too. Only turn this into a
+            // per-component timeout when this component's own deadline fired.
+            if (!currentCoroutineContext().isActive) throw te
             if (checkGenerations[id] == generation) {
                 Log.w(TAG, "Check timed out for $id")
                 updateState(id) {
-                    it.copy(
-                        checkState = ComponentCheckState.CHECK_FAILED,
-                        error = "Check timed out (> ${CHECK_TIMEOUT_MS / 1000}s)",
-                        message = "Check timed out",
-                        lastChecked = System.currentTimeMillis(),
-                    )
+                    ComponentStatusTransitions.checkFailed(it, "Check timed out (> ${CHECK_TIMEOUT_MS / 1000}s)")
                 }
             }
         } catch (ce: CancellationException) {
+            if (checkGenerations[id] == generation) {
+                updateState(id, ComponentStatusTransitions::checkCancelled)
+            }
             Log.d(TAG, "Check cancelled for $id (gen $generation)")
+            throw ce
         } catch (e: Exception) {
             if (checkGenerations[id] == generation) {
                 val errMsg = when (e) {
@@ -446,22 +516,24 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                     is IOException -> e.message ?: "Network error"
                     else -> e.message?.take(60) ?: "Unknown error"
                 }
-                Log.e(TAG, "Failed checking update for $id: $errMsg", e)
-                updateState(id) {
-                    it.copy(
-                        checkState = ComponentCheckState.CHECK_FAILED,
-                        error = errMsg,
-                        message = if (errMsg.startsWith("GitHub API rate limit")) errMsg else "Check failed: $errMsg",
-                        lastChecked = System.currentTimeMillis(),
-                    )
-                }
+                updateState(id) { ComponentStatusTransitions.checkFailed(it, errMsg) }
             }
         } finally {
             if (checkGenerations[id] == generation) {
                 activeCheckJobs.remove(id)
+                updateState(id) { current ->
+                    if (current.checkState == ComponentCheckState.CHECKING) {
+                        current.copy(checkState = ComponentCheckState.CHECK_IDLE, message = "Ready to check", error = null)
+                    } else {
+                        current
+                    }
+                }
+            } else {
+                activeCheckJobs.computeIfPresent(id) { _, j -> if (j.isCompleted) null else j }
             }
         }
     }
+
 
     /**
      * Checks all components with single-flight mutex protection and spam-resilience.
@@ -487,22 +559,32 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         scope.launch {
             _batchState.value = BatchOperationState.CHECKING
             try {
-                withTimeout(CHECK_TIMEOUT_MS * 3) {
+                withTimeout(CHECK_TIMEOUT_MS + BATCH_CLEANUP_GRACE_MS) {
                     coroutineScope {
                         val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel) }
                         val ublock = async { checkUpdateInternal(ID_UBLOCK, channel) }
-                        val puemos = async { checkUpdateInternal(ID_PUEMOS, channel) }
-                        awaitAll(ytdlp, ublock, puemos)
+                        awaitAll(ytdlp, ublock)
                     }
                 }
-                val allFailed = _components.value.values.all { it.checkState == ComponentCheckState.CHECK_FAILED }
-                _batchState.value = if (allFailed) BatchOperationState.FAILED else BatchOperationState.COMPLETED
+                val anyFailed = _components.value.values.any { it.checkState == ComponentCheckState.CHECK_FAILED }
+                _batchState.value = if (anyFailed) BatchOperationState.FAILED else BatchOperationState.COMPLETED
+            } catch (te: kotlinx.coroutines.TimeoutCancellationException) {
+                Log.w(TAG, "Check All Updates exceeded its total deadline")
+                markPendingChecksFailed("Check timed out")
+                _batchState.value = BatchOperationState.FAILED
             } catch (ce: CancellationException) {
                 _batchState.value = BatchOperationState.CANCELLED
+                markPendingChecksCancelled()
+                throw ce
             } catch (e: Exception) {
                 Log.e(TAG, "checkAllUpdates failed: ${e.message}", e)
+                markPendingChecksFailed("Check failed: ${e.message?.take(60) ?: "Unknown error"}")
                 _batchState.value = BatchOperationState.FAILED
             } finally {
+                if (_batchState.value == BatchOperationState.CHECKING) {
+                    markPendingChecksFailed("Check failed")
+                    _batchState.value = BatchOperationState.FAILED
+                }
                 batchMutex.unlock()
             }
         }
@@ -524,12 +606,11 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
             if (!batchMutex.tryLock()) return@launch
             try {
-                withTimeout(CHECK_TIMEOUT_MS * 3) {
+                withTimeout(CHECK_TIMEOUT_MS + BATCH_CLEANUP_GRACE_MS) {
                     coroutineScope {
                         val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel) }
                         val ublock = async { checkUpdateInternal(ID_UBLOCK, channel) }
-                        val puemos = async { checkUpdateInternal(ID_PUEMOS, channel) }
-                        awaitAll(ytdlp, ublock, puemos)
+                        awaitAll(ytdlp, ublock)
                     }
                 }
 
@@ -553,6 +634,10 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 if (available.isNotEmpty()) {
                     _startupUpdateDialogData.value = StartupUpdateDialogData(available)
                 }
+            } catch (te: kotlinx.coroutines.TimeoutCancellationException) {
+                Log.w(TAG, "Automatic startup update check timed out")
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 Log.w(TAG, "Automatic startup check encountered error: ${e.message}")
             } finally {
@@ -572,10 +657,6 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             ID_UBLOCK -> {
                 val clean = cleanVersionString(targetVer)
                 "https://github.com/gorhill/uBlock/releases/download/$clean/uBlock0_$clean.firefox.signed.xpi" to null
-            }
-            ID_PUEMOS -> {
-                val clean = cleanVersionString(targetVer)
-                "https://github.com/puemos/hls-downloader/releases/download/v$clean/extension-mv2-firefox.xpi" to null
             }
             else -> return
         }
@@ -632,58 +713,107 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
     private class RateLimitException(message: String) : IOException(message)
 
-    private suspend fun fetchLatestGithubRelease(owner: String, repo: String): String = withContext(Dispatchers.IO) {
+    private suspend fun fetchLatestGithubRelease(owner: String, repo: String): String {
         val cacheKey = "$owner/$repo"
         val cached = releaseCache[cacheKey]
         val now = System.currentTimeMillis()
         if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
             Log.d(TAG, "Using cached release for $cacheKey: ${cached.tag}")
-            return@withContext cached.tag
+            return cached.tag
         }
 
         if (now < rateLimitCooldownUntil) {
             throw RateLimitException(rateLimitErrorMessage ?: "GitHub API rate limit reached. Try again later.")
         }
 
-        val url = URL("https://api.github.com/repos/$owner/$repo/releases/latest")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.setRequestProperty("User-Agent", "VRKA-Android-Updater")
-        conn.connectTimeout = 6000
-        conn.readTimeout = 6000
-        try {
-            val code = conn.responseCode
-            when (code) {
-                200 -> {
-                    val jsonStr = conn.inputStream.bufferedReader().readText()
-                    val json = JSONObject(jsonStr)
-                    val isPrerelease = json.optBoolean("prerelease", false)
-                    val isDraft = json.optBoolean("draft", false)
-                    if (isPrerelease || isDraft) {
-                        throw IOException("Release in $owner/$repo is marked as prerelease or draft")
-                    }
-                    val tag = json.optString("tag_name").removePrefix("v").trim()
-                    if (tag.isBlank()) throw IOException("Empty tag_name in release")
-                    releaseCache[cacheKey] = ReleaseCacheEntry(tag, now)
-                    tag
-                }
-                403 -> {
-                    val retryAfterSec = conn.getHeaderField("Retry-After")?.toLongOrNull()
-                    val rateLimitResetSec = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
-                    val cooldownMs = when {
-                        retryAfterSec != null -> (retryAfterSec * 1000L).coerceAtLeast(10_000L)
-                        rateLimitResetSec != null -> (rateLimitResetSec * 1000L - now).coerceIn(10_000L, 3600_000L)
-                        else -> 60_000L // 1 minute default cooldown
-                    }
-                    rateLimitCooldownUntil = now + cooldownMs
-                    val msg = "GitHub API rate limit reached. Try again later."
-                    rateLimitErrorMessage = msg
-                    throw RateLimitException(msg)
-                }
-                404 -> throw IOException("Release repository not found (HTTP 404)")
-                else -> throw IOException("GitHub returned HTTP $code")
+        return suspendCancellableCoroutine { continuation ->
+            val connectionRef = AtomicReference<HttpURLConnection?>(null)
+            continuation.invokeOnCancellation {
+                connectionRef.getAndSet(null)?.disconnect()
             }
-        } finally {
-            conn.disconnect()
+            Dispatchers.IO.dispatch(continuation.context, Runnable {
+                var connection: HttpURLConnection? = null
+                try {
+                    connection = URL("https://api.github.com/repos/$owner/$repo/releases/latest")
+                        .openConnection() as HttpURLConnection
+                    connection.connectTimeout = NETWORK_CONNECT_TIMEOUT_MS
+                    connection.readTimeout = NETWORK_READ_TIMEOUT_MS
+                    connection.setRequestProperty("User-Agent", "VRKA-Android-Updater")
+                    connection.setRequestProperty("Accept", "application/vnd.github+json")
+                    connectionRef.set(connection)
+                    if (!continuation.isActive) {
+                        connectionRef.getAndSet(null)?.disconnect()
+                        return@Runnable
+                    }
+
+                    when (val code = connection.responseCode) {
+                        200 -> {
+                            val jsonText = readBoundedResponseBody(connection.inputStream, MAX_RELEASE_METADATA_BYTES)
+                            val json = JSONObject(jsonText)
+                            if (json.optBoolean("prerelease", false) || json.optBoolean("draft", false)) {
+                                throw IOException("Release in $owner/$repo is marked as prerelease or draft")
+                            }
+                            val tag = json.optString("tag_name").removePrefix("v").trim()
+                            if (tag.isBlank()) throw IOException("Empty tag_name in release")
+                            releaseCache[cacheKey] = ReleaseCacheEntry(tag, System.currentTimeMillis())
+                            if (continuation.isActive) {
+                                runCatching { continuation.resumeWith(Result.success(tag)) }
+                            }
+                        }
+                        403 -> {
+                            val retryAfterSec = connection.getHeaderField("Retry-After")?.toLongOrNull()
+                            val rateLimitResetSec = connection.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
+                            val responseTime = System.currentTimeMillis()
+                            val cooldownMs = when {
+                                retryAfterSec != null -> (retryAfterSec * 1000L).coerceAtLeast(10_000L)
+                                rateLimitResetSec != null -> (rateLimitResetSec * 1000L - responseTime).coerceIn(10_000L, 3600_000L)
+                                else -> 60_000L
+                            }
+                            rateLimitCooldownUntil = responseTime + cooldownMs
+                            val message = "GitHub API rate limit reached. Try again later."
+                            rateLimitErrorMessage = message
+                            throw RateLimitException(message)
+                        }
+                        404 -> throw IOException("Release repository not found (HTTP 404)")
+                        else -> throw IOException("GitHub returned HTTP $code")
+                    }
+                } catch (error: Exception) {
+                    if (continuation.isActive) {
+                        runCatching { continuation.resumeWith(Result.failure(error)) }
+                    }
+                } finally {
+                    connectionRef.getAndSet(null)?.disconnect()
+                    connection?.disconnect()
+                }
+            })
+        }
+    }
+
+    private fun markPendingChecksFailed(message: String) {
+        _components.value.keys.forEach { id ->
+            updateState(id) { current ->
+                if (!current.isChecking) current else current.copy(
+                    checkState = ComponentCheckState.CHECK_FAILED,
+                    lifecycleState = ComponentLifecycleState.UNKNOWN,
+                    message = message,
+                    error = message,
+                    lastChecked = System.currentTimeMillis(),
+                )
+            }
+        }
+    }
+
+    private fun markPendingChecksCancelled() {
+        _components.value.keys.forEach { id ->
+            updateState(id) { current ->
+                if (!current.isChecking) current else current.copy(
+                    checkState = ComponentCheckState.CHECK_IDLE,
+                    lifecycleState = ComponentLifecycleState.UNKNOWN,
+                    message = "Update check cancelled",
+                    error = null,
+                    lastChecked = System.currentTimeMillis(),
+                )
+            }
         }
     }
 
@@ -697,18 +827,18 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     companion object {
         const val ID_YTDLP = "ytdlp"
         const val ID_UBLOCK = "ublock"
-        const val ID_PUEMOS = "puemos"
-
-        const val DEFAULT_YTDLP_VER = "2026.08.19"
-        const val DEFAULT_UBLOCK_VER = "1.74.0"
-        const val DEFAULT_PUEMOS_VER = "5.5.0"
 
         private const val KEY_YTDLP_VER = "ver_ytdlp"
         private const val KEY_UBLOCK_VER = "ver_ublock"
-        private const val KEY_PUEMOS_VER = "ver_puemos"
+        private const val LEGACY_PUEMOS_VERSION_KEY = "ver_puemos"
+        private const val LEGACY_PUEMOS_WORK_NAME = "VRKA_COMPONENT_UPDATE_puemos"
         private const val KEY_LAST_AUTO_CHECK_SUCCESS_TIMESTAMP = "last_auto_check_success_timestamp"
 
         private const val CHECK_TIMEOUT_MS = 8_000L
+        private const val BATCH_CLEANUP_GRACE_MS = 2_000L
+        private const val NETWORK_CONNECT_TIMEOUT_MS = 6_000
+        private const val NETWORK_READ_TIMEOUT_MS = 6_000
+        private const val MAX_RELEASE_METADATA_BYTES = 64 * 1024
         private const val UPDATE_TIMEOUT_MS = 90_000L
         private const val CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
         private const val DEBOUNCE_INTERVAL_MS = 2_000L // 2 seconds
@@ -785,4 +915,21 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             return candNums.size > instNums.size
         }
     }
+}
+
+internal fun readBoundedResponseBody(inputStream: InputStream, maxBytes: Int): String {
+    require(maxBytes > 0) { "maxBytes must be positive" }
+    val output = ByteArrayOutputStream(minOf(maxBytes, 8 * 1024))
+    inputStream.use { input ->
+        val buffer = ByteArray(4 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (output.size() + count > maxBytes) {
+                throw IOException("Release metadata exceeds $maxBytes bytes")
+            }
+            output.write(buffer, 0, count)
+        }
+    }
+    return String(output.toByteArray(), Charsets.UTF_8)
 }

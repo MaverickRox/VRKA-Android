@@ -1,0 +1,6 @@
+VRKA Android 5.0.1 repairs in-app application update detection for canonical stable releases.
+
+- Recognizes the exact three-part release tag and matching APK filename.
+- Rejects malformed or mismatched release metadata instead of reporting an invalid release as up to date.
+- Validates HTTPS redirects, package/version metadata, downgrade protection, and the production signing certificate before installation.
+- Includes regression coverage for release parsing, download validation, and installer checks.

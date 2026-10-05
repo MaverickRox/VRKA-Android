@@ -60,10 +60,15 @@ class EngineCandidateRanker(
         )
 
         // Stream type bonuses
-        if (candidate.kind in setOf(CandidateKind.HLS, CandidateKind.DASH)) {
+        val segment = isSegment(candidate.currentUrl, candidate.contentType.ifEmpty { candidate.responseContentType })
+        if (segment) {
+            add(config.segmentPenalty, "fragmented/segment resource URL")
+        } else if (candidate.kind in setOf(CandidateKind.HLS, CandidateKind.DASH)) {
             add(config.manifestKind, "${candidate.kind.value.uppercase()} manifest")
             if (isMasterManifest(candidate.currentUrl)) {
                 add(config.masterManifest, "master manifest (best-quality selection)")
+            } else {
+                add(config.childPlaylist, "child media playlist")
             }
             if (candidate.segmentCount >= 2) {
                 add(config.coherentManifest, "coherent segment activity")

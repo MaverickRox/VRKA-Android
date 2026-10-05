@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "VRKA Media Detector",
   "version": "1.0.0",
-  "description": "Embedded media and HLS stream discovery engine for VRKA Android",
+  "description": "Embedded browser media request and stream discovery component for VRKA Android",
   "browser_specific_settings": {
     "gecko": {
       "id": "media-detector@vrka.mvrk.com",

@@ -24,6 +24,7 @@ import com.mvrk.vrka.ui.backdrop.isRuntimeShaderSupported
 fun BackdropEffectScope.lens(
     @FloatRange(from = 0.0) refractionHeight: Float,
     @FloatRange(from = 0.0) refractionAmount: Float,
+    @FloatRange(from = 1.0) magnification: Float = 1f,
     depthEffect: Boolean = false,
     chromaticAberration: Boolean = false
 ) {
@@ -55,6 +56,7 @@ fun BackdropEffectScope.lens(
                 setFloatUniform("cornerRadii", cornerRadii)
                 setFloatUniform("refractionHeight", refractionHeight)
                 setFloatUniform("refractionAmount", -refractionAmount)
+                setFloatUniform("magnification", magnification.coerceIn(1f, 1.5f))
                 setFloatUniform("depthEffect", if (depthEffect) 1f else 0f)
                 if (chromaticAberration) {
                     setFloatUniform("chromaticAberration", 1f)

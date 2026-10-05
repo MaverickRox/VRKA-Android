@@ -238,8 +238,9 @@ class AppUpdateManagerTest {
         val within24h = now - (12 * 60 * 60 * 1000L) // 12 hours ago
         val past24h = now - (25 * 60 * 60 * 1000L) // 25 hours ago
 
-        assertTrue((now - within24h) < AppUpdateManager.TWENTY_FOUR_HOURS_MS)
-        assertFalse((now - past24h) < AppUpdateManager.TWENTY_FOUR_HOURS_MS)
+        assertTrue(AppUpdateManager.shouldSkipAutomaticCheck(false, within24h, now))
+        assertFalse(AppUpdateManager.shouldSkipAutomaticCheck(false, past24h, now))
+        assertFalse(AppUpdateManager.shouldSkipAutomaticCheck(true, within24h, now))
     }
 
     @Test
@@ -309,5 +310,306 @@ class AppUpdateManagerTest {
 
         val relative = AppUpdateManager.resolveRedirectUrl(base, "/MaverickRox/VRKA-Android/releases/download/v4.5.2/redirected.apk")
         assertEquals("https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/redirected.apk", relative)
+    }
+
+    @Test
+    fun test501VersionParsesAndComparesNumericallyAgainstSupportedVersions() {
+        val v501 = SemanticVersion.parseOrNull("5.0.1")
+        assertEquals(SemanticVersion(5, 0, 1), v501)
+        assertTrue(v501!!.isNewerThan(SemanticVersion.parseOrNull("4.5.3")!!))
+        assertTrue(v501.isNewerThan(SemanticVersion.parseOrNull("5.0")!!))
+        assertFalse(v501.isNewerThan(SemanticVersion(5, 0, 1)))
+        assertTrue(SemanticVersion(5, 0, 1).compareTo(v501) == 0)
+    }
+
+    @Test
+    fun test501ReleaseSelectsOnlyCanonicalAsset() {
+        val json = releaseJson(
+            tag = "v5.0.1",
+            assets = listOf(
+                "VRKA-Android-v5.0.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.apk",
+                "notes.txt" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/notes.txt",
+                "VRKA-Android-v5.0.1.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk",
+            ),
+        )
+
+        val release = AppUpdateManager.parseReleaseJson(json)
+        assertNotNull(release)
+        assertEquals(SemanticVersion(5, 0, 1), release!!.version)
+        assertEquals("v5.0.1", release.tagName)
+        assertEquals("VRKA-Android-v5.0.1.apk", release.apkFileName)
+        assertEquals(
+            "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk",
+            release.apkDownloadUrl,
+        )
+    }
+
+    @Test
+    fun testTwoComponentV50ReleaseAndAssetAreRejected() {
+        assertNull(
+            AppUpdateManager.parseReleaseJson(
+                releaseJson(
+                    tag = "v5.0",
+                    assets = listOf(
+                        "VRKA-Android-v5.0.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0/VRKA-Android-v5.0.apk",
+                    ),
+                ),
+            ),
+        )
+        assertNull(
+            AppUpdateManager.parseReleaseJson(
+                releaseJson(
+                    tag = "v5.0.1",
+                    assets = listOf(
+                        "VRKA-Android-v5.0.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.apk",
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun testRejectsMalformedAndArbitraryReleaseApkNames() {
+        val invalidNames = listOf(
+            "other-app.apk",
+            "VRKA-Android-arm64-v8a.apk",
+            "VRKA-Android-v5.0.1.zip",
+            "VRKA-Android-v5.0.1-debug.apk",
+            "VRKA-Android-v5.0.1-release.apk",
+            "VRKA-Android-5.0.1.apk",
+            "vrka-android-v5.0.1.apk",
+        )
+        invalidNames.forEach { name ->
+            assertNull(
+                "Should reject $name",
+                AppUpdateManager.parseReleaseJson(
+                    releaseJson(
+                        tag = "v5.0.1",
+                        assets = listOf(name to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/$name"),
+                    ),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun testStableReleaseRequiresThreeComponentStableTagAndUniqueCanonicalAsset() {
+        val prereleaseTag = releaseJson(
+            tag = "v5.0.1-rc1",
+            assets = listOf("VRKA-Android-v5.0.1.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk"),
+        )
+        assertNull(AppUpdateManager.parseReleaseJson(prereleaseTag))
+
+        val duplicateAsset = releaseJson(
+            tag = "v5.0.1",
+            assets = listOf(
+                "VRKA-Android-v5.0.1.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk",
+                "VRKA-Android-v5.0.1.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk?duplicate=1",
+            ),
+        )
+        assertNull(AppUpdateManager.parseReleaseJson(duplicateAsset))
+    }
+
+    @Test
+    fun testMalformedReleaseDataAndMissingCanonicalAssetAreNotAccepted() {
+        assertNull(AppUpdateManager.parseReleaseJson("not-json"))
+        assertNull(AppUpdateManager.parseReleaseJson("{}"))
+        assertNull(AppUpdateManager.parseReleaseJson(releaseJson(tag = "v5.0.1", assets = emptyList())))
+    }
+
+    @Test
+    fun testDraftAndPrereleaseReleasesRemainFiltered() {
+        val draft = releaseJson(
+            tag = "v5.0.1",
+            draft = true,
+            assets = listOf("VRKA-Android-v5.0.1.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk"),
+        )
+        val prerelease = releaseJson(
+            tag = "v5.0.1",
+            prerelease = true,
+            assets = listOf("VRKA-Android-v5.0.1.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk"),
+        )
+        assertNull(AppUpdateManager.parseReleaseJson(draft))
+        assertNull(AppUpdateManager.parseReleaseJson(prerelease))
+    }
+
+    @Test
+    fun testManualCheckBypassesAutomaticGateAndGateExpiresAt24Hours() {
+        val now = 2_000_000_000_000L
+        assertTrue(AppUpdateManager.shouldSkipAutomaticCheck(false, now - 1, now))
+        assertFalse(AppUpdateManager.shouldSkipAutomaticCheck(false, now - AppUpdateManager.TWENTY_FOUR_HOURS_MS, now))
+        assertFalse(AppUpdateManager.shouldSkipAutomaticCheck(true, now - 1, now))
+    }
+
+    @Test
+    fun testReleaseCheckStateDistinguishesAvailableCurrentAndInvalidRelease() {
+        val release = AppUpdateManager.parseReleaseJson(
+            releaseJson(
+                tag = "v5.0.1",
+                assets = listOf("VRKA-Android-v5.0.1.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk"),
+            ),
+        )!!
+        assertTrue(
+            AppUpdateManager.resolveCheckState(release, SemanticVersion(4, 5, 3), "4.5.3") is
+                AppUpdateCheckState.UpdateAvailable,
+        )
+        assertTrue(
+            AppUpdateManager.resolveCheckState(release, SemanticVersion.parseOrNull("5.0")!!, "5.0") is
+                AppUpdateCheckState.UpdateAvailable,
+        )
+        assertEquals(
+            AppUpdateCheckState.UpToDate("5.0.1"),
+            AppUpdateManager.resolveCheckState(release, SemanticVersion(5, 0, 1), "5.0.1"),
+        )
+        assertTrue(
+            AppUpdateManager.resolveCheckState(null, SemanticVersion(5, 0, 1), "5.0.1") is
+                AppUpdateCheckState.Error,
+        )
+    }
+
+    @Test
+    fun testDownloadWorkerAcceptsOnlyExactVersionAndCanonicalFilenamePair() {
+        assertTrue(AppUpdateManager.isValidDownloadTarget("5.0.1", "VRKA-Android-v5.0.1.apk"))
+        assertFalse(AppUpdateManager.isValidDownloadTarget("5.0.1", "VRKA-Android-v5.0.apk"))
+        assertFalse(AppUpdateManager.isValidDownloadTarget("5.0", "VRKA-Android-v5.0.apk"))
+        assertFalse(AppUpdateManager.isValidDownloadTarget("5.0.1", "VRKA-Android-v5.0.1-debug.apk"))
+        assertFalse(AppUpdateManager.isValidDownloadTarget("v5.0.1", "VRKA-Android-v5.0.1.apk"))
+    }
+
+    @Test
+    fun testDownloadHandoffRevalidatesReleaseMetadata() {
+        val release = AppUpdateManager.parseReleaseJson(
+            releaseJson(
+                tag = "v5.0.1",
+                assets = listOf("VRKA-Android-v5.0.1.apk" to "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk"),
+            ),
+        )!!
+        assertTrue(AppUpdateManager.isValidReleaseForDownload(release))
+        assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(apkFileName = "VRKA-Android-v5.0.1-debug.apk")))
+        assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(apkDownloadUrl = "http://github.com/asset.apk")))
+        assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(tagName = "v5.0")))
+    }
+
+    @Test
+    fun testInstallMetadataRequiresMatchingPackageVersionAndNewerVersionCode() {
+        assertNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = "VRKA-Android-v5.0.1.apk",
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.0.1",
+                apkVersionCode = 50001,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.0",
+                installedVersionCode = 50000,
+            ),
+        )
+        assertNotNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = "VRKA-Android-v5.0.1.apk",
+                apkPackageName = "other.package",
+                apkVersionName = "5.0.1",
+                apkVersionCode = 50001,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.0",
+                installedVersionCode = 50000,
+            ),
+        )
+        assertNotNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = "VRKA-Android-v5.0.1.apk",
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.0",
+                apkVersionCode = 50001,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.0",
+                installedVersionCode = 50000,
+            ),
+        )
+        assertNotNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = "VRKA-Android-v4.5.3.apk",
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "4.5.3",
+                apkVersionCode = 40503,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.0",
+                installedVersionCode = 50000,
+            ),
+        )
+        assertNotNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = "VRKA-Android-v5.0.1.apk",
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.0.1",
+                apkVersionCode = 50000,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.0",
+                installedVersionCode = 50000,
+            ),
+        )
+    }
+
+    @Test
+    fun testInstallerRequiresIdenticalNonemptySignerFingerprints() {
+        val signer = setOf("9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa")
+        assertTrue(AppUpdateManager.haveSameSignerSet(signer, signer))
+        assertFalse(AppUpdateManager.haveSameSignerSet(emptySet(), signer))
+        assertFalse(AppUpdateManager.haveSameSignerSet(signer, emptySet()))
+        assertFalse(AppUpdateManager.haveSameSignerSet(signer, setOf("different")))
+        assertFalse(AppUpdateManager.haveSameSignerSet(signer, signer + "different"))
+    }
+
+    @Test
+    fun testRedirectHostProtocolAndHopLimitAreEnforcedForEveryHop() {
+        val base = java.net.URL("https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk")
+        assertEquals(
+            "objects.githubusercontent.com",
+            AppUpdateManager.validateRedirectTarget(base, "https://objects.githubusercontent.com/asset.apk").host,
+        )
+        assertEquals("github.com", AppUpdateManager.validateRedirectTarget(base, "./other.apk").host)
+        assertTrue(AppUpdateManager.canFollowRedirect(AppUpdateManager.MAX_REDIRECTS - 1))
+        assertFalse(AppUpdateManager.canFollowRedirect(AppUpdateManager.MAX_REDIRECTS))
+        assertFalse(AppUpdateManager.canFollowRedirect(AppUpdateManager.MAX_REDIRECTS + 1))
+    }
+
+    @Test
+    fun testRedirectValidationRejectsProtocolDowngradeAndUnapprovedHost() {
+        val base = java.net.URL("https://github.com/MaverickRox/VRKA-Android/releases/download/v5.0.1/VRKA-Android-v5.0.1.apk")
+        assertTrue(runCatching { AppUpdateManager.validateRedirectTarget(base, "http://github.com/asset.apk") }.isFailure)
+        assertTrue(runCatching { AppUpdateManager.validateRedirectTarget(base, "https://github.com.evil.com/asset.apk") }.isFailure)
+    }
+
+    @Test
+    fun testUrlValidationRejectsCredentialsNonstandardPortsAndFragments() {
+        val invalidUrls = listOf(
+            "https://user@github.com/MaverickRox/VRKA-Android/releases/latest",
+            "https://github.com:8443/MaverickRox/VRKA-Android/releases/latest",
+            "https://github.com/MaverickRox/VRKA-Android/releases/latest#fragment",
+        )
+        invalidUrls.forEach { url ->
+            assertTrue("Should reject $url", runCatching { AppUpdateManager.validateHttpsUrl(url) }.isFailure)
+        }
+        assertEquals(443, AppUpdateManager.validateHttpsUrl("https://github.com:443/MaverickRox/VRKA-Android/releases/latest").port)
+    }
+
+    private fun releaseJson(
+        tag: String,
+        assets: List<Pair<String, String>>,
+        draft: Boolean = false,
+        prerelease: Boolean = false,
+    ): String {
+        val assetJson = assets.joinToString(",") { (name, url) ->
+            """{"name":"$name","size":100,"browser_download_url":"$url"}"""
+        }
+        return """
+            {
+              "tag_name":"$tag",
+              "name":"VRKA Android $tag",
+              "draft":$draft,
+              "prerelease":$prerelease,
+              "published_at":"2026-10-05T00:00:00Z",
+              "assets":[$assetJson]
+            }
+        """.trimIndent()
     }
 }

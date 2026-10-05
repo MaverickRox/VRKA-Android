@@ -6,9 +6,45 @@ import java.io.File
 internal object DownloadRequestFactory {
     private const val outputMarker = "__VRKA_OUTPUT__"
     private var nativeLibraryDir: String? = null
+    @Volatile
+    private var impersonationSupported: Boolean = false
 
     fun initNativeLibraryDir(dir: String?) {
         nativeLibraryDir = dir
+    }
+
+    fun isImpersonationSupported(): Boolean = impersonationSupported
+
+    fun setImpersonationSupported(supported: Boolean) {
+        impersonationSupported = supported
+    }
+
+    internal fun shouldAttemptBrowserFallback(
+        request: DownloadRequest,
+        hasFailure: Boolean,
+        cancelled: Boolean,
+    ): Boolean = hasFailure && request.resolvedMediaUrl == null && !cancelled
+
+    internal fun browserFallbackRequest(
+        request: DownloadRequest,
+        mediaUrl: String,
+        headers: Map<String, String>,
+    ): DownloadRequest {
+        require(CustomCommandPolicy.isHttpUrl(mediaUrl)) { "Browser fallback candidate must be a valid http or https URL." }
+        return request.copy(
+            // Keep the public page as the job's user-facing source. The private candidate is only
+            // an internal transfer input and must not inherit custom command/header state.
+            customArguments = emptyList(),
+            commandTemplateId = null,
+            commandTemplateName = "",
+            commandTemplateArguments = emptyList(),
+            referer = "",
+            origin = "",
+            customHeaders = emptyMap(),
+            resolvedMediaUrl = mediaUrl,
+            resolvedHeaders = headers,
+            resolvedHeadersOrigin = HeaderValidation.originOf(mediaUrl).orEmpty(),
+        )
     }
 
     fun getQuickJsPath(): String? {
@@ -37,9 +73,13 @@ internal object DownloadRequestFactory {
         job: DownloadJob,
         stagingDirectory: File,
         recoveryAttempt: Boolean = false,
+        includeSubtitles: Boolean = true,
     ): YoutubeDLRequest {
         val options = job.request
         val source = options.resolvedMediaUrl ?: options.url
+        if (!options.commandTemplateId.isNullOrBlank()) {
+            return customCommand(job, stagingDirectory)
+        }
         return YoutubeDLRequest(source).apply {
             addOption("--newline")
             addOption("--progress")
@@ -77,11 +117,7 @@ internal object DownloadRequestFactory {
                 }
                 if (options.embedThumbnail && options.audioFormat != AudioFormat.WAV) addOption("--embed-thumbnail")
             } else {
-                val format = if (options.resolvedMediaUrl != null) {
-                    "bestvideo+bestaudio/best"
-                } else {
-                    buildVideoFormat(options.quality.height, options.prefer60Fps)
-                }
+                val format = buildVideoFormat(options.quality.height, options.prefer60Fps)
                 addOption("-f", format)
                 if (options.prefer60Fps) {
                     addOption("-S", "res,fps")
@@ -90,10 +126,28 @@ internal object DownloadRequestFactory {
             }
 
             if (options.embedMetadata) addOption("--embed-metadata")
-            if (options.downloadSubtitles) {
+            val effectiveIncludeSubtitles = includeSubtitles && options.resolvedMediaUrl == null
+            if (effectiveIncludeSubtitles && options.downloadSubtitles) {
                 addOption("--write-subs")
-                if (options.automaticCaptions) addOption("--write-auto-subs")
-                addOption("--sub-langs", options.subtitleLanguages.ifBlank { "en.*" })
+                if (options.automaticCaptions) {
+                    addOption("--write-auto-subs")
+                    val subLangs = if (options.subtitleLanguages.isBlank() || options.subtitleLanguages == "en.*") {
+                        "en,en-orig,en-US,en-GB"
+                    } else {
+                        options.subtitleLanguages
+                    }
+                    addOption("--sub-langs", subLangs)
+                    addOption("--sleep-subtitles", "2")
+                } else {
+                    val subLangs = if (options.subtitleLanguages.isBlank()) {
+                        "en.*,en,en-US,en-GB"
+                    } else {
+                        options.subtitleLanguages
+                    }
+                    addOption("--sub-langs", subLangs)
+                    addOption("--sleep-subtitles", "1")
+                }
+                addOption("--sub-format", "srt/best")
                 if (options.mode == MediaMode.VIDEO && options.embedSubtitles) {
                     addOption("--embed-subs")
                 }
@@ -111,9 +165,6 @@ internal object DownloadRequestFactory {
             }
 
             addJsRuntime(this)
-            if (recoveryAttempt) {
-                addOption("--extractor-args", "generic:impersonate")
-            }
             val effectiveHeaders = HeaderValidation.resolveEffectiveHeaders(options)
             if (recoveryAttempt || options.resolvedMediaUrl != null) {
                 if (effectiveHeaders.keys.none { it.equals("User-Agent", true) }) {
@@ -123,10 +174,36 @@ internal object DownloadRequestFactory {
                     addOption("--referer", options.url)
                 }
             }
+            if (recoveryAttempt && isImpersonationSupported()) {
+                addOption("--extractor-args", "generic:impersonate")
+            }
             addSessionContext(options)
             if (options.customArguments.isNotEmpty()) {
                 addCommands(safeCustomArguments(options).take(40))
             }
+        }
+    }
+
+    internal fun customCommand(job: DownloadJob, stagingDirectory: File): YoutubeDLRequest {
+        val options = job.request
+        require(CustomCommandPolicy.isHttpUrl(options.url)) { "The custom-command URL must be a valid http or https URL." }
+        val validation = CustomCommandPolicy.validateTemplate(
+            options.commandTemplateName,
+            options.commandTemplateArguments,
+        )
+        require(validation == null) { validation.orEmpty() }
+
+        val outputTemplate = "%(playlist_index|0)03d-%(title).96B.%(ext)s"
+        return YoutubeDLRequest(listOf(options.url)).apply {
+            addOption("--ignore-config")
+            addOption("--no-mtime")
+            addOption("--no-overwrites")
+            addOption("-o", File(stagingDirectory, outputTemplate).absolutePath)
+            addOption("--print", "before_dl:__VRKA_TITLE__%(title)s")
+            addCommands(options.commandTemplateArguments)
+            // VRKA-owned output/progress settings are appended after user arguments.
+            addOption("--newline")
+            addOption("--progress")
         }
     }
 
@@ -147,7 +224,6 @@ internal object DownloadRequestFactory {
     }
 
     private fun safeCustomArguments(request: DownloadRequest): List<String> {
-        if (request.mode == MediaMode.AUDIO) return request.customArguments
         val optionsWithValues = setOf(
             "-f",
             "--format",
@@ -156,16 +232,32 @@ internal object DownloadRequestFactory {
             "--merge-output-format",
             "--remux-video",
             "--recode-video",
+            "--impersonate",
+        )
+        val dangerousOptionsWithValues = setOf(
+            "-o", "--output", "--paths", "--exec", "--exec-before-download",
+            "--external-downloader", "--external-downloader-args", "--config-location",
+            "--config-locations", "--plugin-dirs", "--load-info-json", "--batch-file",
+            "--ffmpeg-location", "--print-to-file",
         )
         val flags = setOf("-x", "--extract-audio")
         val result = mutableListOf<String>()
-        var skipValue = false
+        var skipNext = false
         request.customArguments.forEach { argument ->
-            if (skipValue) {
-                skipValue = false
+            if (skipNext) {
+                skipNext = false
+            } else if (argument in dangerousOptionsWithValues) {
+                skipNext = true
+            } else if (dangerousOptionsWithValues.any { argument.startsWith("$it=") } ||
+                argument.startsWith("--exec") || argument.startsWith("--external-downloader")
+            ) {
+                Unit
             } else if (argument in optionsWithValues) {
-                skipValue = true
-            } else if (argument in flags || optionsWithValues.any { argument.startsWith("$it=") }) {
+                skipNext = true
+            } else if (argument in flags ||
+                optionsWithValues.any { argument.startsWith("$it=") } ||
+                argument.contains("impersonate", ignoreCase = true)
+            ) {
                 Unit
             } else {
                 result += argument

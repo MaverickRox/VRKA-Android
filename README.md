@@ -10,7 +10,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v5.0)</b></a> •
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v5.0.1)</b></a> •
     <a href="#screenshots">Screenshots</a> •
     <a href="#architecture">Architecture</a> •
     <a href="#build-instructions">Build Guide</a> •
@@ -58,7 +58,7 @@ Designed for local, on-device processing without an application analytics servic
     <td align="center" width="33%">
       <img src="docs/screenshots/queue-dark.png" width="220" alt="Queue Screen" /><br />
       <b>Task Queue</b><br />
-      <sub>Sequential single-flight queue</sub>
+      <sub>Persistent queue with optional concurrency</sub>
     </td>
     <td align="center" width="33%">
       <img src="docs/screenshots/history-dark.png" width="220" alt="History Screen" /><br />
@@ -86,13 +86,13 @@ Designed for local, on-device processing without an application analytics servic
 - **Sensitive Header Redaction**: Multi-tier data protection masking sensitive authorization tokens, cookies, and secret headers (`[REDACTED]`) across logs, crash diagnostics, on-device stores, and UI cards.
 - **Dynamic Font Preference**: User-toggleable application typography supporting the signature monospace `VRKA Font` (Space Mono) and clean `System Font` (Roboto / device default) with persistent DataStore configuration.
 - **Download Location Modes**: Clear destination control supporting "Use selected" (defaulting to Downloads/VRKA with persistent directory permissions) or "Ask every time" (modal confirmation before queuing).
-- **Background Orchestration**: Foreground `DownloadService` with `JobStore` persistence, notification progress tracking, cancellation, and queued job execution.
+- **Background Orchestration**: Foreground `DownloadService` with `JobStore` persistence, notification progress tracking, cancellation, and optional persisted parallel job execution (2–4 workers; sequential by default).
 - **Passive Browser Fallback**: An embedded Mozilla `GeckoView` session automatically activates when direct extraction encounters anti-bot challenges or client-side player scripts.
 - **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation.
 - **Browser Fallback Discovery**: The VRKA media-detector WebExtension observes browser requests and page media elements, including direct media, HLS and DASH candidates. Candidate discovery is followed by yt-dlp probing and the standard yt-dlp transfer.
 - **Local On-Device Diagnostics**: On-device diagnostic failure logging in Settings with stage attribution, terminal trace viewer, secret-sanitized reporting, and one-tap clipboard export.
 - **In-App Component Updates**: The app checks and updates the active yt-dlp and uBlock Origin components. Installed versions come from the running yt-dlp runtime or the installed/bundled extension; “Up to date” is shown only after a successful remote check.
-- **In-App Application Self-Update**: Secure in-app update checker querying GitHub Releases with a 24-hour rate limit gate, manual checks from Settings, semantic version comparison, APK asset verification (`VRKA-Android-vX.Y.Z.apk`), HTTPS redirect validation, and installation via Android FileProvider.
+- **In-App Application Self-Update**: Secure in-app update checker querying GitHub Releases with a 24-hour automatic gate, manual checks from Settings, strict stable three-part semantic versions, exact APK asset verification (`VRKA-Android-vX.Y.Z.apk`), HTTPS redirect validation, and package/version/code/signing-certificate verification before FileProvider installation.
 - **Browser Session Clearing**: Settings clears GeckoView cookies, DOM storage, auth sessions, site data, caches and in-memory discovered candidates. It does not cancel an active fallback.
 - **H.264 Compatibility Mode**: Optional, off by default. If a downloaded video is not H.264, FFmpeg converts the local staged file, validates the result and preserves supported audio/subtitle streams.
 - **Custom yt-dlp Commands**: Named argument templates for normal jobs. Templates are argv lists, not shell commands; VRKA controls output staging. Eligible failures can still enter Browser Fallback, whose standard yt-dlp request ignores the selected template.
@@ -106,10 +106,10 @@ VRKA Android includes an in-app update checker for updates from official GitHub 
 - **24-Hour Automatic Gate**: Automatic startup checks run at most once every 24 hours to reduce network traffic.
 - **Manual Check Bypass**: The `[Check for Updates]` button in Settings bypasses the 24-hour interval to check immediately.
 - **Non-Blocking Startup**: Checks run in the background without slowing down app startup.
-- **Semantic Version Comparison**: Uses numeric segment comparison (`SemanticVersion`) so multi-digit versions sort correctly.
-- **Strict APK Asset Naming**: Requires the exact release naming pattern `VRKA-Android-v$version.apk`.
-- **HTTPS-Only Networking & Host Validation**: Streams metadata and APK files over HTTPS from approved GitHub release hosts.
-- **Redirect Validation**: Validates redirect targets and limits redirect hops to at most 5.
+- **Canonical Stable Releases**: Accepts stable three-part tags such as `v5.0.1`, compares numeric version segments, and requires the exact matching asset `VRKA-Android-v5.0.1.apk`.
+- **HTTPS-Only Networking & Host Validation**: Streams metadata and APK files over HTTPS from approved GitHub release hosts, rejecting user-info, nonstandard ports, and unapproved hosts.
+- **Redirect Validation**: Validates every redirect target and limits redirect hops to at most 5.
+- **Install Verification**: Requires the APK to remain in the private update cache and verifies package identity, filename/version agreement, non-downgrade version code, and the installed signing certificate before launching Android's installer.
 - **FileProvider Installation**: APKs are saved to private app cache and handed off to Android's `PackageInstaller` via `FileProvider`.
 - **Persistent Downloads**: Downloads run through WorkManager so they continue even if the app is backgrounded.
 
@@ -219,27 +219,27 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-The official v5.0 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
+The official v5.0.1 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
 
 ---
 
 ## Release Signing
 
-The `release` build type requires explicit signing credentials and never silently falls back to a debug key. The v5.0 release artifact is production-signed; verify its certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
+The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Verify the v5.0.1 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
 
 ---
 
 ## Installation
 
-1. Download the official `VRKA-Android-v5.0.apk` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
+1. Download the official `VRKA-Android-v5.0.1.apk` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
-   (Get-FileHash .\VRKA-Android-v5.0.apk -Algorithm SHA256).Hash
+   (Get-FileHash .\VRKA-Android-v5.0.1.apk -Algorithm SHA256).Hash
    ```
-   Expected: `D821B65BE0D054F3232E7A3BB051408BC0150EB2A66CDF5E7D3FC9170D8DA487`
+   Expected: `75F7B5EDF514724E21B0237E9E66813F88DF0F51E0E1D620702D6B03D177DBCD`. The same value is recorded in `SHA256SUMS` and the official release page.
 3. Install on your Android device:
    ```bash
-   adb install -r .\VRKA-Android-v5.0.apk
+   adb install -r .\VRKA-Android-v5.0.1.apk
    ```
 
 ---

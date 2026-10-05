@@ -934,39 +934,6 @@ class SecureComponentUpdaterTest {
     }
 
     @Test
-    fun test33_ValidateXpiArchiveAcceptsExactPuemosId() {
-        val updater = SecureComponentUpdater()
-        val tempXpi = tempFolder.newFile("puemos_test.xpi")
-        tempXpi.writeBytes(createMockXpi(id = SecureComponentUpdater.PUEMOS_EXTENSION_ID, version = "5.5.0"))
-
-        val manifest = updater.validateXpiArchive(
-            xpiFile = tempXpi,
-            expectedId = SecureComponentUpdater.PUEMOS_EXTENSION_ID,
-            expectedVersion = "5.5.0"
-        )
-        assertEquals(SecureComponentUpdater.PUEMOS_EXTENSION_ID, manifest.id)
-        assertEquals("5.5.0", manifest.version)
-    }
-
-    @Test
-    fun test34_ValidateXpiArchiveRejectsIncorrectPuemosId() {
-        val updater = SecureComponentUpdater()
-        val tempXpi = tempFolder.newFile("fake_puemos.xpi")
-        tempXpi.writeBytes(createMockXpi(id = "other-hls-downloader@puemos.org", version = "5.5.0"))
-
-        try {
-            updater.validateXpiArchive(
-                xpiFile = tempXpi,
-                expectedId = SecureComponentUpdater.PUEMOS_EXTENSION_ID,
-                expectedVersion = "5.5.0"
-            )
-            fail("Must reject non-matching Puemos ID")
-        } catch (e: SecurityException) {
-            assertTrue(e.message!!.contains("Extension ID mismatch"))
-        }
-    }
-
-    @Test
     fun test35_ValidateXpiArchiveRejectsMissingMozillaSignature() {
         val updater = SecureComponentUpdater()
         val tempXpi = tempFolder.newFile("unsigned.xpi")
@@ -1033,18 +1000,5 @@ class SecureComponentUpdaterTest {
             badUblock.exceptionOrNull()!!.message!!.contains("does not match allowlist")
         )
 
-        // 2. Puemos rejecting non-firefox XPI name
-        val badPuemos = updater.updateExtension(
-            componentId = ComponentUpdateManager.ID_PUEMOS,
-            candidateVersion = "5.5.0",
-            installedVersion = "1.0.0",
-            downloadUrl = "https://github.com/puemos/hls-downloader/releases/download/v5.5.0/extension-mv3-chrome.zip",
-        )
-        assertTrue(badPuemos.isFailure)
-        assertTrue(badPuemos.exceptionOrNull() is SecurityException)
-        assertTrue(
-            badPuemos.exceptionOrNull()!!.message!!.contains("Incompatible asset rejected") ||
-            badPuemos.exceptionOrNull()!!.message!!.contains("does not match allowlist")
-        )
     }
 }

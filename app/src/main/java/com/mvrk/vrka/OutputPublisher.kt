@@ -14,11 +14,13 @@ internal class OutputPublisher(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
 ) {
+    private val publishLock = Any()
+
     fun publish(
         file: File,
         requestedName: String = file.name,
         destinationTreeUri: String? = null,
-    ): Uri {
+    ): Uri = synchronized(publishLock) {
         require(file.isFile) { "Completed output is missing." }
         val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
         val destination = destinationTreeUri?.takeIf { it.isNotBlank() }
@@ -29,11 +31,20 @@ internal class OutputPublisher(
             publishToDownloads(file, safeName)
         }
         if (!file.delete()) file.deleteOnExit()
-        return uri
+        uri
     }
 
     fun delete(uriText: String): Boolean = runCatching {
         context.contentResolver.delete(Uri.parse(uriText), null, null) > 0
+    }.getOrDefault(false)
+
+    fun fileExists(uriText: String): Boolean = runCatching {
+        val uri = Uri.parse(uriText)
+        val cursorCount = runCatching {
+            context.contentResolver.query(uri, null, null, null, null)?.use { it.count }
+        }.getOrNull()
+        if (cursorCount != null && cursorCount > 0) return true
+        context.contentResolver.openInputStream(uri)?.use { true } ?: false
     }.getOrDefault(false)
 
     private fun publishToDownloads(file: File, name: String): Uri {

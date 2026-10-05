@@ -26,6 +26,10 @@ class AppUpdateDownloadWorker(
         val targetVersion = inputData.getString(KEY_TARGET_VERSION) ?: ""
         val expectedSizeBytes = inputData.getLong(KEY_EXPECTED_SIZE, 0L)
 
+        if (!AppUpdateManager.isValidDownloadTarget(targetVersion, apkFileName)) {
+            return@withContext Result.failure(workDataOf(KEY_ERROR to "Invalid update version or non-canonical APK filename"))
+        }
+
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .putString(KEY_STATE, STATE_DOWNLOADING)
@@ -42,10 +46,9 @@ class AppUpdateDownloadWorker(
             Log.i(TAG, "Starting persistent APK download from $downloadUrl to ${targetFile.absolutePath}...")
             var currentUrl = downloadUrl
             var redirects = 0
-            val maxRedirects = 5
             var success = false
 
-            while (redirects < maxRedirects && !success) {
+            while (!success) {
                 val url = AppUpdateManager.validateHttpsUrl(currentUrl)
                 val conn = url.openConnection() as HttpURLConnection
                 conn.instanceFollowRedirects = false
@@ -109,9 +112,10 @@ class AppUpdateDownloadWorker(
                         307, 308 -> {
                             val location = conn.getHeaderField("Location")
                                 ?: throw IOException("HTTP redirect $code without Location header")
-                            val nextUrl = AppUpdateManager.resolveRedirectUrl(url, location)
-                            AppUpdateManager.validateHttpsUrl(nextUrl)
-                            currentUrl = nextUrl
+                            if (!AppUpdateManager.canFollowRedirect(redirects)) {
+                                throw IOException("APK download exceeded the redirect limit")
+                            }
+                            currentUrl = AppUpdateManager.validateRedirectTarget(url, location).toExternalForm()
                             redirects++
                         }
                         else -> throw IOException("HTTP error $code from $currentUrl")

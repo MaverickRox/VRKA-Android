@@ -480,7 +480,7 @@ class SecureComponentUpdater(
     }
 
     /**
-     * Executes a verified and transactional extension update (uBlock Origin or Puemos).
+     * Executes a verified and transactional uBlock Origin extension update.
      *
      * Verification chain:
      * 1. Downgrade prevention: candidateVersion must be strictly newer than installedVersion.
@@ -522,7 +522,6 @@ class SecureComponentUpdater(
 
             val expectedId = when (componentId) {
                 ComponentUpdateManager.ID_UBLOCK -> UBLOCK_EXTENSION_ID
-                ComponentUpdateManager.ID_PUEMOS -> PUEMOS_EXTENSION_ID
                 else -> throw IllegalArgumentException("Unknown extension component: $componentId")
             }
 
@@ -619,7 +618,7 @@ class SecureComponentUpdater(
     fun getInstalledGeckoViewVersion(): String {
         return runCatching {
             org.mozilla.geckoview.BuildConfig.MOZILLA_VERSION
-        }.getOrNull()?.trim()?.ifBlank { null } ?: "153.0"
+        }.getOrNull()?.trim()?.ifBlank { null } ?: "156.0"
     }
 
     /**
@@ -639,15 +638,12 @@ class SecureComponentUpdater(
         const val PINNED_PRIMARY_KEY_FINGERPRINT = "AC0CBBE6848D6A873464AF4E57CF65933B5A7581"
 
         const val UBLOCK_EXTENSION_ID = "uBlock0@raymondhill.net"
-        const val PUEMOS_EXTENSION_ID = "{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}"
 
         val UBLOCK_ASSET_REGEX = Regex("""^uBlock0_.*\.firefox\.signed\.xpi$""")
-        val PUEMOS_ASSET_REGEX = Regex("""^extension-mv2-firefox\.xpi$""")
 
         fun validateAssetFileName(componentId: String, assetName: String): Boolean {
             return when (componentId) {
                 ComponentUpdateManager.ID_UBLOCK -> UBLOCK_ASSET_REGEX.matches(assetName)
-                ComponentUpdateManager.ID_PUEMOS -> PUEMOS_ASSET_REGEX.matches(assetName)
                 else -> false
             }
         }

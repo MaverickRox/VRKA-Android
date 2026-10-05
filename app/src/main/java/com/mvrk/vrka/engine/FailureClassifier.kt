@@ -93,7 +93,12 @@ val BROWSER_RECOVERABLE_DIRECT_CATEGORIES = setOf(
 /**
  * Universal markers indicating yt-dlp resolved the media and began real transfer.
  */
-val TRANSFER_STARTED_MARKERS = listOf("__vrka_title__", "[download] destination:")
+val TRANSFER_STARTED_MARKERS = listOf("[download] destination:")
+
+/**
+ * Universal markers indicating media resolution or transfer progress.
+ */
+val RESOLUTION_AND_TRANSFER_MARKERS = listOf("__vrka_title__", "[download] destination:")
 
 /**
  * Generic extractor fetch markers indicating yt-dlp visited and parsed an actual page
@@ -106,11 +111,49 @@ val GENERIC_EXTRACTOR_FETCH_MARKERS = listOf(
 )
 
 /**
+ * Cleans yt-dlp output by extracting real error lines and ignoring benign warnings.
+ * yt-dlp on Android often outputs:
+ * "WARNING: The extractor specified to use impersonation for this download, but no impersonate target is available..."
+ * This is an informational warning from yt-dlp's extractor indicating curl_cffi is absent in python,
+ * but yt-dlp continues normal extraction. If a real failure occurs later, the failure is reported
+ * on ERROR lines. Treating this benign warning as an impersonation failure hides genuine errors.
+ */
+fun cleanErrorOutput(errorMessage: String): String {
+    if (errorMessage.isBlank()) return errorMessage
+    val lines = errorMessage.lines().map { it.trim() }.filter { it.isNotBlank() }
+
+    // If there are explicit yt-dlp error lines, prioritize them
+    val errorLines = lines.filter { line ->
+        line.startsWith("ERROR:", ignoreCase = true) ||
+        line.startsWith("yt-dlp: error:", ignoreCase = true) ||
+        line.startsWith("Traceback (most recent call last):", ignoreCase = true)
+    }
+    if (errorLines.isNotEmpty()) {
+        return errorLines.joinToString("\n")
+    }
+
+    // Filter out benign extractor impersonation warnings
+    val nonWarningLines = lines.filterNot { line ->
+        line.contains("The extractor specified to use impersonation", ignoreCase = true) ||
+        (line.startsWith("WARNING:", ignoreCase = true) && line.contains("impersonat", ignoreCase = true))
+    }
+    return if (nonWarningLines.isNotEmpty()) {
+        nonWarningLines.joinToString("\n")
+    } else {
+        ""
+    }
+}
+
+/**
  * Classifies a download error message into a [FailureCategory].
  * Pattern matching order matters: more specific patterns are checked first.
  */
 fun classifyDownloadError(errorMessage: String): FailureCategory {
-    val lower = errorMessage.lowercase()
+    val cleaned = cleanErrorOutput(errorMessage)
+    if (cleaned.isBlank() && errorMessage.isNotBlank()) {
+        return FailureCategory.UNKNOWN
+    }
+    val lower = cleaned.lowercase()
 
     // 1. User cancellation
     if (containsAny(lower, "cancellationexception", "cancelled by user", "operation cancelled", "download cancelled", "task cancelled", "cancelled")) {
@@ -138,7 +181,7 @@ fun classifyDownloadError(errorMessage: String): FailureCategory {
     }
 
     // 6. Impersonation failure (terminal — never fallback)
-    if (containsAny(lower, "impersonate", "curl_cffi", "unsupported impersonation target")) {
+    if (containsAny(lower, "unsupported impersonation target", "impersonate target is unavailable", "curl_cffi is not installed", "curl_cffi is required", "error: --impersonate", "--impersonate is not available", "impersonation target")) {
         return FailureCategory.IMPERSONATION
     }
 
@@ -220,13 +263,13 @@ fun classifyDownloadError(errorMessage: String): FailureCategory {
         return FailureCategory.EXPIRED
     }
 
-    // 14. Unsupported URL (Desktop generic extractor fetch markers distinguish real page from invalid URL)
-    if (containsAny(lower, "unsupported url", "no suitable extractor", "not a valid url")) {
+    // 14. Unsupported URL or unavailable media (Desktop generic extractor fetch markers distinguish real page from invalid URL)
+    if (containsAny(lower, "unsupported url", "no suitable extractor", "not a valid url", "this video is unavailable", "video unavailable", "video is unavailable")) {
         return FailureCategory.UNSUPPORTED
     }
 
     // 15. HTTP error / network rejection (browser-recoverable)
-    if (containsAny(lower, "http error", "403 forbidden", "unable to download webpage", "connection reset")) {
+    if (containsAny(lower, "http error", "403 forbidden", "unable to download webpage", "connection reset", "429")) {
         return FailureCategory.HTTP
     }
 
@@ -237,7 +280,8 @@ fun classifyDownloadError(errorMessage: String): FailureCategory {
  * Formats friendly user guidance for classified errors.
  */
 fun formatDownloadError(errorMessage: String): Pair<FailureCategory, String> {
-    val category = classifyDownloadError(errorMessage)
+    val cleaned = cleanErrorOutput(errorMessage)
+    val category = classifyDownloadError(cleaned)
     val guidance = when (category) {
         FailureCategory.SUCCESS ->
             "Download completed successfully."
@@ -268,13 +312,61 @@ fun formatDownloadError(errorMessage: String): Pair<FailureCategory, String> {
         FailureCategory.EXPIRED ->
             "The media address appears to have expired. Refresh the page and try again."
         FailureCategory.UNSUPPORTED ->
-            "This address is not supported by the active yt-dlp build."
+            if (cleaned.contains("video is unavailable", ignoreCase = true) || cleaned.contains("video unavailable", ignoreCase = true)) {
+                "This video is unavailable or has been removed."
+            } else {
+                "This address is not supported by the active yt-dlp build."
+            }
         FailureCategory.HTTP ->
-            "The website rejected or interrupted the request."
+            if (cleaned.contains("browser credential/custom header", ignoreCase = true)) {
+                "The site rejected the browser-fallback transfer. VRKA withheld credential-like browser headers because yt-dlp cannot safely scope them across redirects and media segments."
+            } else if (isSubtitleFailure(cleaned, "")) {
+                "The site rate-limited or rejected the subtitle request (HTTP 429 Too Many Requests). Try downloading without subtitles."
+            } else if (cleaned.contains("429", ignoreCase = true)) {
+                "The site rate-limited the request (HTTP 429 Too Many Requests). Try again later."
+            } else {
+                "The website rejected or interrupted the request."
+            }
         FailureCategory.UNKNOWN ->
-            errorMessage.ifBlank { "The operation failed." }
+            cleaned.ifBlank { errorMessage }.ifBlank { "The operation failed." }
     }
     return category to guidance
+}
+
+/**
+ * Detects if a failure was specifically caused by subtitle downloading or extraction.
+ * Subtitle failures cannot be resolved by browser fallback because browser fallback
+ * only sniffs direct media streams (audio/video), not closed captions / subtitle tracks.
+ */
+fun isSubtitleFailure(errorMessage: String, executionOutput: String = ""): Boolean {
+    val combined = "$errorMessage\n$executionOutput".lowercase()
+    val subtitleMarkers = listOf(
+        "unable to download video subtitles",
+        "unable to download all requested subtitles",
+        "unable to download subtitles",
+        "error downloading subtitles",
+        "failed to download subtitles",
+        "subtitles could not be downloaded",
+        "writing video subtitles failed",
+        "no subtitles being downloaded",
+        "downloading video subtitles",
+        "downloading auto-generated video subtitles",
+        "sleep-subtitles",
+        "--write-subs",
+        "--write-auto-subs",
+    )
+    if (subtitleMarkers.any { it in combined }) return true
+    if ((combined.contains("subtitle") || combined.contains("caption")) && (
+        combined.contains("429") ||
+        combined.contains("too many requests") ||
+        combined.contains("unable to download") ||
+        combined.contains("http error") ||
+        combined.contains("rate-limit") ||
+        combined.contains("rate limit")
+    )) {
+        return true
+    }
+    return false
 }
 
 /**
@@ -294,7 +386,7 @@ fun isTransferFailureAfterResolution(
             trimmed.contains("%(title)s", ignoreCase = true)
         ) return@any false
         val lower = trimmed.lowercase()
-        TRANSFER_STARTED_MARKERS.any { it in lower }
+        RESOLUTION_AND_TRANSFER_MARKERS.any { it in lower }
     }
 }
 
@@ -312,8 +404,10 @@ fun unsupportedFailureFetchedPage(output: String): Boolean {
  */
 fun isYtdlpNativeTarget(url: String): Boolean {
     if (url.isBlank()) return false
+    val trimmed = url.trim().lowercase()
+    if (trimmed.contains("youtube.com") || trimmed.contains("youtu.be")) return true
     val host = try {
-        java.net.URI(url.trim()).host?.lowercase() ?: ""
+        java.net.URI(trimmed).host?.lowercase() ?: ""
     } catch (_: Exception) {
         ""
     }
@@ -339,15 +433,27 @@ fun isFailureBrowserRecoverable(
         return false
     }
 
+    // Subtitle failures are outside the browser media-discovery fallback path.
+    if (isSubtitleFailure(errorMessage, executionOutput)) {
+        return false
+    }
+
     // Terminal categories: never fallback
     if (category in TERMINAL_DIRECT_CATEGORIES) return false
 
     // YouTube / yt-dlp-native targets:
     // Direct controls stay on the direct path and recover with their own retry rules.
-    // When direct yt-dlp cannot safely acquire media due to authentication/bot-check walls
-    // (COOKIES) or HTTP access restrictions, fallback is allowed.
-    if (isYtdlpNativeTarget(targetUrl)) {
-        return category in listOf(FailureCategory.COOKIES, FailureCategory.CLOUDFLARE, FailureCategory.HTTP, FailureCategory.BROWSER_RECOVERABLE)
+    // HTTP rate limits (429) or extractor/player failures on YouTube must never launch Browser Fallback.
+    // Only bot challenges (Cloudflare) or session authentication walls (COOKIES) might be browser-recoverable.
+    val isYouTube = isYtdlpNativeTarget(targetUrl) ||
+        executionOutput.contains("[youtube]", ignoreCase = true) ||
+        errorMessage.contains("[youtube]", ignoreCase = true)
+
+    if (isYouTube) {
+        if (category == FailureCategory.HTTP || category == FailureCategory.BROWSER_RECOVERABLE) {
+            return false
+        }
+        return category in listOf(FailureCategory.COOKIES, FailureCategory.CLOUDFLARE)
     }
 
     // Browser-recoverable categories

@@ -2,6 +2,7 @@ package com.mvrk.vrka
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -76,8 +77,10 @@ class DownloadRequestFactoryTest {
                 resolvedHeaders = mapOf(
                     "Cookie" to "session=private",
                     "Referer" to "https://example.test/watch",
-                    "X-Not-Allowed" to "ignored",
+                    "X-Forwarded-For" to "ignored",
                 ),
+                resolvedMediaUrl = URL,
+                resolvedHeadersOrigin = URL,
             ),
         )
 
@@ -91,7 +94,7 @@ class DownloadRequestFactoryTest {
         val command = request.buildCommand()
         assertTrue(command.any { it == "Cookie:session=private" })
         assertTrue(command.any { it == "Referer:https://example.test/watch" })
-        assertFalse(command.any { "X-Not-Allowed" in it })
+        assertFalse(command.any { "X-Forwarded-For" in it })
     }
 
     @Test
@@ -143,7 +146,8 @@ class DownloadRequestFactoryTest {
             staging,
             recoveryAttempt = true,
         )
-        assertEquals("generic:impersonate", recoveryReq.getOption("--extractor-args"))
+        assertFalse(recoveryReq.hasOption("--extractor-args"))
+        assertFalse(recoveryReq.hasOption("--impersonate"))
     }
 
     @Test
@@ -217,7 +221,7 @@ class DownloadRequestFactoryTest {
         )
 
         assertEquals(null, recovery.getOption("--impersonate"))
-        assertEquals("generic:impersonate", recovery.getOption("--extractor-args"))
+        assertFalse(recovery.hasOption("--extractor-args"))
         assertEquals(URL, recovery.getOption("--referer"))
         assertTrue(recovery.getOption("--user-agent").orEmpty().contains("Chrome/"))
     }
@@ -235,7 +239,7 @@ class DownloadRequestFactoryTest {
         val command = request.buildCommand()
         assertTrue(command.any { it == "Referer:https://specific-source.test/page" })
         assertTrue(command.any { it == "Origin:https://specific-source.test" })
-        assertTrue(command.any { it == "Authorization:Bearer token123" })
+        assertFalse(command.any { it.startsWith("Authorization:", ignoreCase = true) })
     }
 
     @Test
@@ -246,6 +250,8 @@ class DownloadRequestFactoryTest {
                 referer = "https://typed-referer.test",
                 customHeaders = mapOf("REFERER" to "https://custom-header.test"),
                 resolvedHeaders = mapOf("Referer" to "https://resolved-browser.test"),
+                resolvedMediaUrl = "https://cdn.test/video.m3u8",
+                resolvedHeadersOrigin = "https://cdn.test/video.m3u8",
             ),
         )
         val command = request.buildCommand()
@@ -253,6 +259,111 @@ class DownloadRequestFactoryTest {
         assertFalse(command.any { it.contains("typed-referer.test") })
         assertFalse(command.any { it.contains("custom-header.test") })
     }
+
+    @Test
+    fun customCommandUsesSeparateValidatedUrlAndPreservesTemplateArgv() {
+        val url = "https://example.test/video?label=--exec"
+        val request = DownloadRequestFactory.customCommand(
+            DownloadJob(
+                id = "custom-job",
+                request = DownloadRequest(
+                    url = url,
+                    commandTemplateId = "template-1",
+                    commandTemplateName = "Rate limit",
+                    commandTemplateArguments = listOf("--limit-rate", "2M"),
+                ),
+            ),
+            staging,
+        )
+
+        val argv = request.buildCommand()
+        assertTrue(argv.contains(url))
+        assertEquals(1, argv.count { it == url })
+        assertTrue(argv.contains("--limit-rate"))
+        assertTrue(argv.contains("2M"))
+        assertTrue(argv.contains("--progress"))
+        assertTrue(argv.any { it.startsWith("-o") || it == "-o" })
+    }
+
+    @Test
+    fun eligibleFailureUsesBrowserFallbackWithCustomModeEitherWayAndHonorsCancellation() {
+        val normal = DownloadRequest(url = URL)
+        val custom = DownloadRequest(
+            url = URL,
+            commandTemplateId = "template-1",
+            commandTemplateName = "Rate limit",
+            commandTemplateArguments = listOf("--limit-rate", "2M"),
+        )
+
+        listOf(normal, custom).forEach { request ->
+            assertTrue(DownloadRequestFactory.shouldAttemptBrowserFallback(request, hasFailure = true, cancelled = false))
+            assertFalse(DownloadRequestFactory.shouldAttemptBrowserFallback(request, hasFailure = true, cancelled = true))
+            assertFalse(DownloadRequestFactory.shouldAttemptBrowserFallback(request, hasFailure = false, cancelled = false))
+        }
+    }
+
+    @Test
+    fun browserFallbackRequestKeepsPublicPageAndDropsCustomTemplateState() {
+        val privateCandidate = "https://cdn.example.test/private/session-token/stream.m3u8?sig=temporary"
+        val request = DownloadRequest(
+            url = URL,
+            referer = "https://typed.example.test/",
+            origin = "https://typed.example.test",
+            customHeaders = mapOf("X-User-Header" to "must-not-leak"),
+            customArguments = listOf("--limit-rate", "2M"),
+            commandTemplateId = "template-1",
+            commandTemplateName = "Custom template",
+            commandTemplateArguments = listOf("--exec", "echo unsafe"),
+        )
+
+        val fallback = DownloadRequestFactory.browserFallbackRequest(
+            request = request,
+            mediaUrl = privateCandidate,
+            headers = mapOf("Referer" to "https://site.example.test/watch"),
+        )
+
+        assertEquals(URL, fallback.url)
+        assertEquals(privateCandidate, fallback.resolvedMediaUrl)
+        assertNull(fallback.commandTemplateId)
+        assertEquals(emptyList<String>(), fallback.commandTemplateArguments)
+        assertEquals(emptyList<String>(), fallback.customArguments)
+        assertEquals("", fallback.referer)
+        assertEquals("", fallback.origin)
+        assertTrue(fallback.customHeaders.isEmpty())
+
+        val argv = built(fallback).buildCommand()
+        assertTrue(argv.contains(privateCandidate))
+        assertFalse(argv.contains("--exec"))
+        assertFalse(argv.contains("echo unsafe"))
+        assertFalse(argv.contains("--limit-rate"))
+        assertFalse(argv.contains("must-not-leak"))
+    }
+
+    @Test
+    fun impersonationArgumentsAreStrippedInAllModes() {
+        val videoReq = built(
+            DownloadRequest(
+                url = URL,
+                mode = MediaMode.VIDEO,
+                customArguments = listOf("--impersonate", "chrome", "--impersonate=safari", "--geo-bypass"),
+            ),
+        )
+        val videoCmd = videoReq.buildCommand()
+        assertFalse(videoCmd.any { it.contains("impersonate", ignoreCase = true) })
+        assertTrue(videoCmd.any { it == "--geo-bypass" })
+
+        val audioReq = built(
+            DownloadRequest(
+                url = URL,
+                mode = MediaMode.AUDIO,
+                customArguments = listOf("--impersonate", "chrome", "--impersonate=safari", "--no-cache-dir"),
+            ),
+        )
+        val audioCmd = audioReq.buildCommand()
+        assertFalse(audioCmd.any { it.contains("impersonate", ignoreCase = true) })
+        assertTrue(audioCmd.any { it == "--no-cache-dir" })
+    }
+
     @Test
     fun wavAudioModeOmitsEmbedThumbnailEvenIfRequested() {
         val wavRequest = built(

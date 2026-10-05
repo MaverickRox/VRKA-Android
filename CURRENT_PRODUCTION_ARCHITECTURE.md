@@ -1,6 +1,6 @@
-# VRKA Android 5.0 — Current Production Architecture
+# VRKA Android 5.0.1 — Current Production Architecture
 
-This is the source-audited architecture after the VRKA 5.0 correction pass. The verified APK, test, and lint results are in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+This documents the current 5.0.1 production source. Its download and media-processing architecture is the final shipped 5.0 design; 5.0.1 repairs and hardens the application updater. Release-specific build and test evidence is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
 
 ## Normal downloads
 
@@ -17,11 +17,15 @@ An eligible yt-dlp failure can enter Browser Fallback. GeckoView navigates the p
 - **uBlock Origin:** browser request filtering.
 - **yt-dlp:** normal and Browser Fallback transfers; component update support.
 - **FFmpeg:** local processing, probing, validation, and optional H.264 conversion.
-- **Media3 / remote FFmpeg router:** code remains in the source but has no active `VrkaDownloadManager` call site.
-- **N_m3u8DL-RE:** capability gate remains disabled.
+- **Dormant transfer prototype:** `VrkaDownloadManager.downloadViaMediaEngine` and `MediaEngineRouter` remain in the source, but `downloadViaMediaEngine` has no callers. The production flow uses `downloadOnce` for normal jobs and for Browser Fallback candidates; it does not route transfers to Media3, FFmpeg download engines, or N_m3u8DL-RE.
+- **N_m3u8DL-RE:** capability gate remains disabled, and its only router is dormant.
 - **Retired Puemos extension:** no shipped asset, runtime registration, component row, or updater path remains. One-time migration code removes the previous extension and its old update state from existing installs.
 
-No dormant transfer route was reconnected by the UI or component cleanup changes.
+No dormant transfer route was reconnected by the UI or component cleanup changes. The dormant code is retained as source only; its behavior is not a shipped production capability.
+
+## Application updater
+
+The updater accepts stable three-part tags and requires the exact `VRKA-Android-vX.Y.Z.apk` asset for the parsed version. It validates HTTPS, approved hosts, standard port, and every redirect hop for release metadata and APK transfers. Invalid release metadata is an error; automatic checks keep it quiet while a manual check exposes it. WorkManager downloads into the private update cache. Before the Android installer opens, VRKA verifies the cache location, package ID, filename/version agreement, increasing version code, and a matching signing-certificate fingerprint.
 
 ## Custom yt-dlp templates and headers
 
@@ -29,7 +33,7 @@ Templates are parsed as argument lists and passed to yt-dlp without a shell. VRK
 
 ## User-facing component state
 
-Components & Updates lists only yt-dlp and uBlock Origin. Rows follow the v4.5.3 pattern: component title, `Installed: v…`, state badge, and the result message with checked/latest version when available. The Stable/Nightly selector appears on the `yt-dlp` row. The section has no explanatory implementation text. The check button has deliberate spacing before its following separator.
+Components & Updates lists only yt-dlp and uBlock Origin. Rows show the component name, installed version, state, and checked/latest version when available. The Stable/Nightly selector appears on the yt-dlp row. The check button is spaced before the following separator.
 
 `InstalledComponentVersionReader` reads `yt_dlp/version.py` dynamically from the active installed yt-dlp zipapp, initialized runtime `versionName()`, stored preferences, or directly from the active bundled `R.raw.ytdlp` resource by extracting `yt_dlp/version.py` through `ZipFile` (skipping the zipapp shebang line without hardcoding). Persisted manager/library versions serve as secondary fallbacks. The UI displays the resolved installed version, while remote latest-version results remain a separate value. During resolution it shows `Resolving…`, settling cleanly to the installed version without aborting or throwing false `INSTALLED_VERSION_UNAVAILABLE` exceptions.
 
