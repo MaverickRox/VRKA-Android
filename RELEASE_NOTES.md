@@ -1,20 +1,35 @@
 # VRKA Android 5.0.2
 
-VRKA Android 5.0.2 improves background application update reliability, download persistence, and installation handling.
+## 5.0.2
 
-## Highlights
+- Fixed in-app application update detection and APK selection.
+- Improved background application updates with persistent WorkManager downloads.
+- Added retry handling for temporary network failures and connection interruptions.
+- Improved APK staging, verification, and update-ready notification handling.
+- Improved update installation and recovery behavior.
 
-- **Background Update Persistence:** Application update downloads run independently in the background via WorkManager, continuing smoothly when VRKA is backgrounded.
-- **Network Resilience:** Update downloads now automatically retry transient network failures (such as connection resets or aborts) with bounded backoff instead of terminating the task prematurely.
-- **Safe Staging:** Update APKs are staged securely in private storage and thoroughly verified for package identity, version sequence, checksum integrity, and production signature before being marked ready to install.
-- **Update-Ready Flow:** When an update finishes downloading in the background, a ready-to-install notification allows opening the update directly, and foregrounding the app displays the ready state for straightforward installation.
+## 5.0
 
-## Complete 5.0 Features Summary
+- Redesigned the interface with the Liquid Glass navigation system and horizontal swipe navigation.
+- Added configurable concurrent downloads with bounded scheduling and independent cancellation/failure handling.
+- Added Android Share Sheet support with robust shared-URL extraction and Download URL pre-filling.
+- Added actual downloaded-resolution tracking and improved Queue/History media metadata.
+- Added safer History management with record-only deletion, file deletion, multi-select, batch actions, and destructive-action safeguards.
+- Improved download state persistence across process restarts and hardened terminal job-state handling.
+- Restored and hardened Browser Fallback discovery and transfer handoff through GeckoView and yt-dlp.
+- Improved Browser Fallback reliability by separating browser UI/session lifecycle from active transfers and removing blocking worker operations.
+- Added validated custom yt-dlp argument templates with shell-free execution, safe staging/output handling, and fallback isolation.
+- Improved Android yt-dlp compatibility, including handling of unsupported impersonation targets.
+- Added optional, default-off H.264 Compatibility Mode using local FFmpeg conversion and post-conversion validation.
+- Reworked subtitle handling with targeted language selection, rate-limit/failure isolation, container-aware embedding, and final subtitle-track verification.
+- Improved YouTube subtitle handling for creator/manual captions and automatic-caption fallback.
+- Upgraded GeckoView to 156.0.20260921121718 and improved browser-component/runtime reporting.
+- Improved component updater reliability, installed-version detection, state transitions, cancellation, and channel switching.
+- Hardened request/header handling, private browser-candidate state, diagnostics, output validation, and staged-file cleanup.
+- Improved Settings descriptions and component/status presentation to reflect the final production architecture.
 
-- **Liquid Glass Interface:** Fluid AMOLED-black UI with glass navigation, custom typography, and responsive swipe navigation across screens.
-- **Concurrent Queue:** Configurable concurrent downloads with persistent task state preserved across app restarts.
-- **System Integration:** Android Share Sheet intake and native file sharing.
-- **Browser Fallback & Discovery:** Passive stream detection in GeckoView with built-in uBlock Origin protection.
-- **Media Engine:** yt-dlp runtime with dynamic version detection, custom argument templates, format selection, and subtitle extraction.
-- **Compatibility Mode:** Optional on-device H.264 video conversion via local FFmpeg.
-- **Security & Integrity:** Strict HTTPS redirect enforcement, domain validation, and APK signature verification.
+## Known Limitations
+
+- Browser Fallback downloads do not currently fetch subtitles.
+- H.264 Compatibility Mode is optional and disabled by default.
+- Browser Fallback remains dependent on site discovery and yt-dlp/site compatibility.
