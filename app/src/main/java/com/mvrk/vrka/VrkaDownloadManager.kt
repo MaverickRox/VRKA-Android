@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,6 +61,7 @@ class VrkaDownloadManager(
     private val scope: CoroutineScope,
 ) {
     private val pendingQueue = ConcurrentLinkedQueue<String>()
+    private val pendingIds = ConcurrentHashMap.newKeySet<String>()
     private val activeRunningJobs = ConcurrentHashMap<String, Job>()
     private val schedulerTrigger = Channel<Unit>(Channel.CONFLATED)
     private val schedulerMutex = Mutex()
@@ -146,6 +148,13 @@ class VrkaDownloadManager(
         schedulerTrigger.trySend(Unit)
     }
 
+    private fun admitToQueue(jobId: String) {
+        if (pendingIds.add(jobId)) {
+            pendingQueue.add(jobId)
+            triggerScheduler()
+        }
+    }
+
     private suspend fun pumpQueue() {
         schedulerMutex.withLock {
             val settings = settingsRepository.settings.value
@@ -156,6 +165,7 @@ class VrkaDownloadManager(
             }
             while (activeRunningJobs.size < maxConcurrent) {
                 val nextJobId = pendingQueue.poll() ?: break
+                pendingIds.remove(nextJobId)
                 if (isCancelled(nextJobId)) continue
                 val job = current(nextJobId)
                 if (job == null || job.state.isTerminal) continue
@@ -194,30 +204,46 @@ class VrkaDownloadManager(
         val id = UUID.randomUUID().toString()
         val job = DownloadJob(id = id, request = queuedRequest)
         mutate(persist = true) { listOf(job) + it }
-        pendingQueue.add(id)
-        triggerScheduler()
+        admitToQueue(id)
         return id
     }
 
     fun retry(jobId: String): String? {
         val previous = _jobs.value.firstOrNull { it.id == jobId } ?: return null
         if (!previous.state.isTerminal) return null
-        val id = UUID.randomUUID().toString()
+        if (previous.state == JobState.DONE) return null
+        cancelled.remove(jobId)
+        runCatching { cleanupStaging(jobId) }
+        activeFallbackEngines.remove(jobId)?.let { engine ->
+            runCatching {
+                engine.cancel()
+                engine.cleanup()
+            }
+        }
+        if (_activeFallback.value?.jobId == jobId) {
+            _activeFallback.value = null
+        }
         val request = previous.request.copy(
             resolvedMediaUrl = null,
             resolvedHeaders = emptyMap(),
         )
-        val replacement = DownloadJob(
-            id = id,
+        // The logical job identity is stable across retries: late callbacks from an
+        // older generation are rejected by attempt-scoped updates.
+        val replacement = previous.copy(
             request = request,
-            title = previous.title,
-            detail = "Queued retry",
+            state = JobState.QUEUED,
+            detail = "Queued retry (attempt ${previous.attempt + 1})",
+            progress = 0f,
+            speed = "",
+            etaSeconds = null,
+            outputUris = emptyList(),
+            error = "",
             attempt = previous.attempt + 1,
+            updatedAt = System.currentTimeMillis(),
         )
-        mutate(persist = true) { listOf(replacement) + it }
-        pendingQueue.add(id)
-        triggerScheduler()
-        return id
+        replace(replacement, persist = true)
+        admitToQueue(jobId)
+        return jobId
     }
 
     fun cancel(jobId: String) {
@@ -225,6 +251,7 @@ class VrkaDownloadManager(
         if (job.state.isTerminal) return
         cancelled += jobId
         pendingQueue.remove(jobId)
+        pendingIds.remove(jobId)
         activeRunningJobs.remove(jobId)?.cancel()
         runCatching { activeFallbackEngines.remove(jobId)?.apply { cancel(); cleanup() } }
         runCatching { activeEngineTokens.remove(jobId)?.cancel() }
@@ -255,6 +282,7 @@ class VrkaDownloadManager(
 
     fun setJobDestination(jobId: String, treeUri: String) {
         val job = current(jobId) ?: return
+        if (job.state != JobState.WAITING_FOR_USER) return
         val updated = job.copy(
             request = job.request.copy(destinationTreeUri = treeUri),
             state = JobState.PREPARING,
@@ -262,8 +290,7 @@ class VrkaDownloadManager(
             updatedAt = System.currentTimeMillis(),
         )
         replace(updated, persist = true)
-        pendingQueue.add(jobId)
-        triggerScheduler()
+        admitToQueue(jobId)
     }
 
     fun fileExists(uriText: String): Boolean = publisher.fileExists(uriText)
@@ -516,42 +543,62 @@ class VrkaDownloadManager(
                 }
             }
 
-            // Direct recovery retry: only retry if category in (CLOUDFLARE, HTTP) and transfer has not started
-            if (
-                failure != null &&
-                !customCommandMode &&
-                job.request.resolvedMediaUrl == null &&
-                !initialTransferStarted &&
-                !isCancelled(jobId) &&
-                shouldRetryDirect(failure)
-            ) {
-                currentStage = "Direct Recovery"
-                cleanupStaging(job.id)
-                update(
-                    job.id,
-                    state = JobState.PREPARING,
-                    detail = "Retrying direct extraction",
-                    persist = true,
-                )
-                failure = runCatching { downloadOnce(job, recoveryAttempt = true) }.exceptionOrNull()
-                if (failure != null) {
-                    Log.e("VRKA", "Direct recovery failed: ${safeError(failure)}")
-                    val retryCategory = classifyDownloadError(cleanErrorOutput(failure.message.orEmpty()))
-                    if (retryCategory != FailureCategory.UNKNOWN) {
-                        priorCategories.add(retryCategory)
-                    }
-                    if (retryCategory == FailureCategory.IMPERSONATION) {
-                        Log.w("VRKA", "Direct recovery encountered impersonation error; retrying native yt-dlp without impersonation")
-                        currentStage = "Native Retry"
-                        DownloadRequestFactory.setImpersonationSupported(false)
-                        cleanupStaging(job.id)
-                        update(
-                            job.id,
-                            state = JobState.PREPARING,
-                            detail = "Retrying native extraction without impersonation",
-                            persist = true,
-                        )
-                        failure = runCatching { downloadOnce(job, recoveryAttempt = false) }.exceptionOrNull()
+            // Bounded automatic retries for transient direct failures. Skipped after a
+            // real transfer started, for resolved browser candidates, and for custom commands.
+            if (failure != null && !customCommandMode && job.request.resolvedMediaUrl == null && !initialTransferStarted) {
+                var retriesUsed = 0
+                while (failure != null && retriesUsed < RetryPolicy.MAX_TOTAL_ATTEMPTS - 1 && !isCancelled(jobId)) {
+                    val attemptFailure = failure ?: break
+                    val attemptTail = (attemptFailure as? DownloadExecutionException)?.outputTail
+                        ?.joinToString("\n")
+                        .orEmpty()
+                    val attemptMessage = attemptFailure.message.orEmpty()
+                    val category = classifyDownloadError(cleanErrorOutput(attemptMessage))
+                    val decision = RetryPolicy.decide(
+                        category = category,
+                        errorMessage = buildString {
+                            append(attemptMessage)
+                            append('\n')
+                            append(attemptTail)
+                        },
+                        transferStarted = (attemptFailure as? DownloadExecutionException)?.transferStarted == true ||
+                            (current(jobId)?.progress ?: 0f) > 0f,
+                        hasResolvedMediaUrl = false,
+                    )
+                    if (!decision.retryable) break
+
+                    retriesUsed++
+                    val delayMs = RetryPolicy.delayForRetry(retriesUsed)
+                    currentStage = "Automatic Retry"
+                    update(
+                        job.id,
+                        state = JobState.PREPARING,
+                        detail = "Retrying in ${(delayMs / 1000).coerceAtLeast(1)}s " +
+                            "(attempt ${retriesUsed + 1} of ${RetryPolicy.MAX_TOTAL_ATTEMPTS})",
+                        progress = 0f,
+                        speed = "",
+                        etaSeconds = null,
+                        persist = true,
+                        expectedAttempt = job.attempt,
+                    )
+                    delay(delayMs)
+                    if (isCancelled(jobId)) return
+                    cleanupStaging(job.id)
+                    update(
+                        job.id,
+                        state = JobState.PREPARING,
+                        detail = "Retrying direct extraction (attempt ${retriesUsed + 1} of ${RetryPolicy.MAX_TOTAL_ATTEMPTS})",
+                        persist = true,
+                        expectedAttempt = job.attempt,
+                    )
+                    failure = runCatching { downloadOnce(job, recoveryAttempt = true) }.exceptionOrNull()
+                    if (failure != null) {
+                        Log.e("VRKA", "Automatic retry $retriesUsed failed: ${safeError(failure!!)}")
+                        if (category != FailureCategory.UNKNOWN) {
+                            priorCategories.add(category)
+                        }
+                    } else {
+                        Log.i("VRKA", "Automatic retry $retriesUsed succeeded for $jobId")
                     }
                 }
             }
@@ -636,6 +683,10 @@ class VrkaDownloadManager(
                     }
                     when (result) {
                             is FallbackResult.Success -> {
+                                if (isCancelled(jobId) || current(jobId)?.state?.isTerminal == true) {
+                                    Log.i("VRKA", "Discarding browser fallback result for cancelled job $jobId")
+                                    return
+                                }
                                 val bundle = result.bundle
                                 val headers = buildMap {
                                     if (bundle.referer.isNotBlank()) put("Referer", bundle.referer)
@@ -786,7 +837,7 @@ class VrkaDownloadManager(
                 if (!isCommandLineEcho && line.contains("__VRKA_TITLE__", ignoreCase = true)) {
                     val parsedTitle = line.substringAfter("__VRKA_TITLE__").substringAfter("__vrka_title__").trim()
                     if (parsedTitle.isNotBlank()) {
-                        update(job.id, title = parsedTitle)
+                        update(job.id, title = parsedTitle, expectedAttempt = job.attempt)
                     }
                 }
 
@@ -794,7 +845,7 @@ class VrkaDownloadManager(
                     val parsedRes = line.substringAfter("__VRKA_RES__").substringAfter("__vrka_res__").trim()
                     val resHeight = parsedRes.toIntOrNull()
                     if (resHeight != null && resHeight > 0) {
-                        update(job.id, actualResolution = "${resHeight}p")
+                        update(job.id, actualResolution = "${resHeight}p", expectedAttempt = job.attempt)
                     }
                 }
 
@@ -818,6 +869,7 @@ class VrkaDownloadManager(
                         speed = speedPattern.find(line)?.groupValues?.getOrNull(1).orEmpty(),
                         etaSeconds = eta.takeIf { it >= 0 },
                         detail = detail,
+                        expectedAttempt = job.attempt,
                     )
                 }
             }
@@ -906,9 +958,16 @@ class VrkaDownloadManager(
             requireAudioStreams(job, outputs)
         }
         if (isCancelled(job.id)) throw CancellationException("Download cancelled")
-        val published = outputs.mapIndexed { index, file ->
-            val outputName = preferredOutputName(job, file, index, outputs.size)
-            publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+        val published = mutableListOf<String>()
+        try {
+            outputs.forEachIndexed { index, file ->
+                if (isCancelled(job.id)) throw CancellationException("Download cancelled")
+                val outputName = preferredOutputName(job, file, index, outputs.size)
+                published += publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+            }
+        } catch (error: Throwable) {
+            published.forEach { uri -> runCatching { publisher.delete(uri) } }
+            throw error
         }
         val isOpus = job.request.mode == MediaMode.AUDIO && job.request.audioFormat == AudioFormat.OPUS
         val transcoded = isOpus && outputLines.any { it.contains("libopus", ignoreCase = true) || it.contains("Converting audio", ignoreCase = true) }
@@ -1026,9 +1085,16 @@ class VrkaDownloadManager(
                     } else {
                         requireAudioStreams(job, outputs)
                     }
-                    val published = outputs.mapIndexed { index, file ->
-                        val outputName = preferredOutputName(job, file, index, outputs.size)
-                        publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+                    val published = mutableListOf<String>()
+                    try {
+                        outputs.forEachIndexed { index, file ->
+                            if (isCancelled(job.id)) throw CancellationException("Download cancelled")
+                            val outputName = preferredOutputName(job, file, index, outputs.size)
+                            published += publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+                        }
+                    } catch (error: Throwable) {
+                        published.forEach { uri -> runCatching { publisher.delete(uri) } }
+                        throw error
                     }
                     update(
                         job.id,
@@ -1276,22 +1342,29 @@ class VrkaDownloadManager(
         actualResolution: String? = null,
         subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus? = null,
         persist: Boolean = false,
+        expectedAttempt: Int? = null,
     ) {
         mutate(persist) { list ->
             list.map { job ->
-                if (job.id != jobId) job else job.copy(
-                    state = state ?: job.state,
-                    title = title ?: job.title,
-                    detail = detail ?: job.detail,
-                    progress = progress ?: job.progress,
-                    speed = speed ?: job.speed,
-                    etaSeconds = etaSeconds ?: job.etaSeconds,
-                    outputUris = outputUris ?: job.outputUris,
-                    error = error ?: job.error,
-                    actualResolution = actualResolution ?: job.actualResolution,
-                    subtitleStatus = subtitleStatus ?: job.subtitleStatus,
-                    updatedAt = System.currentTimeMillis(),
-                )
+                when {
+                    job.id != jobId -> job
+                    expectedAttempt != null && job.attempt != expectedAttempt -> job
+                    !JobStateGuard.allowsStateChange(job.state, state) -> job
+                    state == null && !JobStateGuard.allowsMetadataUpdate(job.state) -> job
+                    else -> job.copy(
+                        state = state ?: job.state,
+                        title = title ?: job.title,
+                        detail = detail ?: job.detail,
+                        progress = progress ?: job.progress,
+                        speed = speed ?: job.speed,
+                        etaSeconds = etaSeconds ?: job.etaSeconds,
+                        outputUris = outputUris ?: job.outputUris,
+                        error = error ?: job.error,
+                        actualResolution = actualResolution ?: job.actualResolution,
+                        subtitleStatus = subtitleStatus ?: job.subtitleStatus,
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                }
             }
         }
         if (state?.isTerminal == true) {
@@ -1310,22 +1383,6 @@ class VrkaDownloadManager(
 
     private fun normalizedVersion(value: String): String =
         value.removePrefix("yt-dlp ").trim()
-
-    private fun shouldRetryDirect(error: Throwable): Boolean {
-        val message = error.message.orEmpty().lowercase()
-        val category = classifyDownloadError(message)
-        if (category !in setOf(FailureCategory.CLOUDFLARE, FailureCategory.HTTP)) {
-            return false
-        }
-        val nonRecoverableNetworkErrors = listOf(
-            "timed out",
-            "timeout",
-            "network is unreachable",
-            "unable to resolve host",
-            "name or service not known",
-        )
-        return nonRecoverableNetworkErrors.none(message::contains)
-    }
 
     private fun safeError(error: Throwable): String {
         val raw = (error.message ?: error::class.java.simpleName)
