@@ -1084,6 +1084,10 @@ internal fun SettingsScreen(
         }
 
         if (showAddRuntimeDialog) {
+            // Resolved here so the dialog callbacks read composition-scoped values rather
+            // than querying resources from LocalContext outside composition.
+            val repoRequiredMessage = stringResource(R.string.runtime_repo_required)
+            val installFailedMessage = stringResource(R.string.runtime_install_failed)
             AlertDialog(
                 onDismissRequest = { if (!runtimeState.working) showAddRuntimeDialog = false },
                 title = {
@@ -1136,7 +1140,7 @@ internal fun SettingsScreen(
                         onClick = {
                             val repo = runtimeRepoInput.trim()
                             if (repo.isBlank()) {
-                                runtimeDialogError = context.getString(R.string.runtime_repo_required)
+                                runtimeDialogError = repoRequiredMessage
                                 return@TextButton
                             }
                             scope.launch {
@@ -1148,7 +1152,7 @@ internal fun SettingsScreen(
                                     }
                                     .onFailure { error ->
                                         runtimeDialogError = error.message
-                                            ?: context.getString(R.string.runtime_install_failed)
+                                            ?: installFailedMessage
                                     }
                             }
                         },
