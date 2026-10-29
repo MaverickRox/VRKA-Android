@@ -69,6 +69,37 @@ internal object DownloadRequestFactory {
             addSessionContext(request)
         }
 
+    /**
+     * Metadata-only preflight. Uses the same source and format selector as [download] so
+     * `requested_formats` describes exactly the streams the transfer will fetch, without
+     * transferring media bytes.
+     */
+    fun sizeEstimate(request: DownloadRequest): YoutubeDLRequest =
+        YoutubeDLRequest(request.resolvedMediaUrl ?: request.url).apply {
+            addOption("--no-warnings")
+            addOption("--legacy-server-connect")
+            addOption("--simulate")
+            addOption("--dump-single-json")
+            if (request.isPlaylist) {
+                request.playlistStart?.let { addOption("--playlist-start", it) }
+                request.playlistEnd?.let { addOption("--playlist-end", it) }
+            } else {
+                addOption("--no-playlist")
+            }
+            if (request.mode == MediaMode.AUDIO) {
+                addOption("-f", audioFormatSelector(request.audioFormat))
+            } else {
+                addOption("-f", buildVideoFormat(request.quality.height, request.prefer60Fps))
+            }
+            addJsRuntime(this)
+            addSessionContext(request)
+        }
+
+    internal fun audioFormatSelector(format: AudioFormat): String = when (format) {
+        AudioFormat.OPUS -> "bestaudio[acodec^=opus]/bestaudio/best"
+        else -> "bestaudio/best"
+    }
+
     fun download(
         job: DownloadJob,
         stagingDirectory: File,
@@ -104,11 +135,7 @@ internal object DownloadRequestFactory {
             }
 
             if (options.mode == MediaMode.AUDIO) {
-                val format = when (options.audioFormat) {
-                    AudioFormat.OPUS -> "bestaudio[acodec^=opus]/bestaudio/best"
-                    else -> "bestaudio/best"
-                }
-                addOption("-f", format)
+                addOption("-f", audioFormatSelector(options.audioFormat))
                 addOption("--extract-audio")
                 addOption("--audio-format", options.audioFormat.codec)
                 if (options.audioFormat == AudioFormat.MP3) {

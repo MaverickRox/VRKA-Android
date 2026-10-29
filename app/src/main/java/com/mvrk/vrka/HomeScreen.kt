@@ -3,6 +3,7 @@ package com.mvrk.vrka
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.text.format.Formatter as AndroidFormatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -29,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +67,7 @@ internal fun HomeScreen(
     initialUrl: String? = null,
     onInitialUrlConsumed: () -> Unit = {},
     onEnqueue: (DownloadRequest) -> Unit,
+    onEstimateSize: suspend (DownloadRequest) -> SizeEstimate,
     onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val context = LocalContext.current
@@ -102,8 +105,13 @@ internal fun HomeScreen(
     var origin by remember { mutableStateOf("") }
     var customHeaders by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var validation by remember { mutableStateOf("") }
-    var pendingRequestToEnqueue by remember { mutableStateOf<DownloadRequest?>(null) }
-    var showLocationDialog by remember { mutableStateOf(false) }
+    var confirmationRequest by remember { mutableStateOf<DownloadRequest?>(null) }
+    var confirmationNeedsLocation by remember { mutableStateOf(false) }
+    var showConfirmationDialog by remember { mutableStateOf(false) }
+    var sizeEstimate by remember { mutableStateOf<SizeEstimate?>(null) }
+    var estimatePending by remember { mutableStateOf(false) }
+    var skipFutureEstimates by remember { mutableStateOf(false) }
+    val estimateGate = remember { SizeEstimateGate() }
     var dialogSelectedUri by remember { mutableStateOf("") }
     var setAsDefaultChecked by remember { mutableStateOf(true) }
 
@@ -119,6 +127,75 @@ internal fun HomeScreen(
             }
             dialogSelectedUri = uri.toString()
         }
+    }
+
+    fun dismissConfirmation() {
+        estimateGate.invalidate()
+        showConfirmationDialog = false
+        confirmationRequest = null
+        sizeEstimate = null
+        estimatePending = false
+        skipFutureEstimates = false
+    }
+
+    fun beginConfirmation(request: DownloadRequest, needsLocation: Boolean, isLocationValid: Boolean) {
+        if (!settings.showDownloadSizeConfirmation && !needsLocation) {
+            onEnqueue(request.copy(destinationTreeUri = settings.outputTreeUri))
+            url = ""
+            validation = ""
+            return
+        }
+        confirmationRequest = request
+        confirmationNeedsLocation = needsLocation
+        showConfirmationDialog = true
+        skipFutureEstimates = false
+        if (needsLocation) {
+            dialogSelectedUri = if (isLocationValid) settings.outputTreeUri else ""
+            setAsDefaultChecked = !settings.isDownloadLocationConfigured || !isLocationValid
+        } else {
+            dialogSelectedUri = ""
+        }
+        if (!settings.showDownloadSizeConfirmation) {
+            sizeEstimate = SizeEstimate.unavailable("disabled")
+            estimatePending = false
+            return
+        }
+        sizeEstimate = null
+        estimatePending = true
+        val token = estimateGate.begin()
+        scope.launch {
+            val result = runCatching { onEstimateSize(request) }
+                .getOrElse { SizeEstimate.unavailable("error") }
+            // Reject metadata that belongs to an older selection or a dismissed sheet.
+            if (!estimateGate.accepts(token)) return@launch
+            sizeEstimate = result
+            estimatePending = false
+        }
+    }
+
+    fun confirmDownload() {
+        val request = confirmationRequest ?: return
+        if (skipFutureEstimates) {
+            scope.launch { repository.setShowDownloadSizeConfirmation(false) }
+        }
+        if (confirmationNeedsLocation) {
+            val saveMode = if (setAsDefaultChecked) {
+                SaveLocationMode.REMEMBER_LOCATION
+            } else {
+                SaveLocationMode.ASK_EVERY_TIME
+            }
+            if (setAsDefaultChecked) {
+                onUpdateDownloadLocation(dialogSelectedUri, saveMode, true)
+            } else {
+                onUpdateDownloadLocation(settings.outputTreeUri, saveMode, true)
+            }
+            onEnqueue(request.copy(destinationTreeUri = dialogSelectedUri))
+        } else {
+            onEnqueue(request.copy(destinationTreeUri = settings.outputTreeUri))
+        }
+        url = ""
+        validation = ""
+        dismissConfirmation()
     }
 
     Column(
@@ -775,16 +852,7 @@ internal fun HomeScreen(
                     settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME ||
                     !isLocationValid
 
-                if (needsLocationPrompt) {
-                    pendingRequestToEnqueue = req
-                    dialogSelectedUri = if (isLocationValid) settings.outputTreeUri else ""
-                    setAsDefaultChecked = !settings.isDownloadLocationConfigured || !isLocationValid
-                    showLocationDialog = true
-                } else {
-                    onEnqueue(req.copy(destinationTreeUri = settings.outputTreeUri))
-                    url = ""
-                    validation = ""
-                }
+                beginConfirmation(req, needsLocationPrompt, isLocationValid)
             },
         )
 
@@ -797,126 +865,21 @@ internal fun HomeScreen(
             )
         }
 
-        if (showLocationDialog && pendingRequestToEnqueue != null) {
-            AlertDialog(
-                onDismissRequest = {
-                    showLocationDialog = false
-                    pendingRequestToEnqueue = null
-                },
-                title = {
-                    Text(
-                        stringResource(R.string.dialog_download_location_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = VrkaTokens.TextPrimary,
-                    )
-                },
-                text = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.dialog_download_location_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = VrkaTokens.TextSecondary,
-                        )
-
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = VrkaTokens.SurfaceCard,
-                            border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Column {
-                                    Text(
-                                        stringResource(R.string.label_destination),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = VrkaTokens.TextTertiary,
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        OutputPublisher.formatDisplayPath(dialogSelectedUri),
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = VrkaTokens.TextPrimary,
-                                    )
-                                }
-                                VrkaOutlinedButton(
-                                    text = stringResource(R.string.btn_choose_location),
-                                    onClick = { folderPicker.launch(null) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    height = 36.dp,
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { setAsDefaultChecked = !setAsDefaultChecked }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = setAsDefaultChecked,
-                                onCheckedChange = { setAsDefaultChecked = it },
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                stringResource(R.string.opt_remember_location),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = VrkaTokens.TextPrimary,
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            val req = pendingRequestToEnqueue ?: return@Button
-                            val mode = if (setAsDefaultChecked) SaveLocationMode.REMEMBER_LOCATION else SaveLocationMode.ASK_EVERY_TIME
-                            val destUri = dialogSelectedUri
-                            if (setAsDefaultChecked) {
-                                onUpdateDownloadLocation(destUri, mode, true)
-                            } else {
-                                onUpdateDownloadLocation(settings.outputTreeUri, mode, true)
-                            }
-                            onEnqueue(req.copy(destinationTreeUri = destUri))
-                            url = ""
-                            validation = ""
-                            showLocationDialog = false
-                            pendingRequestToEnqueue = null
-                        },
-                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                            containerColor = VrkaTokens.Accent,
-                            contentColor = Color.White,
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.btn_download),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                },
-                dismissButton = {
-                    VrkaTextButton(
-                        text = stringResource(R.string.btn_cancel),
-                        onClick = {
-                            showLocationDialog = false
-                            pendingRequestToEnqueue = null
-                        },
-                    )
-                },
-                containerColor = VrkaTokens.SurfaceElevated,
-                shape = RoundedCornerShape(18.dp),
+        if (showConfirmationDialog && confirmationRequest != null) {
+            DownloadConfirmationDialog(
+                request = confirmationRequest!!,
+                estimate = sizeEstimate,
+                estimatePending = estimatePending,
+                showEstimate = settings.showDownloadSizeConfirmation,
+                needsLocation = confirmationNeedsLocation,
+                destinationUri = dialogSelectedUri,
+                setAsDefault = setAsDefaultChecked,
+                skipFutureEstimates = skipFutureEstimates,
+                onToggleSkipFuture = { skipFutureEstimates = it },
+                onChooseLocation = { folderPicker.launch(null) },
+                onToggleSetDefault = { setAsDefaultChecked = it },
+                onConfirm = { confirmDownload() },
+                onDismiss = { dismissConfirmation() },
             )
         }
 
@@ -980,6 +943,252 @@ private fun CompactNumberField(
         label = { Text(label) },
         singleLine = true,
         modifier = modifier,
+    )
+}
+
+@Composable
+private fun DownloadConfirmationDialog(
+    request: DownloadRequest,
+    estimate: SizeEstimate?,
+    estimatePending: Boolean,
+    showEstimate: Boolean,
+    needsLocation: Boolean,
+    destinationUri: String,
+    setAsDefault: Boolean,
+    skipFutureEstimates: Boolean,
+    onToggleSkipFuture: (Boolean) -> Unit,
+    onChooseLocation: () -> Unit,
+    onToggleSetDefault: (Boolean) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val summary = when (request.mode) {
+        MediaMode.VIDEO -> {
+            val quality = if (request.quality == VideoQuality.BEST) {
+                stringResource(R.string.video_quality_best)
+            } else {
+                request.quality.label
+            }
+            val fps = if (request.prefer60Fps) {
+                stringResource(R.string.readout_fps_on)
+            } else {
+                stringResource(R.string.readout_fps_off)
+            }
+            stringResource(R.string.readout_video, quality, fps)
+        }
+        MediaMode.AUDIO -> when (request.audioFormat) {
+            AudioFormat.MP3 -> stringResource(R.string.readout_mp3, request.mp3Bitrate)
+            AudioFormat.OPUS -> stringResource(R.string.readout_opus)
+            AudioFormat.WAV -> stringResource(R.string.readout_wav)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(
+                    if (showEstimate) {
+                        R.string.dialog_confirm_download_title
+                    } else {
+                        R.string.dialog_download_location_title
+                    },
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = VrkaTokens.TextPrimary,
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (showEstimate) {
+                    estimate?.title?.takeIf { it.isNotBlank() }?.let { mediaTitle ->
+                        Text(
+                            mediaTitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = VrkaTokens.TextPrimary,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Column {
+                    Text(
+                        stringResource(R.string.readout_title),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                        color = VrkaTokens.TextTertiary,
+                    )
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                        fontWeight = FontWeight.SemiBold,
+                        color = VrkaTokens.TextPrimary,
+                    )
+                }
+                if (showEstimate) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = VrkaTokens.SurfaceCard,
+                        border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            when {
+                                estimatePending -> Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = VrkaTokens.AccentLight,
+                                    )
+                                    Text(
+                                        stringResource(R.string.estimate_checking),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = VrkaTokens.TextSecondary,
+                                    )
+                                }
+                                estimate?.isAvailable == true -> {
+                                    Text(
+                                        stringResource(
+                                            if (estimate.kind == SizeEstimateKind.EXACT) {
+                                                R.string.estimate_exact
+                                            } else {
+                                                R.string.estimate_approximate
+                                            },
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = VrkaTokens.TextTertiary,
+                                    )
+                                    Text(
+                                        AndroidFormatter.formatFileSize(context, estimate.bytes ?: 0L),
+                                        style = MaterialTheme.typography.titleLarge.copy(fontFamily = VrkaMonoFamily),
+                                        fontWeight = FontWeight.Bold,
+                                        color = VrkaTokens.TextPrimary,
+                                    )
+                                }
+                                else -> Text(
+                                    stringResource(R.string.estimate_unavailable),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = VrkaTokens.TextSecondary,
+                                )
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleSkipFuture(!skipFutureEstimates) }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = skipFutureEstimates,
+                            onCheckedChange = onToggleSkipFuture,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.estimate_skip_future),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = VrkaTokens.TextPrimary,
+                        )
+                    }
+                }
+                if (needsLocation) {
+                    Text(
+                        stringResource(R.string.dialog_download_location_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VrkaTokens.TextSecondary,
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = VrkaTokens.SurfaceCard,
+                        border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Column {
+                                Text(
+                                    stringResource(R.string.label_destination),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = VrkaTokens.TextTertiary,
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    OutputPublisher.formatDisplayPath(destinationUri),
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = VrkaTokens.TextPrimary,
+                                )
+                            }
+                            VrkaOutlinedButton(
+                                text = stringResource(R.string.btn_choose_location),
+                                onClick = onChooseLocation,
+                                modifier = Modifier.fillMaxWidth(),
+                                height = 36.dp,
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleSetDefault(!setAsDefault) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = setAsDefault,
+                            onCheckedChange = onToggleSetDefault,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.opt_remember_location),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = VrkaTokens.TextPrimary,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !estimatePending && estimate != null,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = VrkaTokens.Accent,
+                    contentColor = Color.White,
+                ),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(
+                    stringResource(R.string.btn_download),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+        dismissButton = {
+            VrkaTextButton(
+                text = stringResource(R.string.btn_cancel),
+                onClick = onDismiss,
+            )
+        },
+        containerColor = VrkaTokens.SurfaceElevated,
+        shape = RoundedCornerShape(18.dp),
     )
 }
 

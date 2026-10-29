@@ -101,6 +101,9 @@
     <string name="desc_location_prompt">You will be prompted to choose a location for each download.</string>
     <string name="desc_location_selected">Downloads will be saved directly to the selected location.</string>
     <string name="desc_media_detection">WebExtension • direct media, HLS and DASH discovery</string>
+    <string name="desc_size_confirmation_disabled">Size estimates are skipped before downloads</string>
+    <string name="desc_size_confirmation_enabled">Estimate the download size from metadata before each download</string>
+    <string name="desc_size_confirmation_helper">Uses yt-dlp metadata only; nothing is downloaded to calculate the size. Approximate values are labeled as approximate.</string>
     <string name="desc_up_to_date">VRKA is up to date</string>
     <string name="desc_update_available">v%1$s available</string>
     <string name="diagnostics_empty">No diagnostic entries recorded. Diagnostic logs are captured locally when a download encounters an error.</string>
@@ -114,6 +117,7 @@
     <string name="dialog_clear_all_title">Clear All History</string>
     <string name="dialog_clear_browser_desc">Clears GeckoView cookies, DOM storage, auth sessions, site data, all caches, and in-memory discovered candidates. It does not cancel an active fallback. Download history, queue and app settings are not affected.</string>
     <string name="dialog_clear_browser_title">Clear Browser Data?</string>
+    <string name="dialog_confirm_download_title">Confirm download</string>
     <string name="dialog_concurrency_desc">Running multiple downloads simultaneously uses more CPU, memory, network bandwidth, storage I/O, battery power, and device thermal capacity. Higher concurrency can increase overall resource usage.
 
 Are you sure you want to enable concurrent downloads?</string>
@@ -133,6 +137,11 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="error_trim_end">Trim end must be seconds or HH:MM:SS.</string>
     <string name="error_trim_order">Trim end must be after trim start.</string>
     <string name="error_trim_start">Trim start must be seconds or HH:MM:SS.</string>
+    <string name="estimate_approximate">Approximate size</string>
+    <string name="estimate_checking">Checking size…</string>
+    <string name="estimate_exact">Exact size</string>
+    <string name="estimate_skip_future">Don\'t show size estimates before downloads</string>
+    <string name="estimate_unavailable">Size unavailable</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d left</string>
     <string name="eta_format_minutes">%1$d:%2$02d left</string>
     <string name="failure_auth_detail">The source may require an authenticated browser session.</string>
@@ -233,6 +242,7 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="pref_font">Font</string>
     <string name="pref_h264_title">H.264 Compatibility Mode</string>
     <string name="pref_media_detection">Media Detection</string>
+    <string name="pref_size_confirmation">Size Confirmation</string>
     <string name="pref_system_default">System default</string>
     <string name="pref_theme_mode">Theme Mode</string>
     <string name="queue_empty_desc">Media you enqueue will appear here while downloading.</string>
@@ -264,6 +274,7 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="settings_heading_components">Components &amp; Updates</string>
     <string name="settings_heading_concurrency">Downloads &amp; Concurrency</string>
     <string name="settings_heading_diagnostics">Diagnostics</string>
+    <string name="settings_heading_download_behavior">Download Behavior</string>
     <string name="settings_heading_download_location">Download Location</string>
     <string name="settings_title">Settings</string>
     <string name="snackbar_enqueue_failed">Could not add download</string>

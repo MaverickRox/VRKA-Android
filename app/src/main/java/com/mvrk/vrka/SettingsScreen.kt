@@ -176,6 +176,35 @@ internal fun SettingsScreen(
             )
         }
 
+        SettingsHeading(stringResource(R.string.settings_heading_download_behavior))
+        VrkaSectionContainer {
+            VrkaSettingRow(
+                title = stringResource(R.string.pref_size_confirmation),
+                subtitle = if (settings.showDownloadSizeConfirmation) {
+                    stringResource(R.string.desc_size_confirmation_enabled)
+                } else {
+                    stringResource(R.string.desc_size_confirmation_disabled)
+                },
+            ) {
+                Switch(
+                    checked = settings.showDownloadSizeConfirmation,
+                    onCheckedChange = { enabled ->
+                        scope.launch { repository.setShowDownloadSizeConfirmation(enabled) }
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = VrkaTokens.Accent,
+                    ),
+                )
+            }
+            Text(
+                stringResource(R.string.desc_size_confirmation_helper),
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                color = VrkaTokens.TextTertiary,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            )
+        }
+
         SettingsHeading(stringResource(R.string.settings_heading_concurrency))
         var showConcurrentWarningDialog by remember { mutableStateOf(false) }
         VrkaSectionContainer {

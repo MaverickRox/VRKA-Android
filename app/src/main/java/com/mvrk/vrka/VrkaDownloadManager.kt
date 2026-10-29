@@ -98,6 +98,7 @@ class VrkaDownloadManager(
     val componentUpdateManager = ComponentUpdateManager.getInstance(context)
     val subtitleManager = com.mvrk.vrka.subtitle.VrkaSubtitleManager(context)
     val ytDlpRuntimeManager = com.mvrk.vrka.runtime.YtDlpRuntimeManager(context, scope)
+    private val sizeEstimator = SizeEstimator()
 
     fun clearDiagnostics() {
         scope.launch(Dispatchers.IO) {
@@ -386,6 +387,16 @@ class VrkaDownloadManager(
             mutate(persist = true) { list -> list.filterNot { it.state.isTerminal } }
         }
     }
+
+    /**
+     * Metadata-only preflight for the confirmation UI. Runs on the active runtime after
+     * runtime initialization; failures degrade to an "unavailable" estimate.
+     */
+    suspend fun estimateSize(request: DownloadRequest): SizeEstimate =
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            ensureInitialized()
+            sizeEstimator.estimate(request)
+        }
 
     fun updateRuntime(channel: UpdatePreference) {
         if (_runtime.value.busy) return
