@@ -811,7 +811,11 @@ class VrkaDownloadManager(
                         detail = tailOutput,
                         url = currentJob?.request?.url.orEmpty(),
                         quality = currentJob?.request?.quality?.label.orEmpty(),
-                        acquisitionMethod = if (currentJob?.request?.resolvedMediaUrl != null) "Browser Fallback" else "Native yt-dlp",
+                        acquisitionMethod = if (fallbackFailed || currentJob?.request?.resolvedMediaUrl != null) {
+                            DiagnosticStore.BROWSER_FALLBACK_METHOD
+                        } else {
+                            "Native yt-dlp"
+                        },
                     )
                 )
             }
