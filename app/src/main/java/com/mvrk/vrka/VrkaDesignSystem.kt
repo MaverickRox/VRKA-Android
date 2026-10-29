@@ -62,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -677,6 +678,49 @@ internal fun calculateNavIndicatorBounds(
     )
 }
 
+val NAV_LENS_EXPANSION_HORIZONTAL = 6.dp
+val NAV_LENS_EXPANSION_VERTICAL = 3.dp
+
+internal data class NavGlassLensBounds(
+    val leftPx: Float,
+    val topPx: Float,
+    val widthPx: Float,
+    val heightPx: Float,
+)
+
+/**
+ * 1 while resting exactly on a slot, 0 at the midpoint between two slots. The glass lens
+ * settles (expands) only around a destination and contracts while travelling, which keeps
+ * the moving edge from colliding with neighbouring slots.
+ */
+internal fun calculateNavSettleProgress(position: Float): Float {
+    val distanceFromSlot = kotlin.math.abs(position - kotlin.math.round(position))
+    return (1f - distanceFromSlot * 2f).coerceIn(0f, 1f)
+}
+
+internal fun calculateNavGlassLensBounds(
+    indicator: NavIndicatorBounds,
+    settleProgress: Float,
+    containerHeightPx: Float,
+    baseHeightPx: Float,
+    horizontalExpansionPx: Float = 0f,
+    verticalExpansionPx: Float = 0f,
+): NavGlassLensBounds {
+    val settle = settleProgress.coerceIn(0f, 1f)
+    val growX = horizontalExpansionPx.coerceAtLeast(0f) * settle
+    val growY = verticalExpansionPx.coerceAtLeast(0f) * settle
+    val width = (indicator.widthPx + growX).coerceAtLeast(0f)
+    val height = (baseHeightPx + growY)
+        .coerceAtMost(containerHeightPx.coerceAtLeast(baseHeightPx))
+        .coerceAtLeast(0f)
+    return NavGlassLensBounds(
+        leftPx = indicator.leftPx - (width - indicator.widthPx) / 2f,
+        topPx = ((containerHeightPx - height) / 2f).coerceAtLeast(0f),
+        widthPx = width,
+        heightPx = height,
+    )
+}
+
 
 val NAV_ACTIVE_DARK = Color(0xFFF5F3FF)
 val NAV_ACTIVE_LIGHT = Color(0xFF1E1B2E)
@@ -701,6 +745,9 @@ fun VrkaFloatingNavBar(
     val latestSelectedIndex by rememberUpdatedState(selectedIndex)
     val latestPagerPosition by rememberUpdatedState(pagerPosition)
     val latestOnDestinationSelected by rememberUpdatedState(onDestinationSelected)
+    // Animator scale 0 is Android's reduced-motion switch; the lens then jumps between
+    // slots instead of springing, so no motion outlasts the accessibility setting.
+    val reduceMotion = !android.animation.ValueAnimator.areAnimatorsEnabled()
 
     val capsuleBorderBrush = remember(colors.isLight) {
         if (colors.isLight) {
@@ -717,31 +764,6 @@ fun VrkaFloatingNavBar(
                     Color(0x33FFFFFF),
                     Color(0x12FFFFFF),
                     Color(0x0AFFFFFF),
-                ),
-            )
-        }
-    }
-
-    val puckTintColor = if (colors.isLight) {
-        Color(0xFFE5E2EE)
-    } else {
-        Color(0xFF282538)
-    }
-    val puckSurfaceAlpha = if (colors.isLight) 0.10f else 0.08f
-
-    val puckBorderBrush = remember(colors.isLight) {
-        if (colors.isLight) {
-            Brush.verticalGradient(
-                listOf(
-                    Color(0x1F000000),
-                    Color(0x08000000),
-                ),
-            )
-        } else {
-            Brush.verticalGradient(
-                listOf(
-                    Color(0x50FFFFFF),
-                    Color(0x20FFFFFF),
                 ),
             )
         }
@@ -798,6 +820,7 @@ fun VrkaFloatingNavBar(
             .padding(horizontal = NAV_BAR_HORIZONTAL_MARGIN),
     ) {
         val capsuleWidthPx = constraints.maxWidth.toFloat()
+        val capsuleHeightPx = constraints.maxHeight.toFloat()
         val measuredWidths = itemBounds.map { it.slotWidthPx }.filter { it > 0f }
         val slotWidthPx = measuredWidths.takeIf { it.size == destinations.size }
             ?.average()?.toFloat() ?: if (destinations.isNotEmpty()) capsuleWidthPx / destinations.size else 0f
@@ -944,24 +967,60 @@ fun VrkaFloatingNavBar(
                     slotInsetPx = insetPx,
                 )
                 if (indicatorBounds != null) {
+                    val settle by animateFloatAsState(
+                        targetValue = calculateNavSettleProgress(activePosition),
+                        animationSpec = if (reduceMotion) {
+                            tween(durationMillis = 0)
+                        } else {
+                            spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow)
+                        },
+                        label = "navGlassSettle",
+                    )
+                    val lensBounds = calculateNavGlassLensBounds(
+                        indicator = indicatorBounds,
+                        settleProgress = settle,
+                        containerHeightPx = capsuleHeightPx,
+                        baseHeightPx = with(density) { NAV_INDICATOR_HEIGHT.toPx() },
+                        horizontalExpansionPx = with(density) { NAV_LENS_EXPANSION_HORIZONTAL.toPx() },
+                        verticalExpansionPx = with(density) { NAV_LENS_EXPANSION_VERTICAL.toPx() },
+                    )
+                    val lensShape = RoundedCornerShape(percent = 50)
+                    val lensRimColor = if (colors.isLight) {
+                        Color.Black.copy(alpha = 0.10f + 0.16f * settle)
+                    } else {
+                        Color.White.copy(alpha = 0.22f + 0.20f * settle)
+                    }
+                    val lensRimBrush = Brush.verticalGradient(
+                        listOf(
+                            lensRimColor,
+                            Color.Transparent,
+                            lensRimColor.copy(alpha = lensRimColor.alpha * 0.6f),
+                        ),
+                    )
                     Box(
                         modifier = Modifier
-                            .width(with(density) { indicatorBounds.widthPx.toDp() })
-                            .height(NAV_INDICATOR_HEIGHT)
+                            .width(with(density) { lensBounds.widthPx.toDp() })
+                            .height(with(density) { lensBounds.heightPx.toDp() })
                             .align(AbsoluteAlignment.CenterLeft)
-                            .absoluteOffset { IntOffset(indicatorBounds.leftPx.roundToInt(), 0) }
+                            .absoluteOffset {
+                                IntOffset(lensBounds.leftPx.roundToInt(), lensBounds.topPx.roundToInt())
+                            }
                             .then(
                                 if (backdrop != null && isRenderEffectSupported()) {
                                     Modifier.drawBackdrop(
                                         backdrop = backdrop,
-                                        shape = { RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS) },
+                                        shape = { lensShape },
                                         effects = {
-                                            blur(with(density) { 0.5.dp.toPx() })
+                                            blur(with(density) { 0.35.dp.toPx() })
                                             if (isRuntimeShaderSupported()) {
                                                 lens(
-                                                    refractionHeight = with(density) { 20.dp.toPx() },
-                                                    refractionAmount = with(density) { 14.dp.toPx() },
-                                                    magnification = 1.35f,
+                                                    refractionHeight = with(density) {
+                                                        (18.dp + NAV_LENS_EXPANSION_VERTICAL * settle).toPx()
+                                                    },
+                                                    refractionAmount = with(density) {
+                                                        (10.dp + NAV_LENS_EXPANSION_HORIZONTAL * settle).toPx()
+                                                    },
+                                                    magnification = 1.16f + 0.16f * settle,
                                                     depthEffect = true,
                                                     chromaticAberration = true,
                                                 )
@@ -969,35 +1028,54 @@ fun VrkaFloatingNavBar(
                                         },
                                         highlight = {
                                             Highlight(
-                                                width = 1.2.dp,
+                                                width = 0.9.dp + 0.7.dp * settle,
                                                 style = HighlightStyle.Default(
-                                                    color = Color.White.copy(alpha = if (colors.isLight) 0.45f else 0.40f),
-                                                    angle = 50f,
+                                                    color = Color.White.copy(
+                                                        alpha = if (colors.isLight) 0.40f else 0.34f,
+                                                    ),
+                                                    angle = 45f + 22f * settle,
                                                 ),
                                             )
                                         },
                                         shadow = null,
                                         onDrawSurface = {
-                                            val lensSheen = if (colors.isLight) {
-                                                Color.White.copy(alpha = 0.08f)
-                                            } else {
-                                                Color.White.copy(alpha = 0.05f)
-                                            }
-                                            drawRect(color = lensSheen)
+                                            val baseSheen = if (colors.isLight) 0.10f else 0.06f
+                                            drawRect(
+                                                color = if (colors.isLight) {
+                                                    Color.White.copy(alpha = 0.04f + 0.05f * settle)
+                                                } else {
+                                                    Color(0xFF6E56CF).copy(alpha = 0.03f + 0.05f * settle)
+                                                },
+                                            )
+                                            val sweep = ((activePosition % 1f) + 1f) % 1f
+                                            val band = size.width * 0.55f
+                                            val center = size.width * (0.18f + 0.64f * sweep)
+                                            drawRect(
+                                                brush = Brush.linearGradient(
+                                                    colors = listOf(
+                                                        Color.Transparent,
+                                                        Color.White.copy(
+                                                            alpha = baseSheen * (0.35f + 0.65f * settle),
+                                                        ),
+                                                        Color.Transparent,
+                                                    ),
+                                                    start = Offset(center - band, 0f),
+                                                    end = Offset(center + band * 0.35f, size.height),
+                                                ),
+                                            )
                                         },
                                         backdropScale = 1f,
                                     )
                                 } else {
                                     Modifier.background(
-                                        if (colors.isLight) Color(0x30FFFFFF) else Color(0x20FFFFFF),
-                                        RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS),
+                                        if (colors.isLight) Color(0x38FFFFFF) else Color(0x2AFFFFFF),
+                                        lensShape,
                                     )
                                 }
                             )
-                            .clip(RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS))
-                            .border(1.dp, puckBorderBrush, RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS)),
+                            .clip(lensShape)
+                            .border(1.dp, lensRimBrush, lensShape),
                     )
-
                 }
             }
 
@@ -1022,6 +1100,7 @@ fun VrkaFloatingNavBar(
                         isSelected = isTabSelected,
                         isLight = colors.isLight,
                         focus = focus,
+                        reduceMotion = reduceMotion,
                         onClick = onItemClick,
                         onContentMeasured = { contentLeft, contentWidth ->
                             val measured = itemBounds[index].copy(
@@ -1056,6 +1135,7 @@ private fun VrkaNavItem(
     isSelected: Boolean,
     isLight: Boolean,
     focus: Float,
+    reduceMotion: Boolean,
     onClick: () -> Unit,
     onContentMeasured: (leftInSlotPx: Float, widthPx: Float) -> Unit,
     modifier: Modifier = Modifier,
@@ -1087,13 +1167,14 @@ private fun VrkaNavItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
-                .graphicsLayer {
-                    val lift = 1f + (focus.coerceIn(0f, 1f) * 0.045f)
-                    scaleX = lift
-                    scaleY = lift
-                }
                 .onGloballyPositioned { coordinates ->
                     onContentMeasured(coordinates.positionInParent().x, coordinates.size.width.toFloat())
+                }
+                // Depth cue only: the active item lifts a hair while the glass expands
+                // around it. Scaling is deliberately avoided so the icon artwork never
+                // changes size as the lens settles.
+                .graphicsLayer {
+                    translationY = if (reduceMotion) 0f else -focus.coerceIn(0f, 1f) * 1.5.dp.toPx()
                 }
                 .padding(horizontal = NAV_ITEM_HORIZONTAL_CONTENT_PADDING),
         ) {

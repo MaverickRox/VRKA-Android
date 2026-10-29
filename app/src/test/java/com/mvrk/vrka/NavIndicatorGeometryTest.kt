@@ -113,4 +113,137 @@ class NavIndicatorGeometryTest {
             assertEquals((i * 100f) + slotInset, pill.leftPx, 0.001f)
         }
     }
+
+    @Test
+    fun test23_settleProgressIsFullOnSlotsAndZeroAtMidpoint() {
+        for (slot in 0..3) {
+            assertEquals(1f, calculateNavSettleProgress(slot.toFloat()), 0.001f)
+        }
+        for (midpoint in listOf(0.5f, 1.5f, 2.5f)) {
+            assertEquals(0f, calculateNavSettleProgress(midpoint), 0.001f)
+        }
+        assertEquals(0.5f, calculateNavSettleProgress(0.25f), 0.001f)
+        assertEquals(0.5f, calculateNavSettleProgress(0.75f), 0.001f)
+        assertEquals(0.5f, calculateNavSettleProgress(2.25f), 0.001f)
+    }
+
+    @Test
+    fun test24_settleProgressStaysInUnitRangeBeyondTheEdges() {
+        // Positions outside the slot range never occur upstream (they are clamped), but
+        // the helper still has to stay bounded and periodic around the nearest slot.
+        assertEquals(0.2f, calculateNavSettleProgress(-0.4f), 0.001f)
+        assertEquals(0.6f, calculateNavSettleProgress(3.2f), 0.001f)
+        assertTrue(calculateNavSettleProgress(-3.5f) in 0f..1f)
+        assertTrue(calculateNavSettleProgress(9.9f) in 0f..1f)
+    }
+
+    @Test
+    fun test25_restingLensExpandsAroundTheIndicatorCenter() {
+        val slotInset = 4f
+        val indicator = calculateNavIndicatorBounds(1f, equalSlots, slotInsetPx = slotInset)!!
+        val lens = calculateNavGlassLensBounds(
+            indicator = indicator,
+            settleProgress = 1f,
+            containerHeightPx = 64f,
+            baseHeightPx = 56f,
+            horizontalExpansionPx = 6f,
+            verticalExpansionPx = 3f,
+        )
+        assertEquals(indicator.widthPx + 6f, lens.widthPx, 0.001f)
+        assertEquals(98f, lens.widthPx, 0.001f)
+        assertEquals(indicator.leftPx - 3f, lens.leftPx, 0.001f)
+        assertEquals(101f, lens.leftPx, 0.001f)
+        assertEquals(59f, lens.heightPx, 0.001f)
+        assertEquals(2.5f, lens.topPx, 0.001f)
+        assertEquals(
+            indicator.leftPx + indicator.widthPx / 2f,
+            lens.leftPx + lens.widthPx / 2f,
+            0.001f,
+        )
+    }
+
+    @Test
+    fun test26_travellingLensContractsToThePlainPill() {
+        val slotInset = 4f
+        val indicator = calculateNavIndicatorBounds(0.5f, equalSlots, slotInsetPx = slotInset)!!
+        val lens = calculateNavGlassLensBounds(
+            indicator = indicator,
+            settleProgress = 0f,
+            containerHeightPx = 64f,
+            baseHeightPx = 56f,
+            horizontalExpansionPx = 6f,
+            verticalExpansionPx = 3f,
+        )
+        assertEquals(indicator.widthPx, lens.widthPx, 0.001f)
+        assertEquals(indicator.leftPx, lens.leftPx, 0.001f)
+        assertEquals(56f, lens.heightPx, 0.001f)
+        assertEquals(4f, lens.topPx, 0.001f)
+    }
+
+    @Test
+    fun test27_lensExpansionIsProportionalToSettleProgress() {
+        val indicator = NavIndicatorBounds(leftPx = 100f, widthPx = 92f)
+        for (settle in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
+            val lens = calculateNavGlassLensBounds(
+                indicator = indicator,
+                settleProgress = settle,
+                containerHeightPx = 64f,
+                baseHeightPx = 56f,
+                horizontalExpansionPx = 8f,
+                verticalExpansionPx = 4f,
+            )
+            assertEquals(92f + 8f * settle, lens.widthPx, 0.001f)
+            assertEquals(56f + 4f * settle, lens.heightPx, 0.001f)
+        }
+    }
+
+    @Test
+    fun test28_lensNeverLeavesTheCapsuleOrItsSlot() {
+        val slotInset = 4f
+        for (i in equalSlots.indices) {
+            val indicator = calculateNavIndicatorBounds(i.toFloat(), equalSlots, slotInsetPx = slotInset)!!
+            val lens = calculateNavGlassLensBounds(
+                indicator = indicator,
+                settleProgress = 1f,
+                containerHeightPx = 64f,
+                baseHeightPx = 56f,
+                horizontalExpansionPx = 6f,
+                verticalExpansionPx = 3f,
+            )
+            val slot = equalSlots[i]
+            // Parked inside its own slot, so the expanded rim is not drawn over the
+            // neighbouring destination's touch area.
+            assertTrue(lens.leftPx >= slot.slotLeftPx)
+            assertTrue(lens.leftPx + lens.widthPx <= slot.slotLeftPx + slot.slotWidthPx)
+            assertTrue(lens.topPx >= 0f)
+            assertTrue(lens.topPx + lens.heightPx <= 64f)
+        }
+    }
+
+    @Test
+    fun test29_lensHeightClampsToTheCapsuleAndIgnoresNegativeExpansion() {
+        val indicator = NavIndicatorBounds(leftPx = 0f, widthPx = 92f)
+        val clamped = calculateNavGlassLensBounds(
+            indicator = indicator,
+            settleProgress = 1f,
+            containerHeightPx = 64f,
+            baseHeightPx = 56f,
+            horizontalExpansionPx = -12f,
+            verticalExpansionPx = 40f,
+        )
+        assertEquals(92f, clamped.widthPx, 0.001f)
+        assertEquals(64f, clamped.heightPx, 0.001f)
+        assertEquals(0f, clamped.topPx, 0.001f)
+
+        val outOfRange = calculateNavGlassLensBounds(
+            indicator = indicator,
+            settleProgress = 2.5f,
+            containerHeightPx = 64f,
+            baseHeightPx = 56f,
+            horizontalExpansionPx = 6f,
+            verticalExpansionPx = 3f,
+        )
+        assertEquals(98f, outOfRange.widthPx, 0.001f)
+        assertEquals(59f, outOfRange.heightPx, 0.001f)
+    }
 }
