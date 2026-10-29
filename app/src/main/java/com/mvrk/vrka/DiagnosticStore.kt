@@ -3,6 +3,7 @@ package com.mvrk.vrka
 import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.Immutable
+import com.mvrk.vrka.engine.FailureCategory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,7 +40,7 @@ data class DiagnosticEntry(
         appendLine("Category: $failureCategory")
         appendLine("Quality: $quality")
         appendLine("Method: $acquisitionMethod")
-        appendLine("URL: ${DiagnosticStore.sanitizeUrl(url)}")
+        appendLine("URL: $url")
         appendLine("Summary: ${DiagnosticStore.sanitizeText(summary)}")
         if (detail.isNotBlank()) {
             appendLine("Details:")
@@ -129,12 +130,19 @@ class DiagnosticStore(
         return loaded.map(::sanitizeEntry).sortedByDescending { it.timestamp }.take(MAX_ENTRIES)
     }
 
-    private fun sanitizeEntry(entry: DiagnosticEntry): DiagnosticEntry = entry.copy(
-        title = sanitizeText(entry.title).take(200),
-        url = sanitizeUrl(entry.url),
-        summary = sanitizeText(entry.summary).take(MAX_SUMMARY_LENGTH),
-        detail = sanitizeText(entry.detail).take(MAX_DETAIL_LENGTH),
-    )
+    private fun sanitizeEntry(entry: DiagnosticEntry): DiagnosticEntry {
+        // Browser-fallback failures need the exact page URL (including its query string) to be
+        // diagnosable. The URL field is the only exception; headers, cookies, and log tails stay
+        // redacted, and export remains an explicit user action.
+        val preserveExactUrl = entry.acquisitionMethod.equals(BROWSER_FALLBACK_METHOD, ignoreCase = true) ||
+            entry.failureCategory == FailureCategory.BROWSER_RECOVERABLE.name
+        return entry.copy(
+            title = sanitizeText(entry.title).take(200),
+            url = if (preserveExactUrl) entry.url.trim() else sanitizeUrl(entry.url),
+            summary = sanitizeText(entry.summary).take(MAX_SUMMARY_LENGTH),
+            detail = sanitizeText(entry.detail).take(MAX_DETAIL_LENGTH),
+        )
+    }
 
     private fun parseEntriesFallback(text: String): List<DiagnosticEntry> {
         val entries = mutableListOf<DiagnosticEntry>()
@@ -247,6 +255,7 @@ class DiagnosticStore(
         const val MAX_ENTRIES = 50
         const val MAX_SUMMARY_LENGTH = 500
         const val MAX_DETAIL_LENGTH = 4000
+        const val BROWSER_FALLBACK_METHOD = "Browser Fallback"
         private const val FILE_NAME = "diagnostics.json"
 
         private val SAFE_QUERY_PARAMS = setOf(
