@@ -11,6 +11,10 @@ class MainActivity : ComponentActivity() {
     private val openQueueRequests = MutableStateFlow(0L)
     private val sharedUrls = MutableStateFlow<String?>(null)
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleIntent(intent)

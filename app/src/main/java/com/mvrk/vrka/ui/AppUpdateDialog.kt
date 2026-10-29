@@ -40,6 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.mvrk.vrka.R
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.mvrk.vrka.VrkaMonoFamily
@@ -91,7 +93,7 @@ fun AppUpdateDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Update Available",
+                            text = stringResource(R.string.update_dialog_title),
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontFamily = VrkaMonoFamily,
                                 fontWeight = FontWeight.Bold,
@@ -101,7 +103,7 @@ fun AppUpdateDialog(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Version v${release.version} is now available",
+                            text = stringResource(R.string.update_dialog_version_available, release.version),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontFamily = VrkaMonoFamily,
                             ),
@@ -147,7 +149,7 @@ fun AppUpdateDialog(
 
                 // Changelog scrollable container
                 Text(
-                    text = "Release Notes",
+                    text = stringResource(R.string.update_dialog_release_notes),
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = VrkaMonoFamily,
                         fontWeight = FontWeight.SemiBold,
@@ -177,7 +179,7 @@ fun AppUpdateDialog(
                     ) {
                         if (parsedNotes.isBlank()) {
                             Text(
-                                text = "No release notes provided for this version.",
+                                text = stringResource(R.string.update_dialog_no_notes),
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontFamily = VrkaMonoFamily,
                                     fontStyle = FontStyle.Italic,
@@ -207,7 +209,7 @@ fun AppUpdateDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    text = "Downloading update...",
+                                    text = stringResource(R.string.update_dialog_downloading),
                                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                                     color = VrkaTokens.TextSecondary,
                                 )
@@ -256,7 +258,7 @@ fun AppUpdateDialog(
                                 color = VrkaTokens.Accent,
                             )
                             Text(
-                                text = "Preparing package installer...",
+                                text = stringResource(R.string.update_dialog_preparing_installer),
                                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                                 color = VrkaTokens.TextSecondary,
                             )
@@ -287,7 +289,7 @@ fun AppUpdateDialog(
                             shape = RoundedCornerShape(10.dp),
                         ) {
                             Text(
-                                text = "Later",
+                                text = stringResource(R.string.btn_later),
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontFamily = VrkaMonoFamily,
                                     fontWeight = FontWeight.SemiBold,
@@ -310,7 +312,7 @@ fun AppUpdateDialog(
                                 ),
                             ) {
                                 Text(
-                                    text = "Downloading...",
+                                    text = stringResource(R.string.btn_downloading),
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = VrkaMonoFamily,
                                         fontWeight = FontWeight.Bold,
@@ -328,7 +330,7 @@ fun AppUpdateDialog(
                                 ),
                             ) {
                                 Text(
-                                    text = "Install",
+                                    text = stringResource(R.string.btn_install),
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = VrkaMonoFamily,
                                         fontWeight = FontWeight.Bold,
@@ -346,7 +348,7 @@ fun AppUpdateDialog(
                                 ),
                             ) {
                                 Text(
-                                    text = "Retry",
+                                    text = stringResource(R.string.action_retry),
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = VrkaMonoFamily,
                                         fontWeight = FontWeight.Bold,
@@ -364,7 +366,7 @@ fun AppUpdateDialog(
                                 ),
                             ) {
                                 Text(
-                                    text = "Download Update",
+                                    text = stringResource(R.string.btn_download_update),
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = VrkaMonoFamily,
                                         fontWeight = FontWeight.Bold,
@@ -548,7 +550,7 @@ fun ComponentStartupUpdateDialog(
             ) {
                 // Header
                 Text(
-                    text = "Component Updates",
+                    text = stringResource(R.string.component_dialog_title),
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontFamily = VrkaMonoFamily,
                         fontWeight = FontWeight.Bold,
@@ -558,7 +560,7 @@ fun ComponentStartupUpdateDialog(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "New updates are available for your background components:",
+                    text = stringResource(R.string.component_dialog_subtitle),
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = VrkaMonoFamily,
                     ),
@@ -597,7 +599,7 @@ fun ComponentStartupUpdateDialog(
                                     )
                                     val currentClean = com.mvrk.vrka.ComponentUpdateManager.cleanVersionString(item.currentVersion)
                                     Text(
-                                        text = "Installed: v$currentClean",
+                                        text = stringResource(R.string.status_installed, "v$currentClean"),
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             fontFamily = VrkaMonoFamily,
                                         ),
@@ -645,7 +647,7 @@ fun ComponentStartupUpdateDialog(
                         ),
                     ) {
                         Text(
-                            text = "Later",
+                            text = stringResource(R.string.btn_later),
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontFamily = VrkaMonoFamily,
                                 fontWeight = FontWeight.SemiBold,
@@ -665,7 +667,7 @@ fun ComponentStartupUpdateDialog(
                         ),
                     ) {
                         Text(
-                            text = "Update Now",
+                            text = stringResource(R.string.btn_update_now),
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontFamily = VrkaMonoFamily,
                                 fontWeight = FontWeight.Bold,

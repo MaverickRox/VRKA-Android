@@ -49,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -113,7 +114,7 @@ internal fun JobsScreen(
         ) {
             if (isSelectionMode) {
                 Text(
-                    text = "${selectedJobIds.size} selected",
+                    text = stringResource(R.string.toolbar_selected_count, selectedJobIds.size),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = VrkaTokens.TextPrimary,
@@ -121,14 +122,14 @@ internal fun JobsScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val allSelected = jobs.isNotEmpty() && selectedJobIds.size == jobs.size
                     VrkaTextButton(
-                        text = if (allSelected) "Deselect all" else "Select all",
+                        text = if (allSelected) stringResource(R.string.btn_deselect_all) else stringResource(R.string.btn_select_all),
                         onClick = {
                             selectedJobIds = if (allSelected) emptySet() else jobs.map { it.id }.toSet()
                         },
                         color = VrkaTokens.AccentLight,
                     )
                     VrkaTextButton(
-                        text = "Done",
+                        text = stringResource(R.string.btn_done),
                         onClick = {
                             isSelectionMode = false
                             selectedJobIds = emptySet()
@@ -138,7 +139,7 @@ internal fun JobsScreen(
                 }
             } else {
                 Text(
-                    text = if (isHistory) "History" else "Queue",
+                    text = if (isHistory) stringResource(R.string.nav_history) else stringResource(R.string.nav_queue),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = VrkaTokens.TextPrimary,
@@ -146,7 +147,7 @@ internal fun JobsScreen(
                 if (isHistory && jobs.isNotEmpty()) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         VrkaTextButton(
-                            text = "Select",
+                            text = stringResource(R.string.btn_select),
                             onClick = {
                                 isSelectionMode = true
                                 selectedJobIds = emptySet()
@@ -154,7 +155,7 @@ internal fun JobsScreen(
                             color = VrkaTokens.AccentLight,
                         )
                         VrkaTextButton(
-                            text = "Clear history",
+                            text = stringResource(R.string.btn_clear_history),
                             onClick = { showClearAllDialog = true },
                             color = VrkaTokens.TextSecondary,
                         )
@@ -172,12 +173,12 @@ internal fun JobsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 VrkaOutlinedButton(
-                    text = "Remove records (${selectedJobIds.size})",
+                    text = "${stringResource(R.string.btn_bulk_remove_records)} (${selectedJobIds.size})",
                     onClick = { showMultiDeleteRecordsDialog = true },
                     modifier = Modifier.weight(1f),
                 )
                 VrkaOutlinedButton(
-                    text = "Delete files (${selectedJobIds.size})",
+                    text = "${stringResource(R.string.btn_bulk_delete_files)} (${selectedJobIds.size})",
                     onClick = { showMultiDeleteFilesDialog = true },
                     modifier = Modifier.weight(1f),
                 )
@@ -204,16 +205,16 @@ internal fun JobsScreen(
                         modifier = Modifier.size(68.dp),
                     )
                     Text(
-                        text = if (!isHistory) "Queue is empty" else "No download history",
+                        text = if (!isHistory) stringResource(R.string.queue_empty_title) else stringResource(R.string.history_empty_title),
                         style = MaterialTheme.typography.titleLarge.copy(fontFamily = VrkaMonoFamily),
                         fontWeight = FontWeight.Bold,
                         color = VrkaTokens.TextPrimary,
                     )
                     Text(
                         text = if (!isHistory)
-                            "Media you enqueue will appear here while downloading."
+                            stringResource(R.string.queue_empty_desc)
                         else
-                            "Completed and archived downloads will be listed here.",
+                            stringResource(R.string.history_empty_desc),
                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
                         color = VrkaTokens.TextSecondary,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -269,7 +270,7 @@ internal fun JobsScreen(
             containerColor = VrkaTokens.SurfaceCard,
             title = {
                 Text(
-                    text = if (hasFiles) "Delete Download" else "Remove from History",
+                    text = if (hasFiles) stringResource(R.string.btn_delete_download) else stringResource(R.string.btn_remove_from_history),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = VrkaTokens.TextPrimary,
@@ -282,9 +283,12 @@ internal fun JobsScreen(
                 ) {
                     Text(
                         text = if (hasFiles) {
-                            "Choose whether to remove this history record only, or also permanently delete the downloaded media file from your device storage."
+                            stringResource(R.string.dialog_delete_single_with_file_desc)
                         } else {
-                            "Remove \"${target.title.ifBlank { "this item" }}\" from your download history?"
+                            stringResource(
+                                R.string.dialog_delete_single_no_file_desc,
+                                target.title.ifBlank { stringResource(R.string.default_download_title) },
+                            )
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = VrkaTokens.TextSecondary,
@@ -308,7 +312,7 @@ internal fun JobsScreen(
                                     .height(44.dp),
                             ) {
                                 Text(
-                                    text = "Delete File & Record",
+                                    text = stringResource(R.string.btn_delete_file_and_record),
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -336,7 +340,7 @@ internal fun JobsScreen(
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                                 ) {
                                     Text(
-                                        text = "Remove Record Only",
+                                        text = stringResource(R.string.btn_remove_record_only),
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
@@ -354,7 +358,7 @@ internal fun JobsScreen(
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                 ) {
                                     Text(
-                                        text = "Cancel",
+                                        text = stringResource(R.string.btn_cancel),
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
@@ -377,7 +381,7 @@ internal fun JobsScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = VrkaTokens.Destructive),
                         shape = RoundedCornerShape(12.dp),
                     ) {
-                        Text("Remove")
+                        Text(stringResource(R.string.action_remove))
                     }
                 }
             },
@@ -387,7 +391,7 @@ internal fun JobsScreen(
                         onClick = { singleDeleteTarget = null },
                         shape = RoundedCornerShape(12.dp),
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.btn_cancel))
                     }
                 }
             },
@@ -399,14 +403,14 @@ internal fun JobsScreen(
             onDismissRequest = { showMultiDeleteRecordsDialog = false },
             title = {
                 Text(
-                    text = "Remove Records from History",
+                    text = stringResource(R.string.dialog_bulk_remove_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
             },
             text = {
                 Text(
-                    text = "Remove ${selectedJobIds.size} records from download history? Downloaded files on storage will remain untouched.",
+                    text = stringResource(R.string.dialog_bulk_remove_desc, selectedJobIds.size),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
@@ -421,12 +425,12 @@ internal fun JobsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = VrkaTokens.Destructive),
                 ) {
-                    Text("Remove Records")
+                    Text(stringResource(R.string.btn_bulk_remove_records))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showMultiDeleteRecordsDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.btn_cancel))
                 }
             },
         )
@@ -437,14 +441,14 @@ internal fun JobsScreen(
             onDismissRequest = { showMultiDeleteFilesDialog = false },
             title = {
                 Text(
-                    text = "Permanently Delete Files",
+                    text = stringResource(R.string.dialog_bulk_delete_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
             },
             text = {
                 Text(
-                    text = "Permanently delete ${selectedJobIds.size} downloaded files from your device storage and remove their history records? This action cannot be undone.",
+                    text = stringResource(R.string.dialog_bulk_delete_desc, selectedJobIds.size),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
@@ -459,12 +463,12 @@ internal fun JobsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = VrkaTokens.Destructive),
                 ) {
-                    Text("Delete Files")
+                    Text(stringResource(R.string.btn_bulk_delete_files))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showMultiDeleteFilesDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.btn_cancel))
                 }
             },
         )
@@ -475,7 +479,7 @@ internal fun JobsScreen(
             onDismissRequest = { showClearAllDialog = false },
             title = {
                 Text(
-                    text = "Clear All History",
+                    text = stringResource(R.string.dialog_clear_all_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -483,7 +487,7 @@ internal fun JobsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "Are you sure you want to clear your download history (${jobs.size} items)?",
+                        text = stringResource(R.string.dialog_clear_all_desc, jobs.size),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Row(
@@ -499,7 +503,7 @@ internal fun JobsScreen(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "Also delete downloaded files from device storage",
+                            text = stringResource(R.string.opt_clear_all_delete_files),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (clearAllDeleteFilesChecked) VrkaTokens.Destructive else VrkaTokens.TextPrimary,
                         )
@@ -522,12 +526,12 @@ internal fun JobsScreen(
                         containerColor = if (clearAllDeleteFilesChecked) VrkaTokens.Destructive else VrkaTokens.Accent,
                     ),
                 ) {
-                    Text(if (clearAllDeleteFilesChecked) "Delete Files & History" else "Clear History")
+                    Text(if (clearAllDeleteFilesChecked) stringResource(R.string.btn_delete_files_and_history) else stringResource(R.string.btn_clear_history))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearAllDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.btn_cancel))
                 }
             },
         )
@@ -606,7 +610,7 @@ private fun JobCard(
                                 .background(stateColor(job.state)),
                         )
                         Text(
-                            text = jobStatusLabel(job),
+                            text = jobStatusLabel(LocalContext.current, job),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontFamily = VrkaMonoFamily,
                                 fontSize = 11.sp,
@@ -619,7 +623,7 @@ private fun JobCard(
                 }
 
                 Text(
-                    text = jobMediaSummary(job),
+                    text = jobMediaSummary(LocalContext.current, job),
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = VrkaMonoFamily,
                         fontSize = 11.sp,
@@ -633,14 +637,14 @@ private fun JobCard(
 
                 if (job.state == JobState.FAILED) {
                     Text(
-                        text = friendlyFailureTitle(job),
+                        text = friendlyFailureTitle(LocalContext.current, job),
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                         color = VrkaTokens.Error,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 4.dp),
                     )
                     Text(
-                        text = friendlyFailureDetail(job),
+                        text = friendlyFailureDetail(LocalContext.current, job),
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                         color = VrkaTokens.TextSecondary,
                         modifier = Modifier.padding(top = 2.dp),
@@ -714,7 +718,7 @@ private fun JobCard(
                                 !job.state.isTerminal -> {
                                     if (job.state == JobState.WAITING_FOR_USER && onChooseFolder != null) {
                                         VrkaOutlinedButton(
-                                            text = "Set Location",
+                                            text = stringResource(R.string.action_set_location),
                                             onClick = onChooseFolder,
                                             height = 32.dp,
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
@@ -722,14 +726,14 @@ private fun JobCard(
                                     }
                                     if (job.state == JobState.BROWSER_FALLBACK && onShowFallback != null) {
                                         VrkaOutlinedButton(
-                                            text = "Interact",
+                                            text = stringResource(R.string.action_interact),
                                             onClick = onShowFallback,
                                             height = 32.dp,
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                         )
                                     }
                                     VrkaOutlinedButton(
-                                        text = "Cancel",
+                                        text = stringResource(R.string.btn_cancel),
                                         onClick = onCancel,
                                         height = 32.dp,
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
@@ -737,19 +741,19 @@ private fun JobCard(
                                 }
                                 job.state == JobState.DONE && job.outputUris.isNotEmpty() -> {
                                     VrkaOutlinedButton(
-                                        text = "Open",
+                                        text = stringResource(R.string.action_open),
                                         onClick = { onOpen(job.outputUris.first()) },
                                         height = 32.dp,
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                     )
                                     VrkaOutlinedButton(
-                                        text = "Share",
+                                        text = stringResource(R.string.action_share),
                                         onClick = { onShare(job.outputUris.first()) },
                                         height = 32.dp,
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                     )
                                     VrkaTextButton(
-                                        text = "Delete",
+                                        text = stringResource(R.string.action_delete),
                                         onClick = onDelete,
                                         color = VrkaTokens.Destructive,
                                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
@@ -757,13 +761,13 @@ private fun JobCard(
                                 }
                                 else -> {
                                     VrkaOutlinedButton(
-                                        text = "Retry",
+                                        text = stringResource(R.string.action_retry),
                                         onClick = onRetry,
                                         height = 32.dp,
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                     )
                                     VrkaTextButton(
-                                        text = "Remove",
+                                        text = stringResource(R.string.action_remove),
                                         onClick = onDelete,
                                         color = VrkaTokens.Destructive,
                                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
@@ -787,5 +791,6 @@ private fun stateColor(state: JobState): Color = when (state) {
     else -> VrkaTokens.AccentLight
 }
 
+@Composable
 private fun sourceLabel(url: String): String =
-    runCatching { Uri.parse(url).host }.getOrNull().orEmpty().ifBlank { "Untitled download" }
+    runCatching { Uri.parse(url).host }.getOrNull().orEmpty().ifBlank { stringResource(R.string.default_download_title) }
