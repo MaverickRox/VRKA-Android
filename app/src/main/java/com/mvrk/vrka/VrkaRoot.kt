@@ -73,13 +73,13 @@ import kotlinx.coroutines.launch
 fun VrkaRoot(
     manager: VrkaDownloadManager,
     openQueueRequests: StateFlow<Long>,
-    sharedUrl: StateFlow<String?> = remember { kotlinx.coroutines.flow.MutableStateFlow(null) },
+    sharedLink: StateFlow<SharedLinkRequest?> = remember { kotlinx.coroutines.flow.MutableStateFlow(null) },
+    onSharedLinkConsumed: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val jobs by manager.jobs.collectAsStateWithLifecycle()
     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
-    val incomingUrl by sharedUrl.collectAsStateWithLifecycle()
-    var sharedUrlForHome by remember { mutableStateOf<String?>(null) }
+    val incomingShare by sharedLink.collectAsStateWithLifecycle()
     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
     val diagnostics by manager.diagnostics.collectAsStateWithLifecycle()
@@ -100,13 +100,6 @@ fun VrkaRoot(
     LaunchedEffect(Unit) {
         manager.appUpdateManager.checkForUpdate(isManual = false)
         manager.componentUpdateManager.performStartupCheckIfNeeded(settings.updatePreference)
-    }
-
-    LaunchedEffect(incomingUrl) {
-        if (!incomingUrl.isNullOrBlank()) {
-            sharedUrlForHome = incomingUrl
-            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.DOWNLOAD))
-        }
     }
 
     val notificationPermission = rememberLauncherForActivityResult(
@@ -134,6 +127,23 @@ fun VrkaRoot(
             pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
         }
     }
+
+    // Shared links keep the current screen: the queue strip and notifications report progress.
+    fun enqueueShared(request: DownloadRequest) {
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            pendingRequest = request
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            manager.enqueue(request)
+        }
+    }
+
+    val enqueueFailedMessage = stringResource(R.string.snackbar_enqueue_failed)
 
     fun downloadAppUpdate(release: AppReleaseInfo) {
         val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -247,8 +257,6 @@ fun VrkaRoot(
                                     settings = settings,
                                     repository = manager.settingsRepository,
                                     runtime = runtime,
-                                    initialUrl = sharedUrlForHome,
-                                    onInitialUrlConsumed = { sharedUrlForHome = null },
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -397,6 +405,24 @@ fun VrkaRoot(
                         dialogData = dialogData,
                         onUpdateNow = { manager.componentUpdateManager.applyAllUpdates(settings.updatePreference) },
                         onDismiss = manager.componentUpdateManager::dismissStartupDialog,
+                    )
+                }
+
+                incomingShare?.let { link ->
+                    ShareConfigSheet(
+                        link = link,
+                        settings = settings,
+                        repository = manager.settingsRepository,
+                        onEstimateSize = { request -> manager.estimateSize(request) },
+                        onEnqueue = { request ->
+                            runCatching { enqueueShared(request) }.onFailure { error ->
+                                pendingRequest = null
+                                scope.launch {
+                                    snackbar.showSnackbar(error.message ?: enqueueFailedMessage)
+                                }
+                            }
+                        },
+                        onDismiss = { onSharedLinkConsumed(link.id) },
                     )
                 }
             }
