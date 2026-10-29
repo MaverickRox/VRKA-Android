@@ -97,6 +97,7 @@ class VrkaDownloadManager(
     val appUpdateManager = AppUpdateManager.getInstance(context, settingsRepository)
     val componentUpdateManager = ComponentUpdateManager.getInstance(context)
     val subtitleManager = com.mvrk.vrka.subtitle.VrkaSubtitleManager(context)
+    val ytDlpRuntimeManager = com.mvrk.vrka.runtime.YtDlpRuntimeManager(context, scope)
 
     fun clearDiagnostics() {
         scope.launch(Dispatchers.IO) {
@@ -116,6 +117,10 @@ class VrkaDownloadManager(
     }
 
     init {
+        ytDlpRuntimeManager.setBusyPredicate {
+            _jobs.value.any { it.state.isForegroundWork }
+        }
+        ytDlpRuntimeManager.onActiveRuntimeChanged = { refreshRuntimeStatus() }
         scope.launch(Dispatchers.IO) {
             val initial = runCatching { store.load().sortedByDescending(DownloadJob::createdAt) }.getOrDefault(emptyList())
             synchronized(_jobs) {
@@ -392,16 +397,23 @@ class VrkaDownloadManager(
                 val targetTag = updater.fetchLatestReleaseTag(channel)
                 val postVersion = updater.updateYtDlp(channel, targetTag).getOrThrow()
                 val version = normalizedVersion(postVersion)
-                _runtime.value = RuntimeStatus(
-                    initialized = true,
-                    version = version,
-                    message = "yt-dlp " + version + " ready",
-                )
+                if (ytDlpRuntimeManager.isCustomActive()) {
+                    _runtime.value = RuntimeStatus(
+                        initialized = true,
+                        version = normalizedVersion(ytDlpRuntimeManager.activeVersion()),
+                        message = "Stock yt-dlp updated to " + version + "; active runtime unchanged (" +
+                            ytDlpRuntimeManager.activeDescription() + ")",
+                    )
+                } else {
+                    _runtime.value = RuntimeStatus(
+                        initialized = true,
+                        version = version,
+                        message = "yt-dlp " + version + " ready",
+                    )
+                }
             }.onFailure { error ->
                 Log.e("VRKA", "Runtime update failed", error)
-                val bundled = runCatching {
-                    YoutubeDL.getInstance().versionName(context)
-                }.getOrNull().orEmpty()
+                val bundled = normalizedVersion(ytDlpRuntimeManager.activeVersion())
                 _runtime.value = RuntimeStatus(
                     initialized = initialized.get(),
                     version = bundled,
@@ -1294,15 +1306,25 @@ class VrkaDownloadManager(
             MediaAssembly.fixUsrLibSymlinks(File(context.noBackupFilesDir, "youtubedl-android/packages/ffmpeg/usr/lib"))
             MediaAssembly.fixUsrLibSymlinks(File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib"))
             initialized.set(true)
-            val version = normalizedVersion(
-                YoutubeDL.getInstance().versionName(context).orEmpty(),
-            )
-            _runtime.value = RuntimeStatus(
-                initialized = true,
-                version = version,
-                message = "yt-dlp " + version + " ready",
-            )
+            ytDlpRuntimeManager.applyActiveRuntime().onFailure { error ->
+                Log.w("VRKA", "Could not activate selected yt-dlp runtime; using stock: ${safeError(error)}")
+            }
+            refreshRuntimeStatus()
         }
+    }
+
+    private fun refreshRuntimeStatus() {
+        val version = normalizedVersion(ytDlpRuntimeManager.activeVersion())
+        val custom = ytDlpRuntimeManager.isCustomActive()
+        _runtime.value = RuntimeStatus(
+            initialized = initialized.get(),
+            version = version,
+            message = when {
+                version.isBlank() -> ytDlpRuntimeManager.activeDescription() + " ready"
+                custom -> ytDlpRuntimeManager.activeDescription() + " • yt-dlp " + version
+                else -> "yt-dlp " + version + " ready"
+            },
+        )
     }
 
     private fun stagingDirectory(jobId: String): File {

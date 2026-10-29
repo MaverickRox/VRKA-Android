@@ -302,6 +302,7 @@ fun VrkaRoot(
                                     runtime = runtime,
                                     repository = manager.settingsRepository,
                                     onUpdateRuntime = manager::updateRuntime,
+                                    runtimeManager = manager.ytDlpRuntimeManager,
                                     diagnostics = diagnostics,
                                     onClearDiagnostics = manager::clearDiagnostics,
                                     modifier = Modifier
