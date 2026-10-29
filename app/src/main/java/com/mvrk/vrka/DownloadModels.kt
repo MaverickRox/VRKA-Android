@@ -125,6 +125,10 @@ data class DownloadJob(
     val error: String = "",
     val attempt: Int = 1,
     val actualResolution: String? = null,
+    // Runtime that executed this job's transfer. Captured when the yt-dlp process starts so
+    // the record survives history reloads and runtime switches that happen afterwards.
+    val runtimeName: String = "",
+    val runtimeVersion: String = "",
     val subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus = com.mvrk.vrka.subtitle.SubtitleStatus.NONE,
 )
 

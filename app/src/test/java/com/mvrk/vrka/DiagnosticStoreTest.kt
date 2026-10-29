@@ -150,8 +150,58 @@ class DiagnosticStoreTest {
     }
 
     @Test
-    fun storePersistenceBoundedRetentionAndClear() = runBlocking {
+    fun diagnosticReportRecordsTheRuntimeAndVersionThatRanTheJob() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val dir = tempFolder.root
+        val store = DiagnosticStore(dir, scope)
+
+        store.record(
+            DiagnosticEntry(
+                id = "runtime-entry",
+                jobId = "job-runtime",
+                title = "Runtime clip",
+                stage = "transfer",
+                failureCategory = "HTTP",
+                summary = "HTTP 403",
+                detail = "",
+                url = "https://cdn.example.test/clip",
+                quality = "1080p",
+                acquisitionMethod = "Native yt-dlp",
+                runtime = "Custom example/yt-dlp nightly • yt-dlp 2026.10.01",
+            ),
+        )
+
+        val entry = store.entries.value.single()
+        assertTrue(
+            entry.toFormattedString()
+                .contains("Runtime: Custom example/yt-dlp nightly • yt-dlp 2026.10.01"),
+        )
+        val reloaded = DiagnosticStore(dir, scope)
+        kotlinx.coroutines.delay(150)
+        assertEquals(
+            "Custom example/yt-dlp nightly • yt-dlp 2026.10.01",
+            reloaded.entries.value.single().runtime,
+        )
+    }
+
+    @Test
+    fun diagnosticReportOmitsTheRuntimeLineWhenNoRuntimeWasRecorded() {
+        val entry = DiagnosticEntry(
+            jobId = "job-legacy",
+            title = "Legacy entry",
+            stage = "transfer",
+            failureCategory = "HTTP",
+            summary = "HTTP 403",
+            detail = "",
+            url = "https://example.com/watch?v=1",
+            quality = "",
+            acquisitionMethod = "Native yt-dlp",
+        )
+        assertFalse(entry.toFormattedString().contains("Runtime:"))
+    }
+
+    @Test
+    fun storePersistenceBoundedRetentionAndClear() = runBlocking {        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val dir = tempFolder.root
         val store = DiagnosticStore(dir, scope)
 

@@ -98,6 +98,35 @@ class JobStorePersistenceTest {
     }
 
     @Test
+    fun runtimeUsedByEachJobSurvivesReload() {
+        val store = createTestStore()
+        val jobs = listOf(
+            DownloadJob(
+                id = "stock-job",
+                request = sampleRequest("https://example.com/a"),
+                state = JobState.DONE,
+                runtimeName = "Stock yt-dlp",
+                runtimeVersion = "2026.09.05",
+            ),
+            DownloadJob(
+                id = "custom-job",
+                request = sampleRequest("https://example.com/b"),
+                state = JobState.FAILED,
+                runtimeName = "Custom example/yt-dlp nightly",
+                runtimeVersion = "2026.10.01",
+            ),
+        )
+
+        store.save(jobs)
+        val loaded = store.load().associateBy { it.id }
+
+        assertEquals("Stock yt-dlp", loaded.getValue("stock-job").runtimeName)
+        assertEquals("2026.09.05", loaded.getValue("stock-job").runtimeVersion)
+        assertEquals("Custom example/yt-dlp nightly", loaded.getValue("custom-job").runtimeName)
+        assertEquals("2026.10.01", loaded.getValue("custom-job").runtimeVersion)
+    }
+
+    @Test
     fun interruptedActiveJobsRecoverAsFailedOnRestart() {
         val store = createTestStore()
         val activeStates = listOf(
