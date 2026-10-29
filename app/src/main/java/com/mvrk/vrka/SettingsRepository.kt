@@ -41,6 +41,7 @@ data class AppSettings(
     val customCommandTemplates: List<YtDlpCommandTemplate> = listOf(CustomCommandPolicy.starterTemplate()),
     val selectedCustomCommandTemplateId: String = "vrka-safe-starter",
     val showDownloadSizeConfirmation: Boolean = true,
+    val shareSheetPreferences: ShareSheetPreferences? = null,
 )
 
 class SettingsRepository(
@@ -70,6 +71,7 @@ class SettingsRepository(
         val customCommandTemplates = stringPreferencesKey("custom_command_templates")
         val selectedCustomCommandTemplateId = stringPreferencesKey("selected_custom_command_template_id")
         val showDownloadSizeConfirmation = booleanPreferencesKey("show_download_size_confirmation")
+        val shareSheetPreferences = stringPreferencesKey("share_sheet_preferences")
     }
 
     val settings: StateFlow<AppSettings> = context.vrkaDataStore.data
@@ -156,6 +158,9 @@ class SettingsRepository(
 
     suspend fun setShowDownloadSizeConfirmation(value: Boolean) =
         update(Keys.showDownloadSizeConfirmation, value)
+
+    suspend fun setShareSheetPreferences(value: ShareSheetPreferences) =
+        update(Keys.shareSheetPreferences, SharePreferencesCodec.encode(value))
 
     suspend fun selectCustomCommandTemplate(id: String) =
         update(Keys.selectedCustomCommandTemplateId, id)
@@ -268,6 +273,8 @@ class SettingsRepository(
             selectedCustomCommandTemplateId = selectedTemplate,
             showDownloadSizeConfirmation =
                 SizeConfirmationPreference.resolve(preferences[Keys.showDownloadSizeConfirmation]),
+            shareSheetPreferences =
+                SharePreferencesCodec.decode(preferences[Keys.shareSheetPreferences]),
         )
     }
 

@@ -40,7 +40,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,8 +63,6 @@ internal fun HomeScreen(
     repository: SettingsRepository,
     runtime: RuntimeStatus,
     modifier: Modifier = Modifier,
-    initialUrl: String? = null,
-    onInitialUrlConsumed: () -> Unit = {},
     onEnqueue: (DownloadRequest) -> Unit,
     onEstimateSize: suspend (DownloadRequest) -> SizeEstimate,
     onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
@@ -74,13 +71,6 @@ internal fun HomeScreen(
     val scope = rememberCoroutineScope()
     var url by remember { mutableStateOf("") }
     val streamCoordinator = remember { StreamSelectionCoordinator() }
-
-    LaunchedEffect(initialUrl) {
-        if (!initialUrl.isNullOrBlank()) {
-            url = initialUrl
-            onInitialUrlConsumed()
-        }
-    }
 
     var mode by remember { mutableStateOf(settings.defaultMode) }
     var quality by remember { mutableStateOf(settings.defaultQuality) }

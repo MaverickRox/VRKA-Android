@@ -267,6 +267,13 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="section_mp3_bitrate">MP3 BITRATE</string>
     <string name="section_network_headers">Network &amp; HTTP Headers</string>
     <string name="section_video_resolution">VIDEO RESOLUTION</string>
+    <string name="share_commands_none">No template selected</string>
+    <string name="share_commands_template">Custom command: %1$s</string>
+    <string name="share_remember_choices">Remember these choices</string>
+    <string name="share_section_type">DOWNLOAD TYPE</string>
+    <string name="share_sheet_source">SHARED LINK</string>
+    <string name="share_sheet_title">Configure before download</string>
+    <string name="share_type_commands">Commands</string>
     <string name="settings_heading_about">About</string>
     <string name="settings_heading_appearance">Appearance</string>
     <string name="settings_heading_browser">Browser Subsystems</string>
