@@ -46,6 +46,7 @@ internal fun SettingsScreen(
     runtime: RuntimeStatus,
     repository: SettingsRepository,
     onUpdateRuntime: (UpdatePreference) -> Unit,
+    runtimeManager: com.mvrk.vrka.runtime.YtDlpRuntimeManager,
     diagnostics: List<DiagnosticEntry> = emptyList(),
     onClearDiagnostics: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -839,6 +840,304 @@ internal fun SettingsScreen(
             }
 
 
+        }
+
+        SettingsHeading(stringResource(R.string.settings_heading_runtime))
+        val runtimeState by runtimeManager.state.collectAsStateWithLifecycle()
+        var showAddRuntimeDialog by remember { mutableStateOf(false) }
+        var runtimeRepoInput by remember { mutableStateOf("") }
+        var runtimeDialogError by remember { mutableStateOf("") }
+        VrkaSectionContainer {
+            VrkaSettingRow(
+                title = stringResource(R.string.runtime_active_title),
+                subtitle = runtimeState.message.ifBlank {
+                    if (runtimeManager.isCustomActive()) {
+                        runtimeManager.activeDescription()
+                    } else {
+                        stringResource(R.string.runtime_stock_desc)
+                    }
+                },
+            ) {
+                VrkaStatusBadge(
+                    if (runtimeManager.isCustomActive()) {
+                        stringResource(R.string.runtime_badge_custom)
+                    } else {
+                        stringResource(R.string.runtime_badge_stock)
+                    },
+                    if (runtimeManager.isCustomActive()) VrkaTokens.AccentLight else VrkaTokens.Success,
+                    isMonospace = true,
+                )
+            }
+
+            VrkaDivider()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.runtime_stock_name),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                        fontWeight = FontWeight.SemiBold,
+                        color = VrkaTokens.TextPrimary,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.runtime_stock_version,
+                            runtimeManager.stockVersion().ifBlank { stringResource(R.string.status_unavailable) },
+                        ),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                        color = VrkaTokens.TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                if (runtimeManager.isCustomActive()) {
+                    VrkaOutlinedButton(
+                        text = stringResource(R.string.runtime_use_stock),
+                        onClick = {
+                            scope.launch {
+                                runtimeManager.activateStock()
+                                    .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                            }
+                        },
+                        enabled = !runtimeState.working,
+                        height = 32.dp,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    )
+                } else {
+                    VrkaStatusBadge(
+                        stringResource(R.string.status_active),
+                        VrkaTokens.Success,
+                        isMonospace = true,
+                    )
+                }
+            }
+
+            runtimeState.snapshot.runtimes.forEach { runtime ->
+                VrkaDivider()
+                val isActive = runtimeManager.isCustomActive() &&
+                    runtimeState.snapshot.activeId == runtime.id
+                val updateTag = runtimeState.updateTags[runtime.id]
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp),
+                    ) {
+                        Text(
+                            text = runtime.repo,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                            fontWeight = FontWeight.SemiBold,
+                            color = VrkaTokens.TextPrimary,
+                        )
+                        Text(
+                            text = stringResource(R.string.runtime_version, runtime.version.ifBlank { runtime.tag }),
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                            color = VrkaTokens.TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(top = 6.dp),
+                        ) {
+                            VrkaStatusBadge(
+                                stringResource(R.string.runtime_badge_verified),
+                                VrkaTokens.Success,
+                                isMonospace = true,
+                            )
+                            if (isActive) {
+                                VrkaStatusBadge(
+                                    stringResource(R.string.status_active),
+                                    VrkaTokens.AccentLight,
+                                    isMonospace = true,
+                                )
+                            }
+                            if (updateTag != null) {
+                                VrkaStatusBadge(
+                                    stringResource(R.string.runtime_badge_update),
+                                    VrkaTokens.Warning,
+                                    isMonospace = true,
+                                )
+                            }
+                        }
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (!isActive) {
+                            VrkaOutlinedButton(
+                                text = stringResource(R.string.runtime_use),
+                                onClick = {
+                                    scope.launch {
+                                        runtimeManager.activateCustom(runtime.id)
+                                            .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                                    }
+                                },
+                                enabled = !runtimeState.working,
+                                height = 32.dp,
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            )
+                        }
+                        VrkaOutlinedButton(
+                            text = stringResource(R.string.runtime_update),
+                            onClick = {
+                                scope.launch {
+                                    runtimeManager.update(runtime.id)
+                                        .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                                }
+                            },
+                            enabled = !runtimeState.working,
+                            height = 32.dp,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        )
+                        VrkaOutlinedButton(
+                            text = stringResource(R.string.runtime_remove),
+                            onClick = {
+                                scope.launch {
+                                    runtimeManager.remove(runtime.id)
+                                        .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                                }
+                            },
+                            enabled = !runtimeState.working && !isActive,
+                            height = 32.dp,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        )
+                    }
+                }
+            }
+
+            VrkaDivider()
+
+            VrkaOutlinedButton(
+                text = stringResource(R.string.runtime_add),
+                onClick = {
+                    runtimeRepoInput = ""
+                    runtimeDialogError = ""
+                    showAddRuntimeDialog = true
+                },
+                enabled = !runtimeState.working,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                height = 40.dp,
+            )
+
+            if (runtimeState.working) {
+                Text(
+                    text = runtimeState.message.ifBlank { stringResource(R.string.runtime_busy) },
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                    color = VrkaTokens.AccentLight,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.runtime_custom_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = VrkaTokens.TextTertiary,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+
+        if (showAddRuntimeDialog) {
+            AlertDialog(
+                onDismissRequest = { if (!runtimeState.working) showAddRuntimeDialog = false },
+                title = {
+                    Text(
+                        stringResource(R.string.runtime_add_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VrkaTokens.TextPrimary,
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            stringResource(R.string.runtime_add_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = VrkaTokens.TextSecondary,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = runtimeRepoInput,
+                            onValueChange = {
+                                runtimeRepoInput = it
+                                runtimeDialogError = ""
+                            },
+                            singleLine = true,
+                            enabled = !runtimeState.working,
+                            label = { Text(stringResource(R.string.runtime_repo_hint)) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (runtimeDialogError.isNotBlank()) {
+                            Text(
+                                text = runtimeDialogError,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = VrkaTokens.Error,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                        if (runtimeState.working) {
+                            Text(
+                                text = runtimeState.message.ifBlank { stringResource(R.string.runtime_busy) },
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                                color = VrkaTokens.AccentLight,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val repo = runtimeRepoInput.trim()
+                            if (repo.isBlank()) {
+                                runtimeDialogError = context.getString(R.string.runtime_repo_required)
+                                return@TextButton
+                            }
+                            scope.launch {
+                                runtimeManager.install(repo)
+                                    .onSuccess { message ->
+                                        showAddRuntimeDialog = false
+                                        runtimeRepoInput = ""
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    }
+                                    .onFailure { error ->
+                                        runtimeDialogError = error.message
+                                            ?: context.getString(R.string.runtime_install_failed)
+                                    }
+                            }
+                        },
+                        enabled = !runtimeState.working,
+                    ) {
+                        Text(stringResource(R.string.runtime_install), color = VrkaTokens.Accent)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showAddRuntimeDialog = false },
+                        enabled = !runtimeState.working,
+                    ) {
+                        Text(stringResource(R.string.fallback_cancel), color = VrkaTokens.TextSecondary)
+                    }
+                },
+                containerColor = VrkaTokens.SurfaceCard,
+            )
         }
 
         SettingsHeading(stringResource(R.string.settings_heading_browser))
