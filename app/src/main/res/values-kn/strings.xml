@@ -101,6 +101,9 @@
     <string name="desc_location_prompt">ಪ್ರತಿ ಡೌನ್‌ಲೋಡ್‌ಗಾಗಿ ಸ್ಥಳವನ್ನು ಆಯ್ಕೆ ಮಾಡಲು ನಿಮ್ಮನ್ನು ಕೇಳಲಾಗುತ್ತದೆ.</string>
     <string name="desc_location_selected">ಡೌನ್‌ಲೋಡ್‌ಗಳನ್ನು ನೇರವಾಗಿ ಆಯ್ಕೆಮಾಡಿದ ಸ್ಥಳಕ್ಕೆ ಉಳಿಸಲಾಗುತ್ತದೆ.</string>
     <string name="desc_media_detection">WebExtension • ನೇರ ಮಾಧ್ಯಮ, HLS ಮತ್ತು DASH ಪತ್ತೆ</string>
+    <string name="desc_size_confirmation_disabled">ಡೌನ್ಲೋಡ್ಗಳ ಮೊದಲು ಗಾತ್ರದ ಅಂದಾಜುಗಳನ್ನು ಬಿಟ್ಟುಬಿಡಲಾಗುತ್ತದೆ</string>
+    <string name="desc_size_confirmation_enabled">ಪ್ರತಿ ಡೌನ್ಲೋಡ್ಗೆ ಮೊದಲು ಮೆಟಾಡೇಟಾದಿಂದ ಡೌನ್ಲೋಡ್ ಗಾತ್ರವನ್ನು ಅಂದಾಜಿಸಿ</string>
+    <string name="desc_size_confirmation_helper">yt-dlp ಮೆಟಾಡೇಟಾವನ್ನು ಮಾತ್ರ ಬಳಸುತ್ತದೆ; ಗಾತ್ರ ಲೆಕ್ಕಹಾಕಲು ಏನನ್ನೂ ಡೌನ್ಲೋಡ್ ಮಾಡಲಾಗುವುದಿಲ್ಲ. ಅಂದಾಜು ಮೌಲ್ಯಗಳನ್ನು ಅಂದಾಜು ಎಂದು ಗುರುತಿಸಲಾಗುತ್ತದೆ.</string>
     <string name="desc_up_to_date">VRKA ಅಪ್-ಟು-ಡೇಟ್ ಆಗಿದೆ</string>
     <string name="desc_update_available">v%1$s ಲಭ್ಯವಿದೆ</string>
     <string name="diagnostics_empty">ಯಾವುದೇ ಡಯಾಗ್ನೋಸ್ಟಿಕ್ ನಮೂದುಗಳು ದಾಖಲಾಗಿಲ್ಲ.</string>
@@ -118,6 +121,7 @@
 
 ನೀವು ಖಚಿತವಾಗಿ ಸಕ್ರಿಯಗೊಳಿಸಲು ಬಯಸುವಿರಾ?</string>
     <string name="dialog_concurrency_title">ಏಕಕಾಲೀನ ಡೌನ್‌ಲೋಡ್‌ಗಳನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಬೇಕೆ?</string>
+    <string name="dialog_confirm_download_title">ಡೌನ್ಲೋಡ್ ದೃಢೀಕರಿಸಿ</string>
     <string name="dialog_delete_single_no_file_desc">ನಿಮ್ಮ ಡೌನ್‌ಲೋಡ್ ಇತಿಹಾಸದಿಂದ \"%1$s\" ತೆಗೆದುಹಾಕಬೇಕೆ?</string>
     <string name="dialog_delete_single_with_file_desc">ಈ ಇತಿಹಾಸ ದಾಖಲೆಯನ್ನು ಮಾತ್ರ ತೆಗೆದುಹಾಕಬೇಕೆ ಅಥವಾ ಸಾಧನದ ಸಂಗ್ರಹಣೆಯಿಂದ ಡೌನ್‌ಲೋಡ್ ಮಾಡಿದ ಮಾಧ್ಯಮ ಫೈಲ್ ಅನ್ನು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸಬೇಕೆ ಎಂಬುದನ್ನು ಆಯ್ಕೆಮಾಡಿ.</string>
     <string name="dialog_download_location_desc">ಡೌನ್‌ಲೋಡ್ ಮಾಡಿದ ಫೈಲ್‌ಗಳನ್ನು ನಿಮ್ಮ ಸಾಧನದಲ್ಲಿ ಎಲ್ಲಿ ಉಳಿಸಬೇಕೆಂದು ಆಯ್ಕೆಮಾಡಿ.</string>
@@ -133,6 +137,11 @@
     <string name="error_trim_end">ಟ್ರಿಮ್ ಅಂತ್ಯ ಸೆಕೆಂಡುಗಳು ಅಥವಾ HH:MM:SS ಆಗಿರಬೇಕು.</string>
     <string name="error_trim_order">ಟ್ರಿಮ್ ಅಂತ್ಯ ಪ್ರಾರಂಭದ ನಂತರ ಇರಬೇಕು.</string>
     <string name="error_trim_start">ಟ್ರಿಮ್ ಪ್ರಾರಂಭ ಸೆಕೆಂಡುಗಳು ಅಥವಾ HH:MM:SS ಆಗಿರಬೇಕು.</string>
+    <string name="estimate_approximate">ಅಂದಾಜು ಗಾತ್ರ</string>
+    <string name="estimate_checking">ಗಾತ್ರವನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…</string>
+    <string name="estimate_exact">ನಿಖರ ಗಾತ್ರ</string>
+    <string name="estimate_skip_future">ಡೌನ್ಲೋಡ್ಗಳ ಮೊದಲು ಗಾತ್ರದ ಅಂದಾಜುಗಳನ್ನು ತೋರಿಸಬೇಡಿ</string>
+    <string name="estimate_unavailable">ಗಾತ್ರ ಲಭ್ಯವಿಲ್ಲ</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d ಬಾಕಿ ಇದೆ</string>
     <string name="eta_format_minutes">%1$d:%2$02d ಬಾಕಿ ಇದೆ</string>
     <string name="failure_auth_detail">ಮೂಲಕ್ಕೆ ದೃಢೀಕರಿಸಿದ ಬ್ರೌಸರ್ ಸೆಷನ್ ಅಗತ್ಯವಿರಬಹುದು.</string>
@@ -233,6 +242,7 @@
     <string name="pref_font">ಫಾಂಟ್</string>
     <string name="pref_h264_title">H.264 ಹೊಂದಾಣಿಕೆ ಮೋಡ್</string>
     <string name="pref_media_detection">ಮಾಧ್ಯಮ ಪತ್ತೆ</string>
+    <string name="pref_size_confirmation">ಗಾತ್ರ ದೃಢೀಕರಣ</string>
     <string name="pref_system_default">ಸಿಸ್ಟಂ ಡೀಫಾಲ್ಟ್</string>
     <string name="pref_theme_mode">ಥೀಮ್ ಮೋಡ್</string>
     <string name="queue_empty_desc">ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿರುವಾಗ ನೀವು ಸೇರಿಸುವ ಮಾಧ್ಯಮ ಇಲ್ಲಿ ಕಾಣಿಸುತ್ತದೆ.</string>
@@ -250,6 +260,28 @@
     <string name="readout_trim">ಟ್ರಿಮ್ ಸಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ</string>
     <string name="readout_video">ವೀಡಿಯೊ · %1$s · 60 FPS %2$s</string>
     <string name="readout_wav">WAV · ಸಂಕುಚಿತವಲ್ಲದ PCM</string>
+    <string name="runtime_active_title">ಸಕ್ರಿಯ ರನ್ಟೈಮ್</string>
+    <string name="runtime_add">ಕಸ್ಟಮ್ ಫೋರ್ಕ್ ಸೇರಿಸಿ</string>
+    <string name="runtime_add_desc">ಸಾರ್ವಜನಿಕ GitHub ರಿಪೊಸಿಟರಿ ನಮೂದಿಸಿ. VRKA \"yt-dlp\" ಎಂಬ python zipapp ಆಸ್ತಿಯನ್ನು ಮಾತ್ರ ಡೌನ್ಲೋಡ್ ಮಾಡುತ್ತದೆ, ಅದರ SHA-256 ದಾಖಲಿಸುತ್ತದೆ ಮತ್ತು ಸಕ್ರಿಯಗೊಳಿಸುವ ಮೊದಲು ಒಮ್ಮೆ ಚಲಾಯಿಸುತ್ತದೆ. ಇತರ ಬಿಡುಗಡೆ ಆಸ್ತಿಗಳನ್ನು ನಿರ್ಲಕ್ಷಿಸಲಾಗುತ್ತದೆ.</string>
+    <string name="runtime_add_title">ಕಸ್ಟಮ್ yt-dlp ಫೋರ್ಕ್ ಸೇರಿಸಿ</string>
+    <string name="runtime_badge_custom">ಕಸ್ಟಮ್</string>
+    <string name="runtime_badge_stock">ಸ್ಟಾಕ್</string>
+    <string name="runtime_badge_update">ಅಪ್ಡೇಟ್</string>
+    <string name="runtime_badge_verified">ನಿರ್ವಹಿಸಲಾಗಿದೆ</string>
+    <string name="runtime_busy">ರನ್ಟೈಮ್ ಕಾರ್ಯಾಚರಣೆ ನಡೆಯುತ್ತಿದೆ…</string>
+    <string name="runtime_custom_warning">ಕಸ್ಟಮ್ ಫೋರ್ಕ್ಗಳು yt-dlp ನ OpenPGP ಸಹಿಯ ವ್ಯಾಪ್ತಿಯಲ್ಲಿಲ್ಲ. ದಾಖಲಾದ SHA-256 ಕೇವಲ ಫೈಲ್ ಬದಲಾವಣೆಗಳನ್ನು ಪತ್ತೆಹಚ್ಚುತ್ತದೆ; ಇದು ಪ್ರಕಾಶಕರ ಅಧಿಕೃತತೆಯ ಪುರಾವೆಯಲ್ಲ. ಈ ಸಾಧನದಲ್ಲಿ ಯಶಸ್ವಿಯಾಗಿ ಚಲಿಸದ ಫೋರ್ಕ್ ಅನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಲು VRKA ನಿರಾಕರಿಸುತ್ತದೆ.</string>
+    <string name="runtime_install">ಸ್ಥಾಪಿಸಿ</string>
+    <string name="runtime_install_failed">ಸ್ಥಾಪನೆ ವಿಫಲವಾಗಿದೆ.</string>
+    <string name="runtime_remove">ತೆಗೆದುಹಾಕಿ</string>
+    <string name="runtime_repo_hint">owner/repo</string>
+    <string name="runtime_repo_required">GitHub ರಿಪೊಸಿಟರಿ ನಮೂದಿಸಿ.</string>
+    <string name="runtime_stock_desc">ಅಪ್ಸ್ಟ್ರೀಮ್ OpenPGP ಸಹಿ ಪರಿಶೀಲನೆಯೊಂದಿಗೆ ಘಟಕ ಅಪ್ಡೇಟರ್ನಿಂದ ನಿರ್ವಹಿಸಲ್ಪಡುತ್ತದೆ.</string>
+    <string name="runtime_stock_name">ಸ್ಟಾಕ್ yt-dlp</string>
+    <string name="runtime_stock_version">yt-dlp %1$s</string>
+    <string name="runtime_update">ಅಪ್ಡೇಟ್ ಮಾಡಿ</string>
+    <string name="runtime_use">ಬಳಸಿ</string>
+    <string name="runtime_use_stock">ಸ್ಟಾಕ್ ಬಳಸಿ</string>
+    <string name="runtime_version">yt-dlp %1$s</string>
     <string name="save_location_ask_every_time">ಪ್ರತಿ ಬಾರಿಯೂ ಕೇಳಿ</string>
     <string name="save_location_use_selected">ಆಯ್ಕೆಮಾಡಿದ್ದನ್ನು ಬಳಸಿ</string>
     <string name="section_audio_format">ಆಡಿಯೊ ಸ್ವರೂಪ</string>
@@ -264,8 +296,17 @@
     <string name="settings_heading_components">ಘಟಕಗಳು ಮತ್ತು ನವೀಕರಣಗಳು</string>
     <string name="settings_heading_concurrency">ಡೌನ್‌ಲೋಡ್‌ಗಳು ಮತ್ತು ಏಕಕಾಲೀನತೆ</string>
     <string name="settings_heading_diagnostics">ಡಯಾಗ್ನೋಸ್ಟಿಕ್ಸ್</string>
+    <string name="settings_heading_download_behavior">ಡೌನ್ಲೋಡ್ ನಡವಳಿಕೆ</string>
     <string name="settings_heading_download_location">ಡೌನ್‌ಲೋಡ್ ಸ್ಥಳ</string>
+    <string name="settings_heading_runtime">yt-dlp ರನ್ಟೈಮ್</string>
     <string name="settings_title">ಸೆಟ್ಟಿಂಗ್‌ಗಳು</string>
+    <string name="share_commands_none">ಯಾವುದೇ ಟೆಂಪ್ಲೇಟ್ ಆಯ್ಕೆಯಾಗಿಲ್ಲ</string>
+    <string name="share_commands_template">ಕಸ್ಟಮ್ ಆಜ್ಞೆ: %1$s</string>
+    <string name="share_remember_choices">ಈ ಆಯ್ಕೆಗಳನ್ನು ನೆನಪಿಡಿ</string>
+    <string name="share_section_type">ಡೌನ್ಲೋಡ್ ಪ್ರಕಾರ</string>
+    <string name="share_sheet_source">ಹಂಚಿಕೊಂಡ ಲಿಂಕ್</string>
+    <string name="share_sheet_title">ಡೌನ್ಲೋಡ್ ಮೊದಲು ಕಾನ್ಫಿಗರ್ ಮಾಡಿ</string>
+    <string name="share_type_commands">ಆಜ್ಞೆಗಳು</string>
     <string name="snackbar_enqueue_failed">ಡೌನ್‌ಲೋಡ್ ಸೇರಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ</string>
     <string name="status_active">ಸಕ್ರಿಯವಾಗಿದೆ</string>
     <string name="status_analysing">ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ</string>

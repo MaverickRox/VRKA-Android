@@ -101,6 +101,9 @@
     <string name="desc_location_prompt">Ser-lhe-á solicitado que escolha uma localização para cada transferência.</string>
     <string name="desc_location_selected">As transferências serão guardadas diretamente na localização selecionada.</string>
     <string name="desc_media_detection">WebExtension • Deteção direta de multimédia, HLS e DASH</string>
+    <string name="desc_size_confirmation_disabled">As estimativas de tamanho são ignoradas antes das transferências</string>
+    <string name="desc_size_confirmation_enabled">Estimar o tamanho da transferência a partir dos metadados antes de cada transferência</string>
+    <string name="desc_size_confirmation_helper">Usa apenas os metadados do yt-dlp; nada é transferido para calcular o tamanho. Os valores aproximados são identificados como aproximados.</string>
     <string name="desc_up_to_date">O VRKA está atualizado</string>
     <string name="desc_update_available">v%1$s disponível</string>
     <string name="diagnostics_empty">Nenhuma entrada de diagnóstico registada.</string>
@@ -118,6 +121,7 @@
 
 Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="dialog_concurrency_title">Ativar transferências simultâneas?</string>
+    <string name="dialog_confirm_download_title">Confirmar transferência</string>
     <string name="dialog_delete_single_no_file_desc">Remover \"%1$s\" do seu histórico de transferências?</string>
     <string name="dialog_delete_single_with_file_desc">Escolha se pretende remover apenas este registo do histórico ou também eliminar permanentemente o ficheiro transferido do armazenamento.</string>
     <string name="dialog_download_location_desc">Escolha onde os ficheiros transferidos serão guardados no seu dispositivo.</string>
@@ -133,6 +137,11 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="error_trim_end">O fim do recorte deve ser em segundos ou HH:MM:SS.</string>
     <string name="error_trim_order">O fim do recorte deve ser posterior ao início.</string>
     <string name="error_trim_start">O início do recorte deve ser em segundos ou HH:MM:SS.</string>
+    <string name="estimate_approximate">Tamanho aproximado</string>
+    <string name="estimate_checking">A verificar o tamanho…</string>
+    <string name="estimate_exact">Tamanho exato</string>
+    <string name="estimate_skip_future">Não mostrar estimativas de tamanho antes das transferências</string>
+    <string name="estimate_unavailable">Tamanho indisponível</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d restante</string>
     <string name="eta_format_minutes">%1$d:%2$02d restante</string>
     <string name="failure_auth_detail">A fonte poderá exigir uma sessão autenticada no navegador.</string>
@@ -233,6 +242,7 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="pref_font">Tipo de letra</string>
     <string name="pref_h264_title">Modo de compatibilidade H.264</string>
     <string name="pref_media_detection">Deteção de conteúdo multimédia</string>
+    <string name="pref_size_confirmation">Confirmação de tamanho</string>
     <string name="pref_system_default">Predefinição do sistema</string>
     <string name="pref_theme_mode">Modo de tema</string>
     <string name="queue_empty_desc">Os ficheiros multimédia colocados na fila aparecerão aqui durante a transferência.</string>
@@ -250,6 +260,28 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="readout_trim">Recorte ativado</string>
     <string name="readout_video">Vídeo · %1$s · 60 FPS %2$s</string>
     <string name="readout_wav">WAV · PCM não comprimido</string>
+    <string name="runtime_active_title">Ambiente de execução ativo</string>
+    <string name="runtime_add">Adicionar fork personalizado</string>
+    <string name="runtime_add_desc">Introduza um repositório GitHub público. O VRKA transfere apenas o recurso python zipapp com o nome \"yt-dlp\", registra o respetivo SHA-256 e executa-o uma vez antes de o poder ativar. Os restantes recursos da versão são ignorados.</string>
+    <string name="runtime_add_title">Adicionar fork personalizado do yt-dlp</string>
+    <string name="runtime_badge_custom">PERSONALIZADO</string>
+    <string name="runtime_badge_stock">OFICIAL</string>
+    <string name="runtime_badge_update">ATUALIZAÇÃO</string>
+    <string name="runtime_badge_verified">EXECUTADO</string>
+    <string name="runtime_busy">Operação no ambiente de execução em curso…</string>
+    <string name="runtime_custom_warning">Os forks personalizados não estão abrangidos pela assinatura OpenPGP do yt-dlp. O SHA-256 registado apenas deteta alterações ao ficheiro; não prova a autenticidade do editor. O VRKA recusa ativar um fork que não tenha sido executado com sucesso neste dispositivo.</string>
+    <string name="runtime_install">Instalar</string>
+    <string name="runtime_install_failed">Falha na instalação.</string>
+    <string name="runtime_remove">Remover</string>
+    <string name="runtime_repo_hint">owner/repo</string>
+    <string name="runtime_repo_required">Introduza um repositório GitHub.</string>
+    <string name="runtime_stock_desc">Gerido pelo atualizador de componentes com verificação da assinatura OpenPGP da origem.</string>
+    <string name="runtime_stock_name">yt-dlp oficial</string>
+    <string name="runtime_stock_version">yt-dlp %1$s</string>
+    <string name="runtime_update">Atualizar</string>
+    <string name="runtime_use">Usar</string>
+    <string name="runtime_use_stock">Usar oficial</string>
+    <string name="runtime_version">yt-dlp %1$s</string>
     <string name="save_location_ask_every_time">Perguntar sempre</string>
     <string name="save_location_use_selected">Utilizar selecionada</string>
     <string name="section_audio_format">FORMATO DE ÁUDIO</string>
@@ -264,8 +296,17 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="settings_heading_components">Componentes e atualizações</string>
     <string name="settings_heading_concurrency">Transferências e simultaneidade</string>
     <string name="settings_heading_diagnostics">Diagnóstico</string>
+    <string name="settings_heading_download_behavior">Comportamento das transferências</string>
     <string name="settings_heading_download_location">Localização de transferência</string>
+    <string name="settings_heading_runtime">Ambiente de execução do yt-dlp</string>
     <string name="settings_title">Definições</string>
+    <string name="share_commands_none">Nenhum modelo selecionado</string>
+    <string name="share_commands_template">Comando personalizado: %1$s</string>
+    <string name="share_remember_choices">Memorizar estas opções</string>
+    <string name="share_section_type">TIPO DE TRANSFERÊNCIA</string>
+    <string name="share_sheet_source">LIGAÇÃO PARTILHADA</string>
+    <string name="share_sheet_title">Configurar antes de transferir</string>
+    <string name="share_type_commands">Comandos</string>
     <string name="snackbar_enqueue_failed">Não foi possível adicionar a transferência</string>
     <string name="status_active">Ativo</string>
     <string name="status_analysing">A analisar</string>

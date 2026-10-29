@@ -101,6 +101,9 @@
     <string name="desc_location_prompt">每次下载时都会提示您选择保存位置。</string>
     <string name="desc_location_selected">下载内容将直接保存到所选目录。</string>
     <string name="desc_media_detection">WebExtension • 原生直链、HLS 和 DASH 流媒体自动发现</string>
+    <string name="desc_size_confirmation_disabled">下载前将跳过大小估算</string>
+    <string name="desc_size_confirmation_enabled">每次下载前根据元数据估算下载大小</string>
+    <string name="desc_size_confirmation_helper">仅使用 yt-dlp 元数据；计算大小时不会下载任何内容。近似值会标注为近似。</string>
     <string name="desc_up_to_date">当前已是最新版本</string>
     <string name="desc_update_available">新版本 v%1$s 可用</string>
     <string name="diagnostics_empty">暂无诊断记录。下载发生异常时将自动在本地记录详细诊断日志。</string>
@@ -118,6 +121,7 @@
 
 确定要启用并行下载吗？</string>
     <string name="dialog_concurrency_title">启用多任务并行下载？</string>
+    <string name="dialog_confirm_download_title">确认下载</string>
     <string name="dialog_delete_single_no_file_desc">确定从下载历史中移除 \"%1$s\" 吗？</string>
     <string name="dialog_delete_single_with_file_desc">选择仅从历史记录中移除此项，还是同时从设备存储中永久删除已下载的文件。</string>
     <string name="dialog_download_location_desc">选择下载文件在设备上的存储目录。</string>
@@ -133,6 +137,11 @@
     <string name="error_trim_end">剪辑结束时间必须为秒数或 HH:MM:SS 格式。</string>
     <string name="error_trim_order">剪辑结束时间必须晚于开始时间。</string>
     <string name="error_trim_start">剪辑开始时间必须为秒数或 HH:MM:SS 格式。</string>
+    <string name="estimate_approximate">近似大小</string>
+    <string name="estimate_checking">正在检查大小…</string>
+    <string name="estimate_exact">精确大小</string>
+    <string name="estimate_skip_future">下载前不显示大小估算</string>
+    <string name="estimate_unavailable">大小不可用</string>
     <string name="eta_format_hours">剩余 %1$d:%2$02d:%3$02d</string>
     <string name="eta_format_minutes">剩余 %1$d:%2$02d</string>
     <string name="failure_auth_detail">来源站点可能需要已登录授权的浏览器会话。</string>
@@ -233,6 +242,7 @@
     <string name="pref_font">字体选择</string>
     <string name="pref_h264_title">H.264 兼容模式</string>
     <string name="pref_media_detection">媒体嗅探检测</string>
+    <string name="pref_size_confirmation">大小确认</string>
     <string name="pref_system_default">跟随系统</string>
     <string name="pref_theme_mode">主题模式</string>
     <string name="queue_empty_desc">您添加的媒体将在下载过程中显示在此处。</string>
@@ -250,6 +260,28 @@
     <string name="readout_trim">已启用剪辑</string>
     <string name="readout_video">视频 · %1$s · 60 FPS %2$s</string>
     <string name="readout_wav">WAV · 无损 PCM</string>
+    <string name="runtime_active_title">当前运行时</string>
+    <string name="runtime_add">添加自定义分支</string>
+    <string name="runtime_add_desc">输入公开的 GitHub 仓库。VRKA 仅下载名为 \"yt-dlp\" 的 python zipapp 文件，记录其 SHA-256，并在激活前执行一次。其他发布资源会被忽略。</string>
+    <string name="runtime_add_title">添加自定义 yt-dlp 分支</string>
+    <string name="runtime_badge_custom">自定义</string>
+    <string name="runtime_badge_stock">官方</string>
+    <string name="runtime_badge_update">更新</string>
+    <string name="runtime_badge_verified">已执行</string>
+    <string name="runtime_busy">运行时操作进行中…</string>
+    <string name="runtime_custom_warning">自定义分支不在 yt-dlp 上游 OpenPGP 签名的覆盖范围内。记录的 SHA-256 只能检测文件变化，并不能证明发布者身份。VRKA 不会激活从未在此设备上成功执行的分支。</string>
+    <string name="runtime_install">安装</string>
+    <string name="runtime_install_failed">安装失败。</string>
+    <string name="runtime_remove">移除</string>
+    <string name="runtime_repo_hint">owner/repo</string>
+    <string name="runtime_repo_required">请输入 GitHub 仓库。</string>
+    <string name="runtime_stock_desc">由组件更新器管理，并验证上游 OpenPGP 签名。</string>
+    <string name="runtime_stock_name">官方 yt-dlp</string>
+    <string name="runtime_stock_version">yt-dlp %1$s</string>
+    <string name="runtime_update">更新</string>
+    <string name="runtime_use">使用</string>
+    <string name="runtime_use_stock">使用官方版本</string>
+    <string name="runtime_version">yt-dlp %1$s</string>
     <string name="save_location_ask_every_time">每次询问</string>
     <string name="save_location_use_selected">使用所选位置</string>
     <string name="section_audio_format">音频格式</string>
@@ -264,8 +296,17 @@
     <string name="settings_heading_components">组件与更新</string>
     <string name="settings_heading_concurrency">下载并发设置</string>
     <string name="settings_heading_diagnostics">诊断日志</string>
+    <string name="settings_heading_download_behavior">下载行为</string>
     <string name="settings_heading_download_location">下载保存位置</string>
+    <string name="settings_heading_runtime">yt-dlp 运行时</string>
     <string name="settings_title">设置</string>
+    <string name="share_commands_none">未选择模板</string>
+    <string name="share_commands_template">自定义命令：%1$s</string>
+    <string name="share_remember_choices">记住这些选择</string>
+    <string name="share_section_type">下载类型</string>
+    <string name="share_sheet_source">分享的链接</string>
+    <string name="share_sheet_title">下载前配置</string>
+    <string name="share_type_commands">命令</string>
     <string name="snackbar_enqueue_failed">无法添加下载任务</string>
     <string name="status_active">活跃</string>
     <string name="status_analysing">正在解析</string>
