@@ -101,6 +101,9 @@
     <string name="desc_location_prompt">Se te pedirá elegir una ubicación para cada descarga.</string>
     <string name="desc_location_selected">Las descargas se guardarán directamente en la ubicación seleccionada.</string>
     <string name="desc_media_detection">WebExtension • Detección directa de medios, HLS y DASH</string>
+    <string name="desc_size_confirmation_disabled">Las estimaciones de tamaño se omiten antes de las descargas</string>
+    <string name="desc_size_confirmation_enabled">Estima el tamaño de la descarga a partir de los metadatos antes de cada descarga</string>
+    <string name="desc_size_confirmation_helper">Solo usa metadatos de yt-dlp; no se descarga nada para calcular el tamaño. Los valores aproximados se etiquetan como aproximados.</string>
     <string name="desc_up_to_date">VRKA está actualizado</string>
     <string name="desc_update_available">v%1$s disponible</string>
     <string name="diagnostics_empty">No hay entradas de diagnóstico registradas.</string>
@@ -118,6 +121,7 @@
 
 ¿Seguro que deseas activar las descargas simultáneas?</string>
     <string name="dialog_concurrency_title">¿Activar descargas simultáneas?</string>
+    <string name="dialog_confirm_download_title">Confirmar descarga</string>
     <string name="dialog_delete_single_no_file_desc">¿Quitar \"%1$s\" de tu historial de descargas?</string>
     <string name="dialog_delete_single_with_file_desc">Elige si deseas eliminar solo este registro del historial o también borrar permanentemente el archivo descargado del almacenamiento de tu dispositivo.</string>
     <string name="dialog_download_location_desc">Elige dónde se guardarán los archivos descargados en tu dispositivo.</string>
@@ -133,6 +137,11 @@
     <string name="error_trim_end">El fin del recorte debe ser en segundos o HH:MM:SS.</string>
     <string name="error_trim_order">El fin del recorte debe ser posterior al inicio.</string>
     <string name="error_trim_start">El inicio del recorte debe ser en segundos o HH:MM:SS.</string>
+    <string name="estimate_approximate">Tamaño aproximado</string>
+    <string name="estimate_checking">Comprobando tamaño…</string>
+    <string name="estimate_exact">Tamaño exacto</string>
+    <string name="estimate_skip_future">No mostrar estimaciones de tamaño antes de las descargas</string>
+    <string name="estimate_unavailable">Tamaño no disponible</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d restante</string>
     <string name="eta_format_minutes">%1$d:%2$02d restante</string>
     <string name="failure_auth_detail">La fuente puede requerir una sesión autenticada en el navegador.</string>
@@ -233,6 +242,7 @@
     <string name="pref_font">Fuente</string>
     <string name="pref_h264_title">Modo de compatibilidad H.264</string>
     <string name="pref_media_detection">Detección de medios</string>
+    <string name="pref_size_confirmation">Confirmación de tamaño</string>
     <string name="pref_system_default">Predeterminado del sistema</string>
     <string name="pref_theme_mode">Modo de tema</string>
     <string name="queue_empty_desc">El contenido que pongas en cola aparecerá aquí mientras se descarga.</string>
@@ -250,6 +260,28 @@
     <string name="readout_trim">Recorte activado</string>
     <string name="readout_video">Vídeo · %1$s · 60 FPS %2$s</string>
     <string name="readout_wav">WAV · PCM sin comprimir</string>
+    <string name="runtime_active_title">Entorno de ejecución activo</string>
+    <string name="runtime_add">Añadir fork personalizado</string>
+    <string name="runtime_add_desc">Introduce un repositorio público de GitHub. VRKA descarga solo el recurso python zipapp llamado \"yt-dlp\", registra su SHA-256 y lo ejecuta una vez antes de activarlo. Los demás recursos de la versión se ignoran.</string>
+    <string name="runtime_add_title">Añadir fork personalizado de yt-dlp</string>
+    <string name="runtime_badge_custom">PERSONALIZADO</string>
+    <string name="runtime_badge_stock">OFICIAL</string>
+    <string name="runtime_badge_update">ACTUALIZACIÓN</string>
+    <string name="runtime_badge_verified">EJECUTADO</string>
+    <string name="runtime_busy">Operación del entorno de ejecución en curso…</string>
+    <string name="runtime_custom_warning">Los forks personalizados no están cubiertos por la firma OpenPGP de yt-dlp. El SHA-256 registrado solo detecta cambios en el archivo; no es prueba de autenticidad del editor. VRKA se niega a activar un fork que no se haya ejecutado correctamente en este dispositivo.</string>
+    <string name="runtime_install">Instalar</string>
+    <string name="runtime_install_failed">Error de instalación.</string>
+    <string name="runtime_remove">Eliminar</string>
+    <string name="runtime_repo_hint">owner/repo</string>
+    <string name="runtime_repo_required">Introduce un repositorio de GitHub.</string>
+    <string name="runtime_stock_desc">Gestionado por el actualizador de componentes con verificación de firma OpenPGP del origen.</string>
+    <string name="runtime_stock_name">yt-dlp oficial</string>
+    <string name="runtime_stock_version">yt-dlp %1$s</string>
+    <string name="runtime_update">Actualizar</string>
+    <string name="runtime_use">Usar</string>
+    <string name="runtime_use_stock">Usar oficial</string>
+    <string name="runtime_version">yt-dlp %1$s</string>
     <string name="save_location_ask_every_time">Preguntar siempre</string>
     <string name="save_location_use_selected">Usar seleccionada</string>
     <string name="section_audio_format">FORMATO DE AUDIO</string>
@@ -264,8 +296,17 @@
     <string name="settings_heading_components">Componentes y actualizaciones</string>
     <string name="settings_heading_concurrency">Descargas y concurrencia</string>
     <string name="settings_heading_diagnostics">Diagnósticos</string>
+    <string name="settings_heading_download_behavior">Comportamiento de descarga</string>
     <string name="settings_heading_download_location">Ubicación de descarga</string>
+    <string name="settings_heading_runtime">Entorno de ejecución de yt-dlp</string>
     <string name="settings_title">Ajustes</string>
+    <string name="share_commands_none">Ninguna plantilla seleccionada</string>
+    <string name="share_commands_template">Comando personalizado: %1$s</string>
+    <string name="share_remember_choices">Recordar estas opciones</string>
+    <string name="share_section_type">TIPO DE DESCARGA</string>
+    <string name="share_sheet_source">ENLACE COMPARTIDO</string>
+    <string name="share_sheet_title">Configurar antes de descargar</string>
+    <string name="share_type_commands">Comandos</string>
     <string name="snackbar_enqueue_failed">No se pudo añadir la descarga</string>
     <string name="status_active">Activo</string>
     <string name="status_analysing">Analizando</string>

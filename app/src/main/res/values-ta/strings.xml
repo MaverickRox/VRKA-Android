@@ -101,6 +101,9 @@
     <string name="desc_location_prompt">ஒவ்வொரு பதிவிறக்கத்திற்கும் ஒரு இருப்பிடத்தைத் தேர்ந்தெடுக்க நீங்கள் கேட்கப்படுவீர்கள்.</string>
     <string name="desc_location_selected">பதிவிறக்கங்கள் நேரடியாகத் தேர்ந்தெடுக்கப்பட்ட இடத்தில் சேமிக்கப்படும்.</string>
     <string name="desc_media_detection">WebExtension • நேரடி ஊடகம், HLS மற்றும் DASH கண்டறிதல்</string>
+    <string name="desc_size_confirmation_disabled">பதிவிறக்கங்களுக்கு முன் அளவு மதிப்பீடுகள் தவிர்க்கப்படும்</string>
+    <string name="desc_size_confirmation_enabled">ஒவ்வொரு பதிவிறக்கத்திற்கும் முன் மெட்டாடேட்டாவிலிருந்து பதிவிறக்க அளவை மதிப்பிடு</string>
+    <string name="desc_size_confirmation_helper">yt-dlp மெட்டாடேட்டாவை மட்டுமே பயன்படுத்துகிறது; அளவைக் கணக்கிட எதுவும் பதிவிறக்கப்படாது. தோராயமான மதிப்புகள் தோராயமானவை எனக் குறிக்கப்படும்.</string>
     <string name="desc_up_to_date">VRKA புதுப்பித்த நிலையில் உள்ளது</string>
     <string name="desc_update_available">v%1$s கிடைக்கிறது</string>
     <string name="diagnostics_empty">கண்டறியும் உள்ளீடுகள் எதுவும் பதிவு செய்யப்படவில்லை.</string>
@@ -118,6 +121,7 @@
 
 ஒரே நேரப் பதிவிறக்கங்களை நிச்சயமாக இயக்க விரும்புகிறீர்களா?</string>
     <string name="dialog_concurrency_title">ஒரே நேரப் பதிவிறக்கங்களை இயக்கவா?</string>
+    <string name="dialog_confirm_download_title">பதிவிறக்கத்தை உறுதிசெய்</string>
     <string name="dialog_delete_single_no_file_desc">உங்கள் பதிவிறக்க வரலாற்றிலிருந்து \"%1$s\" ஐ அகற்றவா?</string>
     <string name="dialog_delete_single_with_file_desc">இந்த வரலாற்றுப் பதிவை மட்டும் அகற்ற வேண்டுமா அல்லது பதிவிறக்கம் செய்யப்பட்ட ஊடகக் கோப்பையும் சாதன சேமிப்பகத்திலிருந்து நிரந்தரமாக நீக்க வேண்டுமா என்பதைத் தேர்ந்தெடுக்கவும்.</string>
     <string name="dialog_download_location_desc">பதிவிறக்கம் செய்யப்பட்ட கோப்புகள் உங்கள் சாதனத்தில் எங்கு சேமிக்கப்பட வேண்டும் என்பதைத் தேர்வுசெய்யவும்.</string>
@@ -133,6 +137,11 @@
     <string name="error_trim_end">நறுக்குதல் முடிவு வினாடிகள் அல்லது HH:MM:SS ஆக இருக்க வேண்டும்.</string>
     <string name="error_trim_order">நறுக்குதல் முடிவு தொடக்கத்திற்குப் பிறகு இருக்க வேண்டும்.</string>
     <string name="error_trim_start">நறுக்குதல் தொடக்கம் வினாடிகள் அல்லது HH:MM:SS ஆக இருக்க வேண்டும்.</string>
+    <string name="estimate_approximate">தோராயமான அளவு</string>
+    <string name="estimate_checking">அளவு சரிபார்க்கப்படுகிறது…</string>
+    <string name="estimate_exact">துல்லியமான அளவு</string>
+    <string name="estimate_skip_future">பதிவிறக்கங்களுக்கு முன் அளவு மதிப்பீடுகளைக் காட்ட வேண்டாம்</string>
+    <string name="estimate_unavailable">அளவு கிடைக்கவில்லை</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d மீதமுள்ளது</string>
     <string name="eta_format_minutes">%1$d:%2$02d மீதமுள்ளது</string>
     <string name="failure_auth_detail">மூலத்திற்கு அங்கீகரிக்கப்பட்ட உலாவி அமர்வு தேவைப்படலாம்.</string>
@@ -233,6 +242,7 @@
     <string name="pref_font">எழுத்துரு</string>
     <string name="pref_h264_title">H.264 இணக்கத்தன்மை பயன்முறை</string>
     <string name="pref_media_detection">ஊடகக் கண்டறிதல்</string>
+    <string name="pref_size_confirmation">அளவு உறுதிப்படுத்தல்</string>
     <string name="pref_system_default">கணினி இயல்புநிலை</string>
     <string name="pref_theme_mode">தீம் பயன்முறை</string>
     <string name="queue_empty_desc">பதிவிறக்கும் போது நீங்கள் சேர்க்கும் ஊடகம் இங்கே தோன்றும்.</string>
@@ -250,6 +260,28 @@
     <string name="readout_trim">நறுக்குதல் இயக்கப்பட்டது</string>
     <string name="readout_video">வீடியோ · %1$s · 60 FPS %2$s</string>
     <string name="readout_wav">WAV · சுருக்கப்படாத PCM</string>
+    <string name="runtime_active_title">செயலில் உள்ள இயக்கச்சூழல்</string>
+    <string name="runtime_add">தனிப்பயன் ஃபோர்க் சேர்</string>
+    <string name="runtime_add_desc">பொது GitHub களஞ்சியத்தை உள்ளிடவும். VRKA \"yt-dlp\" எனப்படும் python zipapp சொத்தை மட்டும் பதிவிறக்கி, அதன் SHA-256 ஐப் பதிவுசெய்து, செயல்படுத்தும் முன் ஒருமுறை இயக்குகிறது. மற்ற வெளியீட்டுச் சொத்துகள் புறக்கணிக்கப்படும்.</string>
+    <string name="runtime_add_title">தனிப்பயன் yt-dlp ஃபோர்க் சேர்</string>
+    <string name="runtime_badge_custom">தனிப்பயன்</string>
+    <string name="runtime_badge_stock">இயல்புநிலை</string>
+    <string name="runtime_badge_update">புதுப்பிப்பு</string>
+    <string name="runtime_badge_verified">இயக்கப்பட்டது</string>
+    <string name="runtime_busy">இயக்கச்சூழல் செயல்பாடு நடைபெறுகிறது…</string>
+    <string name="runtime_custom_warning">தனிப்பயன் ஃபோர்க்குகள் yt-dlp இன் OpenPGP கையொப்பத்தால் பாதுகாக்கப்படுவதில்லை. பதிவுசெய்யப்பட்ட SHA-256 கோப்பு மாற்றங்களை மட்டுமே கண்டறியும்; இது வெளியீட்டாளரின் நம்பகத்தன்மைக்கான சான்றல்ல. இந்தச் சாதனத்தில் வெற்றிகரமாக இயங்காத ஃபோர்க்கை VRKA செயல்படுத்த மறுக்கிறது.</string>
+    <string name="runtime_install">நிறுவு</string>
+    <string name="runtime_install_failed">நிறுவல் தோல்வியடைந்தது.</string>
+    <string name="runtime_remove">நீக்கு</string>
+    <string name="runtime_repo_hint">owner/repo</string>
+    <string name="runtime_repo_required">GitHub களஞ்சியத்தை உள்ளிடவும்.</string>
+    <string name="runtime_stock_desc">மேல்நிலை OpenPGP கையொப்ப சரிபார்ப்புடன் கூறு புதுப்பிப்பான் மூலம் நிர்வகிக்கப்படுகிறது.</string>
+    <string name="runtime_stock_name">இயல்புநிலை yt-dlp</string>
+    <string name="runtime_stock_version">yt-dlp %1$s</string>
+    <string name="runtime_update">புதுப்பி</string>
+    <string name="runtime_use">பயன்படுத்து</string>
+    <string name="runtime_use_stock">இயல்புநிலையைப் பயன்படுத்து</string>
+    <string name="runtime_version">yt-dlp %1$s</string>
     <string name="save_location_ask_every_time">ஒவ்வொரு முறையும் கேள்</string>
     <string name="save_location_use_selected">தேர்ந்தெடுத்ததைப் பயன்படுத்து</string>
     <string name="section_audio_format">ஆடியோ வடிவம்</string>
@@ -264,8 +296,17 @@
     <string name="settings_heading_components">கூறுகள் &amp; புதுப்பிப்புகள்</string>
     <string name="settings_heading_concurrency">பதிவிறக்கங்கள் &amp; ஒரே நேரத்தில் இயங்குதல்</string>
     <string name="settings_heading_diagnostics">கண்டறிதல்</string>
+    <string name="settings_heading_download_behavior">பதிவிறக்க நடத்தை</string>
     <string name="settings_heading_download_location">பதிவிறக்க இருப்பிடம்</string>
+    <string name="settings_heading_runtime">yt-dlp இயக்கச்சூழல்</string>
     <string name="settings_title">அமைப்புகள்</string>
+    <string name="share_commands_none">டெம்ப்ளேட் தேர்ந்தெடுக்கப்படவில்லை</string>
+    <string name="share_commands_template">தனிப்பயன் கட்டளை: %1$s</string>
+    <string name="share_remember_choices">இந்தத் தேர்வுகளை நினைவில் வை</string>
+    <string name="share_section_type">பதிவிறக்க வகை</string>
+    <string name="share_sheet_source">பகிரப்பட்ட இணைப்பு</string>
+    <string name="share_sheet_title">பதிவிறக்கத்திற்கு முன் அமை</string>
+    <string name="share_type_commands">கட்டளைகள்</string>
     <string name="snackbar_enqueue_failed">பதிவிறக்கத்தைச் சேர்க்க முடியவில்லை</string>
     <string name="status_active">செயலில் உள்ளது</string>
     <string name="status_analysing">பகுப்பாய்வு செய்கிறது</string>

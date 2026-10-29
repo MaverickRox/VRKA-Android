@@ -101,6 +101,9 @@
     <string name="desc_location_prompt">Você será solicitado a escolher um local para cada download.</string>
     <string name="desc_location_selected">Os downloads serão salvos diretamente no local selecionado.</string>
     <string name="desc_media_detection">WebExtension • Detecção direta de mídia, HLS e DASH</string>
+    <string name="desc_size_confirmation_disabled">As estimativas de tamanho são ignoradas antes dos downloads</string>
+    <string name="desc_size_confirmation_enabled">Estimar o tamanho do download a partir dos metadados antes de cada download</string>
+    <string name="desc_size_confirmation_helper">Usa apenas os metadados do yt-dlp; nada é baixado para calcular o tamanho. Os valores aproximados são marcados como aproximados.</string>
     <string name="desc_up_to_date">O VRKA está atualizado</string>
     <string name="desc_update_available">v%1$s disponível</string>
     <string name="diagnostics_empty">Nenhuma entrada de diagnóstico registrada.</string>
@@ -118,6 +121,7 @@
 
 Tem certeza de que deseja ativar downloads simultâneos?</string>
     <string name="dialog_concurrency_title">Ativar downloads simultâneos?</string>
+    <string name="dialog_confirm_download_title">Confirmar download</string>
     <string name="dialog_delete_single_no_file_desc">Remover \"%1$s\" do seu histórico de downloads?</string>
     <string name="dialog_delete_single_with_file_desc">Escolha se deseja remover apenas este registro do histórico ou também excluir permanentemente o arquivo baixado do armazenamento.</string>
     <string name="dialog_download_location_desc">Escolha onde os arquivos baixados serão salvos no seu dispositivo.</string>
@@ -133,6 +137,11 @@ Tem certeza de que deseja ativar downloads simultâneos?</string>
     <string name="error_trim_end">O fim do corte deve ser em segundos ou HH:MM:SS.</string>
     <string name="error_trim_order">O fim do corte deve ser após o início.</string>
     <string name="error_trim_start">O início do corte deve ser em segundos ou HH:MM:SS.</string>
+    <string name="estimate_approximate">Tamanho aproximado</string>
+    <string name="estimate_checking">Verificando o tamanho…</string>
+    <string name="estimate_exact">Tamanho exato</string>
+    <string name="estimate_skip_future">Não mostrar estimativas de tamanho antes dos downloads</string>
+    <string name="estimate_unavailable">Tamanho indisponível</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d restante</string>
     <string name="eta_format_minutes">%1$d:%2$02d restante</string>
     <string name="failure_auth_detail">A fonte pode exigir uma sessão autenticada no navegador.</string>
@@ -233,6 +242,7 @@ Tem certeza de que deseja ativar downloads simultâneos?</string>
     <string name="pref_font">Fonte</string>
     <string name="pref_h264_title">Modo de compatibilidade H.264</string>
     <string name="pref_media_detection">Detecção de mídia</string>
+    <string name="pref_size_confirmation">Confirmação de tamanho</string>
     <string name="pref_system_default">Padrão do sistema</string>
     <string name="pref_theme_mode">Modo de tema</string>
     <string name="queue_empty_desc">As mídias adicionadas aparecerão aqui enquanto estiverem sendo baixadas.</string>
@@ -250,6 +260,28 @@ Tem certeza de que deseja ativar downloads simultâneos?</string>
     <string name="readout_trim">Corte ativado</string>
     <string name="readout_video">Vídeo · %1$s · 60 FPS %2$s</string>
     <string name="readout_wav">WAV · PCM sem compressão</string>
+    <string name="runtime_active_title">Ambiente de execução ativo</string>
+    <string name="runtime_add">Adicionar fork personalizado</string>
+    <string name="runtime_add_desc">Insira um repositório público do GitHub. O VRKA baixa apenas o asset python zipapp chamado \"yt-dlp\", registra seu SHA-256 e o executa uma vez antes de poder ativá-lo. Os demais assets da versão são ignorados.</string>
+    <string name="runtime_add_title">Adicionar fork personalizado do yt-dlp</string>
+    <string name="runtime_badge_custom">PERSONALIZADO</string>
+    <string name="runtime_badge_stock">OFICIAL</string>
+    <string name="runtime_badge_update">ATUALIZAÇÃO</string>
+    <string name="runtime_badge_verified">EXECUTADO</string>
+    <string name="runtime_busy">Operação no ambiente de execução em andamento…</string>
+    <string name="runtime_custom_warning">Forks personalizados não são cobertos pela assinatura OpenPGP do yt-dlp. O SHA-256 registrado apenas detecta alterações no arquivo; não é prova de autenticidade do publicador. O VRKA se recusa a ativar um fork que não tenha sido executado com sucesso neste dispositivo.</string>
+    <string name="runtime_install">Instalar</string>
+    <string name="runtime_install_failed">Falha na instalação.</string>
+    <string name="runtime_remove">Remover</string>
+    <string name="runtime_repo_hint">owner/repo</string>
+    <string name="runtime_repo_required">Insira um repositório do GitHub.</string>
+    <string name="runtime_stock_desc">Gerenciado pelo atualizador de componentes com verificação de assinatura OpenPGP da origem.</string>
+    <string name="runtime_stock_name">yt-dlp oficial</string>
+    <string name="runtime_stock_version">yt-dlp %1$s</string>
+    <string name="runtime_update">Atualizar</string>
+    <string name="runtime_use">Usar</string>
+    <string name="runtime_use_stock">Usar oficial</string>
+    <string name="runtime_version">yt-dlp %1$s</string>
     <string name="save_location_ask_every_time">Perguntar sempre</string>
     <string name="save_location_use_selected">Usar selecionada</string>
     <string name="section_audio_format">FORMATO DE ÁUDIO</string>
@@ -264,8 +296,17 @@ Tem certeza de que deseja ativar downloads simultâneos?</string>
     <string name="settings_heading_components">Componentes e atualizações</string>
     <string name="settings_heading_concurrency">Downloads e simultaneidade</string>
     <string name="settings_heading_diagnostics">Diagnóstico</string>
+    <string name="settings_heading_download_behavior">Comportamento dos downloads</string>
     <string name="settings_heading_download_location">Local de download</string>
+    <string name="settings_heading_runtime">Ambiente de execução do yt-dlp</string>
     <string name="settings_title">Configurações</string>
+    <string name="share_commands_none">Nenhum modelo selecionado</string>
+    <string name="share_commands_template">Comando personalizado: %1$s</string>
+    <string name="share_remember_choices">Lembrar destas opções</string>
+    <string name="share_section_type">TIPO DE DOWNLOAD</string>
+    <string name="share_sheet_source">LINK COMPARTILHADO</string>
+    <string name="share_sheet_title">Configurar antes do download</string>
+    <string name="share_type_commands">Comandos</string>
     <string name="snackbar_enqueue_failed">Não foi possível adicionar o download</string>
     <string name="status_active">Ativo</string>
     <string name="status_analysing">Analisando</string>
