@@ -101,5 +101,16 @@ class NavIndicatorGeometryTest {
             assertEquals(expectedLeft, pill.leftPx, 0.001f)
         }
     }
-}
 
+    @Test
+    fun test22_rtlIndicatorPositionsCorrectlyAtSlots() {
+        val slotInset = 4f
+        val containerWidth = 400f
+        for (i in equalSlots.indices) {
+            val pill = calculateNavIndicatorBounds(i.toFloat(), equalSlots, slotInsetPx = slotInset)!!
+            org.junit.Assert.assertTrue("Pill leftPx must be non-negative: ${pill.leftPx}", pill.leftPx >= 0f)
+            org.junit.Assert.assertTrue("Pill right boundary must be within container: ${pill.leftPx + pill.widthPx}", (pill.leftPx + pill.widthPx) <= containerWidth)
+            assertEquals((i * 100f) + slotInset, pill.leftPx, 0.001f)
+        }
+    }
+}

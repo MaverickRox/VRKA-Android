@@ -24,7 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -99,7 +101,7 @@ internal fun ActiveDownloadStrip(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = job.title.ifBlank { "Active download" },
+                        text = job.title.ifBlank { stringResource(R.string.active_download_title) },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = VrkaTokens.TextPrimary,
@@ -112,7 +114,7 @@ internal fun ActiveDownloadStrip(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text(
-                            text = jobStatusLabel(job),
+                            text = jobStatusLabel(LocalContext.current, job),
                             style = MaterialTheme.typography.labelSmall,
                             color = VrkaTokens.AccentLight,
                             fontWeight = FontWeight.SemiBold,
@@ -149,5 +151,3 @@ internal fun ActiveDownloadStrip(
         }
     }
 }
-
-

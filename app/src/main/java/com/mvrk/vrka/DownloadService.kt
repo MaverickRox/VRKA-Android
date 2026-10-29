@@ -86,13 +86,13 @@ class DownloadService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val title = job?.title?.ifBlank { "VRKA download" } ?: "VRKA"
-        val status = job?.let(::jobStatusLabel) ?: "Preparing"
+        val title = job?.title?.ifBlank { getString(R.string.active_download_title) } ?: getString(R.string.app_name)
+        val status = job?.let { jobStatusLabel(this, it) } ?: getString(R.string.status_preparing)
         val summary = job?.let {
-            val progress = jobProgressSummary(it)
-            if (progress == it.detail) "$status • ${requestSummary(it.request)}"
+            val progress = jobProgressSummary(this, it)
+            if (progress == it.detail) "$status • ${requestSummary(this, it.request)}"
             else "$status • $progress"
-        } ?: "Preparing download"
+        } ?: getString(R.string.notification_preparing_download)
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(ContextCompat.getColor(this, R.color.vrka_purple))
@@ -120,7 +120,7 @@ class DownloadService : Service() {
                     .putExtra(EXTRA_JOB_ID, job.id),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            builder.addAction(R.drawable.ic_close, "Cancel", cancelIntent)
+            builder.addAction(R.drawable.ic_close, getString(R.string.btn_cancel), cancelIntent)
         }
         return builder.build()
     }
@@ -129,10 +129,10 @@ class DownloadService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Active downloads",
+            getString(R.string.notification_channel_active_downloads),
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Progress for downloads started in VRKA"
+            description = getString(R.string.notification_channel_active_downloads_description)
             setShowBadge(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)

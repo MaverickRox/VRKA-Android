@@ -1,5 +1,7 @@
 package com.mvrk.vrka
 
+import androidx.compose.ui.res.stringResource
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -261,7 +263,7 @@ fun VrkaRoot(
                             VrkaDestination.QUEUE -> {
                                 JobsScreen(
                                     jobs = activeJobs,
-                                    emptyMessage = "Your active queue is empty.",
+                                    emptyMessage = stringResource(R.string.queue_empty_message),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -277,7 +279,7 @@ fun VrkaRoot(
                             VrkaDestination.HISTORY -> {
                                 JobsScreen(
                                     jobs = historyJobs,
-                                    emptyMessage = "Completed and failed downloads appear here.",
+                                    emptyMessage = stringResource(R.string.history_empty_message),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -449,7 +451,7 @@ private fun FallbackInteractionOverlay(
                                 color = VrkaWarning.copy(alpha = 0.2f),
                             ) {
                                 Text(
-                                    "BROWSER FALLBACK",
+                                    stringResource(R.string.fallback_badge),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     color = VrkaWarning,
@@ -482,7 +484,7 @@ private fun FallbackInteractionOverlay(
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                 modifier = Modifier.height(34.dp),
                             ) {
-                                Text("Minimize", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.fallback_minimize), style = MaterialTheme.typography.labelMedium)
                             }
                             Button(
                                 onClick = onCancel,
@@ -494,7 +496,7 @@ private fun FallbackInteractionOverlay(
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                 modifier = Modifier.height(34.dp),
                             ) {
-                                Text("Cancel", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.fallback_cancel), style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
@@ -539,7 +541,7 @@ private fun FallbackInteractionOverlay(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Initializing fallback browser session...",
+                            stringResource(R.string.fallback_initializing),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

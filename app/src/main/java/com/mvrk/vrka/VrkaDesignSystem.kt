@@ -1,5 +1,9 @@
 package com.mvrk.vrka
 
+import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.ui.AbsoluteAlignment
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
@@ -529,11 +533,15 @@ fun VrkaTextButton(
     }
 }
 
-enum class VrkaDestination(val label: String, @param:androidx.annotation.DrawableRes val iconRes: Int) {
-    DOWNLOAD("Download", R.drawable.ic_download),
-    QUEUE("Queue", R.drawable.ic_queue),
-    HISTORY("History", R.drawable.ic_history),
-    SETTINGS("Settings", R.drawable.ic_settings),
+enum class VrkaDestination(
+    val label: String,
+    @param:androidx.annotation.DrawableRes val iconRes: Int,
+    @param:androidx.annotation.StringRes val labelRes: Int,
+) {
+    DOWNLOAD("Download", R.drawable.ic_download, R.string.nav_download),
+    QUEUE("Queue", R.drawable.ic_queue, R.string.nav_queue),
+    HISTORY("History", R.drawable.ic_history, R.string.nav_history),
+    SETTINGS("Settings", R.drawable.ic_settings, R.string.nav_settings),
 }
 
 @Composable
@@ -629,7 +637,7 @@ val NAV_BAR_HORIZONTAL_MARGIN = 16.dp
 val NAV_CONCENTRIC_INSET = 4.dp
 val NAV_INDICATOR_HEIGHT = NAV_BAR_HEIGHT - (NAV_CONCENTRIC_INSET * 2) // 56.dp
 val NAV_INDICATOR_CORNER_RADIUS = NAV_BAR_CORNER_RADIUS - NAV_CONCENTRIC_INSET // 28.dp
-private val NAV_ITEM_HORIZONTAL_CONTENT_PADDING = 8.dp
+private val NAV_ITEM_HORIZONTAL_CONTENT_PADDING = 4.dp
 private val NAV_INDICATOR_CONTENT_INSET = 4.dp
 
 internal data class NavItemMeasuredBounds(
@@ -940,8 +948,8 @@ fun VrkaFloatingNavBar(
                         modifier = Modifier
                             .width(with(density) { indicatorBounds.widthPx.toDp() })
                             .height(NAV_INDICATOR_HEIGHT)
-                            .align(Alignment.CenterStart)
-                            .offset { IntOffset(indicatorBounds.leftPx.roundToInt(), 0) }
+                            .align(AbsoluteAlignment.CenterLeft)
+                            .absoluteOffset { IntOffset(indicatorBounds.leftPx.roundToInt(), 0) }
                             .then(
                                 if (backdrop != null && isRenderEffectSupported()) {
                                     Modifier.drawBackdrop(

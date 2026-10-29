@@ -23,6 +23,7 @@ internal object AppUpdateNotificationFactory {
     const val DOWNLOAD_NOTIFICATION_ID = 50_201
     const val READY_NOTIFICATION_ID = 50_202
 
+    fun readyMessage(context: Context, version: String): String = context.getString(R.string.app_update_ready_message, version)
     fun readyMessage(version: String): String = "VRKA Android $version is ready to install."
 
     fun createChannel(context: Context) {
@@ -75,7 +76,7 @@ internal object AppUpdateNotificationFactory {
         val notification: Notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_update_ready_title))
-            .setContentText(readyMessage(version))
+            .setContentText(readyMessage(context, version))
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setAutoCancel(true)
             .setContentIntent(openUpdatePendingIntent(context))
