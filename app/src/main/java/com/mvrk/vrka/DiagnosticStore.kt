@@ -30,6 +30,7 @@ data class DiagnosticEntry(
     val url: String,
     val quality: String,
     val acquisitionMethod: String,
+    val runtime: String = "",
 ) {
     fun toFormattedString(): String = buildString {
         appendLine("--- VRKA DIAGNOSTIC REPORT ---")
@@ -40,6 +41,7 @@ data class DiagnosticEntry(
         appendLine("Category: $failureCategory")
         appendLine("Quality: $quality")
         appendLine("Method: $acquisitionMethod")
+        if (runtime.isNotBlank()) appendLine("Runtime: ${DiagnosticStore.sanitizeText(runtime).take(160)}")
         appendLine("URL: $url")
         appendLine("Summary: ${DiagnosticStore.sanitizeText(summary)}")
         if (detail.isNotBlank()) {
@@ -120,6 +122,7 @@ class DiagnosticStore(
                         url = obj.optString("url", ""),
                         quality = obj.optString("quality", ""),
                         acquisitionMethod = obj.optString("acquisitionMethod", "Native yt-dlp"),
+                        runtime = obj.optString("runtime", ""),
                     )
                 )
             }
@@ -141,6 +144,7 @@ class DiagnosticStore(
             url = if (preserveExactUrl) entry.url.trim() else sanitizeUrl(entry.url),
             summary = sanitizeText(entry.summary).take(MAX_SUMMARY_LENGTH),
             detail = sanitizeText(entry.detail).take(MAX_DETAIL_LENGTH),
+            runtime = sanitizeText(entry.runtime).take(160),
         )
     }
 
@@ -175,6 +179,7 @@ class DiagnosticStore(
             val url = extractString("url")
             val quality = extractString("quality")
             val acquisitionMethod = extractString("acquisitionMethod").ifBlank { "Native yt-dlp" }
+            val runtime = extractString("runtime")
 
             entries.add(
                 DiagnosticEntry(
@@ -189,6 +194,7 @@ class DiagnosticStore(
                     url = url,
                     quality = quality,
                     acquisitionMethod = acquisitionMethod,
+                    runtime = runtime,
                 )
             )
         }
@@ -214,7 +220,8 @@ class DiagnosticStore(
                     append("    \"detail\": ").append(quote(entry.detail.take(MAX_DETAIL_LENGTH))).append(",\n")
                     append("    \"url\": ").append(quote(entry.url)).append(",\n")
                     append("    \"quality\": ").append(quote(entry.quality)).append(",\n")
-                    append("    \"acquisitionMethod\": ").append(quote(entry.acquisitionMethod)).append("\n")
+                    append("    \"acquisitionMethod\": ").append(quote(entry.acquisitionMethod)).append(",\n")
+                    append("    \"runtime\": ").append(quote(entry.runtime)).append("\n")
                     append("  }")
                 }
             }

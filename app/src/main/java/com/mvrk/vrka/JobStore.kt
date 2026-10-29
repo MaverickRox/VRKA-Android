@@ -75,6 +75,8 @@ internal class JobStore(private val target: File) {
             .put("error", job.error)
             .put("attempt", job.attempt)
             .put("actualResolution", job.actualResolution)
+            .put("runtimeName", job.runtimeName)
+            .put("runtimeVersion", job.runtimeVersion)
             .put("subtitleStatus", job.subtitleStatus.name)
             .put(
                 "request",
@@ -204,6 +206,8 @@ internal class JobStore(private val target: File) {
             error = restoredError,
             attempt = value.optInt("attempt", 1),
             actualResolution = value.optString("actualResolution").takeIf { it.isNotBlank() && it != "null" },
+            runtimeName = value.optString("runtimeName"),
+            runtimeVersion = value.optString("runtimeVersion"),
             subtitleStatus = enumValue(value.optString("subtitleStatus"), com.mvrk.vrka.subtitle.SubtitleStatus.NONE),
         )
     }.getOrNull()

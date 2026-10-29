@@ -816,6 +816,7 @@ class VrkaDownloadManager(
                         } else {
                             "Native yt-dlp"
                         },
+                        runtime = formatRuntimeLabel(currentJob),
                     )
                 )
             }
@@ -835,6 +836,10 @@ class VrkaDownloadManager(
             state = JobState.DOWNLOADING,
             detail = "Downloading",
             error = "",
+            // A runtime switch is refused while jobs are active, so this snapshot is the
+            // runtime this job's process actually runs on for its whole lifetime.
+            runtimeName = ytDlpRuntimeManager.activeDescription(),
+            runtimeVersion = normalizedVersion(ytDlpRuntimeManager.activeVersion()),
             persist = true,
         )
         var lastUiUpdate = 0L
@@ -1366,6 +1371,15 @@ class VrkaDownloadManager(
         mutate(persist) { list -> list.map { if (it.id == job.id) job else it } }
     }
 
+    private fun formatRuntimeLabel(job: DownloadJob?): String {
+        if (job == null || job.runtimeName.isBlank()) return ""
+        return if (job.runtimeVersion.isBlank()) {
+            job.runtimeName
+        } else {
+            "${job.runtimeName} • yt-dlp ${job.runtimeVersion}"
+        }
+    }
+
     private fun update(
         jobId: String,
         state: JobState? = null,
@@ -1377,6 +1391,8 @@ class VrkaDownloadManager(
         outputUris: List<String>? = null,
         error: String? = null,
         actualResolution: String? = null,
+        runtimeName: String? = null,
+        runtimeVersion: String? = null,
         subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus? = null,
         persist: Boolean = false,
         expectedAttempt: Int? = null,
@@ -1398,6 +1414,8 @@ class VrkaDownloadManager(
                         outputUris = outputUris ?: job.outputUris,
                         error = error ?: job.error,
                         actualResolution = actualResolution ?: job.actualResolution,
+                        runtimeName = runtimeName ?: job.runtimeName,
+                        runtimeVersion = runtimeVersion ?: job.runtimeVersion,
                         subtitleStatus = subtitleStatus ?: job.subtitleStatus,
                         updatedAt = System.currentTimeMillis(),
                     )
