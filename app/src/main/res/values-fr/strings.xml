@@ -116,6 +116,7 @@
     <string name="pref_live_updates">Mises à jour en direct</string>
     <string name="desc_live_updates_enabled">Les notifications de progression promues sont activées</string>
     <string name="desc_live_updates_disabled">Mettre en avant les téléchargements VRKA sur l’écran verrouillé et la barre d’état</string>
+    <string name="desc_live_updates_unavailable">Cet appareil n’expose pas les réglages des mises à jour en direct</string>
     <string name="btn_live_update_settings">Ouvrir les paramètres</string>
     <string name="diagnostics_empty">Aucune entrée de diagnostic enregistrée.</string>
     <string name="diagnostics_failure_plural">%1$d défaillances enregistrées</string>

@@ -116,6 +116,7 @@
     <string name="pref_live_updates">লাইভ আপডেট</string>
     <string name="desc_live_updates_enabled">প্রচারিত অগ্রগতি বিজ্ঞপ্তি সক্রিয় আছে</string>
     <string name="desc_live_updates_disabled">লক স্ক্রিন ও স্ট্যাটাস বারে VRKA ডাউনলোড প্রচার করুন</string>
+    <string name="desc_live_updates_unavailable">এই ডিভাইসে লাইভ আপডেট সেটিংস নেই</string>
     <string name="btn_live_update_settings">সেটিংস খুলুন</string>
     <string name="diagnostics_empty">কোনো ডায়াগনস্টিক রেকর্ড করা হয়নি।</string>
     <string name="diagnostics_failure_plural">%1$dটি রেকর্ড করা ব্যর্থতা</string>

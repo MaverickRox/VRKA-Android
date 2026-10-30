@@ -116,6 +116,7 @@
     <string name="pref_live_updates">लाइव अपडेट</string>
     <string name="desc_live_updates_enabled">प्रमोटेड प्रगति सूचनाएं सक्षम हैं</string>
     <string name="desc_live_updates_disabled">लॉक स्क्रीन और स्टेटस बार पर VRKA डाउनलोड प्रमोट करें</string>
+    <string name="desc_live_updates_unavailable">यह डिवाइस लाइव अपडेट सेटिंग्स उपलब्ध नहीं कराता</string>
     <string name="btn_live_update_settings">सेटिंग्स खोलें</string>
     <string name="diagnostics_empty">कोई डायग्नोस्टिक प्रविष्टि दर्ज नहीं की गई। जब किसी डाउनलोड में कोई त्रुटि आती है तो डायग्नोस्टिक लॉग स्थानीय रूप से कैप्चर किए जाते हैं।</string>
     <string name="diagnostics_failure_plural">%1$d दर्ज विफलताएं</string>

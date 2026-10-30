@@ -10,6 +10,16 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Needed to resolve the system promotion settings page before launching it. -->
+    <queries>
+        <intent>
+            <action android:name="android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.APP_NOTIFICATION_SETTINGS" />
+        </intent>
+    </queries>
+
     <application
         android:name=".VrkaApplication"
         android:allowBackup="false"

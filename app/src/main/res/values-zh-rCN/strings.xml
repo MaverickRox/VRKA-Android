@@ -116,6 +116,7 @@
     <string name="pref_live_updates">实时更新</string>
     <string name="desc_live_updates_enabled">已启用推广的进度通知</string>
     <string name="desc_live_updates_disabled">在锁定屏幕和状态栏上推广 VRKA 下载</string>
+    <string name="desc_live_updates_unavailable">此设备不提供实时更新设置</string>
     <string name="btn_live_update_settings">打开设置</string>
     <string name="diagnostics_empty">暂无诊断记录。下载发生异常时将自动在本地记录详细诊断日志。</string>
     <string name="diagnostics_failure_plural">已记录 %1$d 次失败</string>
