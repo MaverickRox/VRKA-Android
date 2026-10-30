@@ -345,6 +345,7 @@ class FallbackEngine(
                 if (qjsPath != null) {
                     addOption("--js-runtimes", "quickjs:$qjsPath")
                 }
+                com.mvrk.vrka.DownloadRequestFactory.applyCacheDir(this)
                 val ua = bundle.userAgent.ifBlank { com.mvrk.vrka.DownloadRequestFactory.DESKTOP_USER_AGENT }
                 addOption("--user-agent", ua)
                 if (bundle.referer.isNotBlank()) {

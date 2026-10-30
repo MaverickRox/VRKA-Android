@@ -217,7 +217,9 @@ class VrkaSubtitleManager(private val context: Context? = null) {
             if (qjs != null) {
                 addOption("--js-runtimes", "quickjs:$qjs")
             }
-            addOption("--remote-components", "ejs:github")
+            // The bundled yt_dlp_ejs makes `--remote-components ejs:github` redundant; keeping it
+            // added a GitHub round-trip to every subtitle extraction.
+            DownloadRequestFactory.applyCacheDir(this)
             addOption("--extractor-args", "youtube:player_client=android,web")
 
             val effectiveHeaders = HeaderValidation.resolveEffectiveHeaders(job.request)

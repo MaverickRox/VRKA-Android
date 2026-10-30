@@ -6,11 +6,25 @@ import java.io.File
 internal object DownloadRequestFactory {
     private const val outputMarker = "__VRKA_OUTPUT__"
     private var nativeLibraryDir: String? = null
+    private var cacheDir: String? = null
     @Volatile
     private var impersonationSupported: Boolean = false
 
     fun initNativeLibraryDir(dir: String?) {
         nativeLibraryDir = dir
+    }
+
+    /**
+     * ytdl-android forces `--no-cache-dir` unless a request supplies its own cache path. That
+     * disabled yt-dlp's player/extractor cache, so every preflight and transfer re-fetched the
+     * same player data. An app-private cache directory restores reuse without touching cookies.
+     */
+    fun initCacheDir(dir: String?) {
+        cacheDir = dir
+    }
+
+    fun applyCacheDir(request: YoutubeDLRequest) {
+        cacheDir?.let { request.addOption("--cache-dir", it) }
     }
 
     fun isImpersonationSupported(): Boolean = impersonationSupported
@@ -76,6 +90,7 @@ internal object DownloadRequestFactory {
             addOption("--legacy-server-connect")
             if (!request.isPlaylist) addOption("--no-playlist")
             addJsRuntime(this)
+            applyCacheDir(this)
             addSessionContext(request)
         }
 
@@ -98,6 +113,7 @@ internal object DownloadRequestFactory {
             }
             addOption("-f", formatSelectorFor(request))
             addJsRuntime(this)
+            applyCacheDir(this)
             addSessionContext(request)
         }
 
@@ -197,6 +213,7 @@ internal object DownloadRequestFactory {
             }
 
             addJsRuntime(this)
+            if (options.customArguments.none { it == "--no-cache-dir" }) applyCacheDir(this)
             val effectiveHeaders = HeaderValidation.resolveEffectiveHeaders(options)
             if (recoveryAttempt || options.resolvedMediaUrl != null) {
                 if (effectiveHeaders.keys.none { it.equals("User-Agent", true) }) {
