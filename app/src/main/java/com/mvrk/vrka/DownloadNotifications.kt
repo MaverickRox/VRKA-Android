@@ -1,15 +1,22 @@
 package com.mvrk.vrka
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
+import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.mvrk.vrka.R
 
@@ -20,6 +27,19 @@ import com.mvrk.vrka.R
  */
 internal object DownloadNotifications {
     const val CHANNEL_ID = "vrka_downloads"
+
+    /**
+     * Completed downloads use their own channel and a tag-derived identity outside the
+     * active-transfer ID range. Both notification owners (foreground service and transfer job)
+     * delete only ids from [notificationIdFor], so this record survives their idle cleanup.
+     */
+    const val COMPLETION_CHANNEL_ID = "vrka_downloads_complete"
+    // Outside the active-transfer range (4200..69735) and the reserved foreground ids, so no
+    // cleanup path can address these records by accident.
+    const val COMPLETION_NOTIFICATION_ID = 100_100
+    private const val COMPLETION_TAG_PREFIX = "completed:"
+
+    internal fun completionTagFor(jobId: String): String = COMPLETION_TAG_PREFIX + jobId
 
     /**
      * Public as a typed constant only from API 36.1, but Android 16.0 reads the same extras
@@ -69,7 +89,146 @@ internal object DownloadNotifications {
             setShowBadge(false)
         }
         manager.createNotificationChannel(channel)
+        val completionChannel = NotificationChannel(
+            COMPLETION_CHANNEL_ID,
+            context.getString(R.string.notification_channel_completed_downloads),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = context.getString(
+                R.string.notification_channel_completed_downloads_description,
+            )
+            setShowBadge(true)
+        }
+        manager.createNotificationChannel(completionChannel)
     }
+
+    /**
+     * Posts the post-transfer record for a job that already reached [JobState.DONE]. The job
+     * state is the guard: a retry, a cancellation, or a failure can never post this.
+     */
+    fun notifyCompleted(context: Context, job: DownloadJob) {
+        val allowed = job.state == JobState.DONE &&
+            job.outputUris.isNotEmpty() &&
+            canPostNotifications(context)
+        Log.d(
+            "VRKA",
+            "completion notification id=${job.id.take(8)} state=${job.state} " +
+                "outputs=${job.outputUris.size} allowed=$allowed",
+        )
+        if (!allowed) {
+            // The completed record stays in History; only the platform alert is skipped.
+            return
+        }
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        ensureChannel(context)
+        runCatching {
+            manager.notify(
+                completionTagFor(job.id),
+                COMPLETION_NOTIFICATION_ID,
+                buildCompleted(context, job),
+            )
+        }.onFailure { error ->
+            Log.w("VRKA", "Completion notification could not be posted: ${error::class.java.simpleName}")
+        }
+    }
+
+    private fun canPostNotifications(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+
+    fun buildCompleted(context: Context, job: DownloadJob): Notification {
+        val title = job.title.ifBlank { context.getString(R.string.notification_default_title) }
+        val text = completionText(context, job)
+        val fileIntent = completionOpenIntent(context, job)
+        val builder = NotificationCompat.Builder(context, COMPLETION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            // The platform drops a notification whose timestamp predates the enqueue (seen as
+            // "Ignored enqueue for old ... notification"), and a UIDT handoff can post this
+            // minutes after the job finished. The alert time is therefore the posting time.
+            .setWhen(System.currentTimeMillis())
+            .setShowWhen(true)
+            .setAutoCancel(true)
+            // A finished transfer is a dismissible record, not an ongoing operation.
+            .setOngoing(false)
+            .setOnlyAlertOnce(false)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(
+                fileIntent?.let { viewFilePendingIntent(context, job, it) } ?: openQueueIntent(context),
+            )
+        if (fileIntent != null) {
+            builder.addAction(
+                R.drawable.ic_download,
+                context.getString(R.string.btn_open),
+                viewFilePendingIntent(context, job, fileIntent),
+            )
+        }
+        return builder.build()
+    }
+
+    internal fun completionText(context: Context, job: DownloadJob): String {
+        val size = job.actualFinalFileBytes?.takeIf { it > 0L }?.let(::formatDownloadBytes)
+        return when {
+            size == null -> context.getString(R.string.notification_download_completed)
+            job.outputUris.size > 1 -> context.getString(
+                R.string.notification_download_completed_files,
+                job.outputUris.size,
+                size,
+            )
+            else -> context.getString(R.string.notification_download_completed, size)
+        }
+    }
+
+    /**
+     * A content URI plus the provider's MIME type. Raw filesystem paths are never used: the
+     * published document is the only thing a viewer can open.
+     */
+    internal fun completionViewIntent(context: Context, job: DownloadJob): Intent? {
+        val uriText = job.outputUris.firstOrNull() ?: return null
+        val uri = runCatching { Uri.parse(uriText) }.getOrNull() ?: return null
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
+        val resolver = context.contentResolver
+        val mime = resolver.getType(uri)
+            ?: OutputPublisher.guessMimeType(resolver.queryDisplayName(uri, uriText))
+        return Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, mime)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    /** The viewer intent, but only when some installed activity can actually handle it. */
+    internal fun completionOpenIntent(context: Context, job: DownloadJob): Intent? =
+        completionViewIntent(context, job)
+            ?.takeIf { it.resolveActivity(context.packageManager) != null }
+
+    private fun ContentResolver.queryDisplayName(uri: Uri, fallback: String): String =
+        runCatching {
+            query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+            }
+        }.getOrNull() ?: fallback
+
+    private fun viewFilePendingIntent(
+        context: Context,
+        job: DownloadJob,
+        intent: Intent,
+    ): PendingIntent = PendingIntent.getActivity(
+        context,
+        job.id.hashCode(),
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
 
     fun build(context: Context, job: DownloadJob?): Notification {
         val openIntent = openQueueIntent(context)

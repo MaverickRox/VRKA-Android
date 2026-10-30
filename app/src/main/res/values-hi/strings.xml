@@ -37,6 +37,7 @@
     <string name="btn_cancel">रद्द करें</string>
     <string name="btn_change">बदलें</string>
     <string name="btn_open_queue">कतार खोलें</string>
+    <string name="btn_open">खोलें</string>
     <string name="btn_check_all_updates">सभी अपडेट जांचें</string>
     <string name="btn_check_for_updates">अपडेट की जांच करें</string>
     <string name="btn_checking">जांच रहा है...</string>
@@ -217,6 +218,10 @@
     <string name="nav_settings">सेटिंग्स</string>
     <string name="notification_channel_active_downloads">सक्रिय डाउनलोड</string>
     <string name="notification_channel_active_downloads_description">VRKA में शुरू किए गए डाउनलोड की प्रगति</string>
+    <string name="notification_channel_completed_downloads">पूर्ण डाउनलोड</string>
+    <string name="notification_channel_completed_downloads_description">डाउनलोड सहेजे जाने पर सूचना</string>
+    <string name="notification_download_completed">डाउनलोड पूर्ण हुआ · %1$s</string>
+    <string name="notification_download_completed_files">डाउनलोड पूर्ण हुआ · %1$d फ़ाइलें · %2$s</string>
     <string name="notification_default_title">VRKA डाउनलोड</string>
     <string name="notification_downloads_interrupted_text">Android ने बैकग्राउंड डाउनलोड सत्र रोक दिया। अपनी कतार देखने के लिए VRKA खोलें।</string>
     <string name="notification_downloads_interrupted_title">डाउनलोड रोके गए</string>

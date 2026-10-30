@@ -3,6 +3,7 @@ package com.mvrk.vrka
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -95,6 +96,45 @@ class JobStorePersistenceTest {
             assertEquals(original.progress, loaded.progress, 0.001f)
             assertEquals(original.outputUris, loaded.outputUris)
         }
+    }
+
+    @Test
+    fun publishedFinalSizeSurvivesReload() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "sized",
+                    request = sampleRequest("https://example.com/sized"),
+                    state = JobState.DONE,
+                    totalBytes = 171L * 1024 * 1024,
+                    totalIsExact = false,
+                    actualFinalFileBytes = 80L * 1024 * 1024,
+                ),
+            ),
+        )
+
+        val loaded = store.load().single()
+
+        assertEquals(80L * 1024 * 1024, loaded.actualFinalFileBytes)
+        assertEquals(171L * 1024 * 1024, loaded.totalBytes)
+    }
+
+    @Test
+    fun legacyRecordWithoutPublishedSizeLoadsWithNull() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "legacy",
+                    request = sampleRequest("https://example.com/legacy"),
+                    state = JobState.DONE,
+                    totalBytes = 5_000_000,
+                ),
+            ),
+        )
+
+        assertNull(store.load().single().actualFinalFileBytes)
     }
 
     @Test

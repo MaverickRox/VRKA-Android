@@ -1160,6 +1160,13 @@ class VrkaDownloadManager(
         } else {
             if (jobSubNote.isNotBlank()) "Saved ${published.size} files ($jobSubNote)" else "Saved ${published.size} files"
         }
+        // The published document is the authority for the finished size; the staging length is
+        // only a fallback when the provider does not expose it.
+        val publishedBytes = published
+            .mapNotNull(publisher::sizeOf)
+            .takeIf { it.isNotEmpty() }
+            ?.sum()
+            ?: finalBytes
         update(
             job.id,
             state = JobState.DONE,
@@ -1168,11 +1175,13 @@ class VrkaDownloadManager(
             downloadedBytes = finalBytes,
             totalBytes = finalBytes,
             totalIsExact = finalBytes != null,
+            actualFinalFileBytes = publishedBytes,
             outputUris = published,
             error = "",
             subtitleStatus = jobSubStatus,
             persist = true,
         )
+        current(job.id)?.let { DownloadNotifications.notifyCompleted(context, it) }
         cleanupStaging(job.id)
     }
 
@@ -1294,10 +1303,16 @@ class VrkaDownloadManager(
                         downloadedBytes = result.totalBytes,
                         totalBytes = result.totalBytes,
                         totalIsExact = result.totalBytes > 0L,
+                        actualFinalFileBytes = published
+                            .mapNotNull(publisher::sizeOf)
+                            .takeIf { it.isNotEmpty() }
+                            ?.sum()
+                            ?: result.totalBytes.takeIf { it > 0L },
                         outputUris = published,
                         error = "",
                         persist = true,
                     )
+                    current(job.id)?.let { DownloadNotifications.notifyCompleted(context, it) }
                     cleanupStaging(job.id)
                 }
                 is EngineExecutionResult.Failed -> {
@@ -1568,6 +1583,7 @@ class VrkaDownloadManager(
         downloadedBytes: Long? = null,
         totalBytes: Long? = null,
         totalIsExact: Boolean? = null,
+        actualFinalFileBytes: Long? = null,
         resetSize: Boolean = false,
         outputUris: List<String>? = null,
         error: String? = null,
@@ -1595,6 +1611,11 @@ class VrkaDownloadManager(
                         downloadedBytes = if (resetSize) null else downloadedBytes ?: job.downloadedBytes,
                         totalBytes = if (resetSize) null else totalBytes ?: job.totalBytes,
                         totalIsExact = if (resetSize) false else totalIsExact ?: job.totalIsExact,
+                        actualFinalFileBytes = if (resetSize) {
+                            null
+                        } else {
+                            actualFinalFileBytes ?: job.actualFinalFileBytes
+                        },
                         outputUris = outputUris ?: job.outputUris,
                         error = error ?: job.error,
                         actualResolution = actualResolution ?: job.actualResolution,

@@ -12,6 +12,7 @@ class DownloadSizeTest {
         downloaded: Long? = null,
         total: Long? = null,
         exact: Boolean = false,
+        actualFinal: Long? = null,
     ) = DownloadJob(
         id = "job",
         request = DownloadRequest(url = "https://example.com/video"),
@@ -19,6 +20,7 @@ class DownloadSizeTest {
         downloadedBytes = downloaded,
         totalBytes = total,
         totalIsExact = exact,
+        actualFinalFileBytes = actualFinal,
     )
 
     @Test
@@ -125,5 +127,26 @@ class DownloadSizeTest {
     @Test
     fun completedJobWithoutDataHidesTheRow() {
         assertTrue(downloadSizeDisplay(job(state = JobState.DONE)) is DownloadSizeDisplay.Hidden)
+    }
+
+    @Test
+    fun completedJobReportsThePublishedSizeNotThePreMergeEstimate() {
+        val estimated = 171L * 1024 * 1024
+        val published = 80L * 1024 * 1024
+
+        val display = downloadSizeDisplay(
+            job(state = JobState.DONE, downloaded = estimated, total = estimated, actualFinal = published),
+        )
+
+        assertEquals(published, (display as DownloadSizeDisplay.Completed).bytes)
+    }
+
+    @Test
+    fun completedJobFallsBackToTransferTotalWhenTheProviderSizeIsMissing() {
+        val display = downloadSizeDisplay(
+            job(state = JobState.DONE, downloaded = 12_000_000, total = 12_000_000, exact = true),
+        )
+
+        assertEquals(12_000_000L, (display as DownloadSizeDisplay.Completed).bytes)
     }
 }
