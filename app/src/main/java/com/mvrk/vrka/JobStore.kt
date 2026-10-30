@@ -10,13 +10,17 @@ import java.nio.file.StandardCopyOption
 internal class JobStore(private val target: File) {
     constructor(context: Context) : this(File(context.filesDir, "download_jobs.json"))
 
-    fun load(): List<DownloadJob> {
+    /**
+     * [recoverActive] keeps in-flight states so a user-initiated transfer worker can resume
+     * them. Without it, in-flight records are downgraded to FAILED as before.
+     */
+    fun load(recoverActive: Boolean = false): List<DownloadJob> {
         if (!target.isFile) return emptyList()
         val loaded = runCatching {
             val array = JSONArray(target.readText(Charsets.UTF_8))
             buildList {
                 for (index in 0 until array.length()) {
-                    decode(array.getJSONObject(index))?.let(::add)
+                    decode(array.getJSONObject(index), recoverActive)?.let(::add)
                 }
             }
         }.getOrDefault(emptyList())
@@ -78,6 +82,7 @@ internal class JobStore(private val target: File) {
             .put("runtimeName", job.runtimeName)
             .put("runtimeVersion", job.runtimeVersion)
             .put("subtitleStatus", job.subtitleStatus.name)
+            .put("publishStarted", job.publishStarted)
             .put(
                 "request",
                 JSONObject()
@@ -116,14 +121,15 @@ internal class JobStore(private val target: File) {
             )
     }
 
-    private fun decode(value: JSONObject): DownloadJob? = runCatching {
+    private fun decode(value: JSONObject, recoverActive: Boolean): DownloadJob? = runCatching {
         val encodedRequest = value.getJSONObject("request")
         val savedState = enumValue(value.optString("state"), JobState.FAILED)
-        val restoredState = if (savedState.isTerminal) savedState else JobState.FAILED
-        val restoredError = if (savedState.isTerminal) {
+        val keepSavedState = savedState.isTerminal || recoverActive
+        val restoredState = if (keepSavedState) savedState else JobState.FAILED
+        val restoredError = if (keepSavedState) {
             value.optString("error")
         } else {
-            "Download was interrupted when Android stopped VRKA. Tap retry."
+            INTERRUPTED_DOWNLOAD_ERROR
         }
 
         val storedAudioFormat = encodedRequest.optString("audioFormat")
@@ -192,7 +198,7 @@ internal class JobStore(private val target: File) {
             ),
             state = restoredState,
             title = value.optString("title"),
-            detail = if (savedState.isTerminal) {
+            detail = if (keepSavedState) {
                 value.optString("detail")
             } else {
                 "Interrupted"
@@ -209,6 +215,7 @@ internal class JobStore(private val target: File) {
             runtimeName = value.optString("runtimeName"),
             runtimeVersion = value.optString("runtimeVersion"),
             subtitleStatus = enumValue(value.optString("subtitleStatus"), com.mvrk.vrka.subtitle.SubtitleStatus.NONE),
+            publishStarted = value.optBoolean("publishStarted", false),
         )
     }.getOrNull()
 

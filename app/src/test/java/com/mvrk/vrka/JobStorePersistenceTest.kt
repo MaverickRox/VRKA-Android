@@ -164,6 +164,59 @@ class JobStorePersistenceTest {
     }
 
     @Test
+    fun recoveryLoadPreservesInFlightStateAndPublishMarker() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "downloading",
+                    request = sampleRequest(),
+                    state = JobState.DOWNLOADING,
+                    title = "In Flight",
+                    detail = "Downloading 12%",
+                    progress = 12f,
+                ),
+                DownloadJob(
+                    id = "publishing",
+                    request = sampleRequest(),
+                    state = JobState.POSTPROCESSING,
+                    detail = "Publishing to Downloads",
+                    progress = 100f,
+                    publishStarted = true,
+                ),
+            ),
+        )
+
+        val restored = store.load(recoverActive = true).associateBy { it.id }
+
+        assertEquals(JobState.DOWNLOADING, restored.getValue("downloading").state)
+        assertEquals("Downloading 12%", restored.getValue("downloading").detail)
+        assertEquals(12f, restored.getValue("downloading").progress, 0.001f)
+        assertEquals(JobState.POSTPROCESSING, restored.getValue("publishing").state)
+        assertTrue("Publish marker must survive process death", restored.getValue("publishing").publishStarted)
+    }
+
+    @Test
+    fun publishMarkerSurvivesTerminalReload() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "done",
+                    request = sampleRequest(),
+                    state = JobState.DONE,
+                    publishStarted = true,
+                ),
+            ),
+        )
+
+        val restored = store.load().single()
+
+        assertEquals(JobState.DONE, restored.state)
+        assertTrue(restored.publishStarted)
+    }
+
+    @Test
     fun sensitiveCustomHeadersAreNotWrittenOrRestoredFromJobHistory() {
         val file = File(tempFolder.root, "sensitive_jobs.json")
         val store = JobStore(file)

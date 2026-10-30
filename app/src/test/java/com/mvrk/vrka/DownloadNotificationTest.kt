@@ -14,6 +14,7 @@ class DownloadNotificationTest {
         assertTrue(id in NOTIFICATION_ID_BASE..(NOTIFICATION_ID_BASE + 0xFFFF))
         assertNotEquals(PENDING_NOTIFICATION_ID, id)
         assertNotEquals(INTERRUPTED_NOTIFICATION_ID, id)
+        assertNotEquals(DOWNLOAD_TRANSFER_JOB_ID, id)
     }
 
     @Test
