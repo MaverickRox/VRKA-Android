@@ -31,3 +31,9 @@ VRKA Android incorporates open-source libraries, engines, and extensions in full
 - **License**: SIL Open Font License 1.1 (OFL-1.1)
 - **Source**: https://github.com/googlefonts/spacemono
 
+### 6. Mornye switch component
+- **Project**: Mornye 5.2.6 (`AppSwitch` / `_MornyeSwitch`, `lib/widgets/app_switch.dart`)
+- **License**: GNU Lesser General Public License v3.0 (LGPL-3.0); incorporated into VRKA under GPL-3.0 as permitted by LGPL-3.0 section 3
+- **Source**: https://github.com/MaverickRox/Mornye
+- **Use**: geometry, timing, drag and accessibility behavior of `VrkaSwitch.kt`
+
