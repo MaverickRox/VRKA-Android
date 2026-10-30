@@ -303,4 +303,29 @@ class NavIndicatorGeometryTest {
             assertTrue(lens.leftPx + lens.widthPx <= slot.slotLeftPx + slot.slotWidthPx)
         }
     }
+
+    @Test
+    fun test30_stalePagerSampleIsIgnoredOnlyAtTheReleasePoint() {
+        // Pager still reports the release position while the pending target is elsewhere.
+        assertTrue(navPagerSampleIsStale(1.0f, waitingFrom = 1.0f, pendingTarget = 2))
+        assertTrue(navPagerSampleIsStale(1.004f, waitingFrom = 1.0f, pendingTarget = 2))
+        // The pager started moving: the sample is fresh and must be applied.
+        assertFalse(navPagerSampleIsStale(1.2f, waitingFrom = 1.0f, pendingTarget = 2))
+        // Already arrived at the pending target.
+        assertFalse(navPagerSampleIsStale(2.0f, waitingFrom = 1.0f, pendingTarget = 2))
+        // No pending sync: every sample flows through.
+        assertFalse(navPagerSampleIsStale(1.0f, waitingFrom = null, pendingTarget = 2))
+        assertFalse(navPagerSampleIsStale(1.0f, waitingFrom = 1.0f, pendingTarget = -1))
+        assertFalse(navPagerSampleIsStale(null, waitingFrom = 1.0f, pendingTarget = 2))
+    }
+
+    @Test
+    fun test31_pressReleaseDurationContractsWithTheRemainingFraction() {
+        assertEquals(NAV_PRESS_DURATION_MS, navPressReleaseDurationMs(1f))
+        assertEquals(120, navPressReleaseDurationMs(0.5f))
+        assertEquals(1, navPressReleaseDurationMs(0f))
+        // Never longer than the hold, never zero (a zero-length tween would snap).
+        assertEquals(NAV_PRESS_DURATION_MS, navPressReleaseDurationMs(3f))
+        assertEquals(1, navPressReleaseDurationMs(-1f))
+    }
 }

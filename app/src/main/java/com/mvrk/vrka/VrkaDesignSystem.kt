@@ -1,9 +1,7 @@
 package com.mvrk.vrka
 
 import android.content.Context
-import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.res.stringResource
 
 import androidx.compose.animation.animateColorAsState
@@ -61,6 +59,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,9 +70,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -81,15 +83,19 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalViewConfiguration
 import com.mvrk.vrka.ui.backdrop.Backdrop
+import com.mvrk.vrka.ui.backdrop.BackdropEffectScope
 import com.mvrk.vrka.ui.backdrop.backdrops.layerBackdrop
 import com.mvrk.vrka.ui.backdrop.backdrops.rememberLayerBackdrop
 import com.mvrk.vrka.ui.backdrop.drawBackdrop
@@ -106,6 +112,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -766,6 +773,42 @@ private fun isHighContrastEnabled(context: Context): Boolean = runCatching {
     ) != 0
 }.getOrDefault(false)
 
+internal const val NAV_PAGER_SYNC_EPSILON = 0.015f
+internal const val NAV_PRESS_DURATION_MS = 240
+
+/**
+ * After a drag release the pager reports its old position for a frame or two before
+ * the scroll animation starts. Such a sample is stale: it is still at the release
+ * point while the pending target is elsewhere. Ignoring it keeps the pill from
+ * snapping backwards; every later sample flows through untouched.
+ */
+internal fun navPagerSampleIsStale(
+    position: Float?,
+    waitingFrom: Float?,
+    pendingTarget: Int,
+): Boolean {
+    if (position == null || waitingFrom == null || pendingTarget < 0) return false
+    return kotlin.math.abs(position - waitingFrom) < NAV_PAGER_SYNC_EPSILON &&
+        kotlin.math.abs(position - pendingTarget.toFloat()) >= NAV_PAGER_SYNC_EPSILON
+}
+
+/** Mornye contracts over the elapsed fraction of the hold, never a fixed duration. */
+internal fun navPressReleaseDurationMs(progress: Float): Int =
+    (NAV_PRESS_DURATION_MS * progress.coerceIn(0f, 1f)).roundToInt()
+        .coerceIn(1, NAV_PRESS_DURATION_MS)
+
+/** Mutable bookkeeping for the pager sync, deliberately outside snapshot state so
+ *  writing it never recomposes the bar. Only the effect coroutine touches it. */
+private class NavPendingPagerSync {
+    var from: Float? = null
+    var target: Int = -1
+
+    fun clear() {
+        from = null
+        target = -1
+    }
+}
+
 
 val NAV_ACTIVE_DARK = Color(0xFFF5F3FF)
 val NAV_ACTIVE_LIGHT = Color(0xFF1E1B2E)
@@ -777,7 +820,10 @@ fun VrkaFloatingNavBar(
     selectedDestination: VrkaDestination,
     onDestinationSelected: (VrkaDestination) -> Unit,
     modifier: Modifier = Modifier,
-    pagerPosition: Float? = null,
+    // Pull-based source of the live pager coordinate. A lambda rather than a Float keeps
+    // the caller from reading pager state in composition, so a swipe only invalidates
+    // draw/layout and never recomposes the bar or its backdrop element.
+    pagerPositionProvider: (() -> Float)? = null,
 ) {
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
@@ -789,7 +835,7 @@ fun VrkaFloatingNavBar(
     val selectedIndex = destinations.indexOf(selectedDestination).coerceAtLeast(0)
     val coroutineScope = rememberCoroutineScope()
     val latestSelectedIndex by rememberUpdatedState(selectedIndex)
-    val latestPagerPosition by rememberUpdatedState(pagerPosition)
+    val latestPagerPositionProvider by rememberUpdatedState(pagerPositionProvider)
     val latestOnDestinationSelected by rememberUpdatedState(onDestinationSelected)
     // Animator scale 0 is Android's reduced-motion switch. Like Mornye, the held lens
     // stays off entirely and the pill jumps between slots instead of animating.
@@ -843,56 +889,65 @@ fun VrkaFloatingNavBar(
     var isDragging by remember { mutableStateOf(false) }
     var dragPosition by remember { mutableFloatStateOf(selectedIndex.toFloat()) }
     val indicatorPosition = remember { Animatable(selectedIndex.toFloat()) }
-    var pendingPagerSyncFrom by remember { mutableStateOf<Float?>(null) }
-    var pendingPagerSyncTarget by remember { mutableIntStateOf(-1) }
+    val pendingPagerSync = remember { NavPendingPagerSync() }
     var itemBounds by remember { mutableStateOf(List(destinations.size) { NavItemMeasuredBounds() }) }
     var pressedSlotIndex by remember { mutableIntStateOf(selectedIndex) }
-    var isPressing by remember { mutableStateOf(false) }
     val pressProgress = remember { Animatable(0f) }
 
-    LaunchedEffect(isPressing, pressLensEnabled) {
-        if (!pressLensEnabled) {
-            pressProgress.snapTo(0f)
-            return@LaunchedEffect
-        }
-        if (isPressing) {
-            pressProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 240, easing = NAV_EASE_OUT_CUBIC),
-            )
-        } else {
-            // Mornye reverses with easeInCubic over the remaining fraction of the
-            // 240ms hold animation, so releasing early shortens the contraction.
-            val remaining = (240 * pressProgress.value).roundToInt().coerceIn(1, 240)
-            pressProgress.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = remaining, easing = NAV_EASE_IN_CUBIC),
-            )
-        }
-    }
-
-    LaunchedEffect(pagerPosition, selectedIndex, pendingPagerSyncFrom, pendingPagerSyncTarget, isDragging) {
-        if (!isDragging) {
-            val target = (pagerPosition ?: selectedIndex.toFloat())
-                .coerceIn(0f, destinations.lastIndex.toFloat())
-            val waitingFrom = pendingPagerSyncFrom
-            if (waitingFrom != null && pendingPagerSyncTarget >= 0 && pagerPosition != null &&
-                kotlin.math.abs(pagerPosition - waitingFrom) < 0.015f &&
-                kotlin.math.abs(pagerPosition - pendingPagerSyncTarget.toFloat()) >= 0.015f
-            ) {
-                return@LaunchedEffect
-            }
-            pendingPagerSyncFrom = null
-            pendingPagerSyncTarget = -1
-            if (pagerPosition != null) {
-                indicatorPosition.snapTo(target)
-            } else {
-                indicatorPosition.animateTo(
-                    targetValue = target,
-                    animationSpec = tween(durationMillis = 220, easing = NAV_EASE_OUT_CUBIC),
+    // Press in/out run on the composition scope straight from the gesture instead of
+    // a LaunchedEffect keyed on a press flag: that flag was snapshot state read in
+    // composition, so every touch recomposed the whole bar twice for nothing.
+    val pressLensIn: () -> Unit = remember(coroutineScope) {
+        {
+            coroutineScope.launch {
+                pressProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = NAV_PRESS_DURATION_MS, easing = NAV_EASE_OUT_CUBIC),
                 )
             }
         }
+    }
+    val pressLensOut: () -> Unit = remember(coroutineScope) {
+        {
+            coroutineScope.launch {
+                // Mornye reverses with easeInCubic over the remaining fraction of the
+                // hold animation, so releasing early shortens the contraction.
+                pressProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(
+                        durationMillis = navPressReleaseDurationMs(pressProgress.value),
+                        easing = NAV_EASE_IN_CUBIC,
+                    ),
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(pressLensEnabled) {
+        if (!pressLensEnabled) pressProgress.snapTo(0f)
+    }
+
+    LaunchedEffect(pagerPositionProvider, selectedIndex) {
+        val provider = pagerPositionProvider
+        if (provider == null) {
+            indicatorPosition.animateTo(
+                targetValue = selectedIndex.toFloat().coerceIn(0f, destinations.lastIndex.toFloat()),
+                animationSpec = tween(durationMillis = 220, easing = NAV_EASE_OUT_CUBIC),
+            )
+            return@LaunchedEffect
+        }
+        // collected in a coroutine so pager motion is never a composition read
+        snapshotFlow { provider() to isDragging }
+            .distinctUntilChanged()
+            .collect { (rawPosition, dragging) ->
+                if (dragging) return@collect
+                val target = rawPosition.coerceIn(0f, destinations.lastIndex.toFloat())
+                if (navPagerSampleIsStale(target, pendingPagerSync.from, pendingPagerSync.target)) {
+                    return@collect
+                }
+                pendingPagerSync.clear()
+                indicatorPosition.snapTo(target)
+            }
     }
 
     BoxWithConstraints(
@@ -926,24 +981,88 @@ fun VrkaFloatingNavBar(
         val frozenRecording = remember(pressLensEnabled) { { !lensVisible } }
         val pillColor = MaterialTheme.colorScheme.onSurface
         val pillFillAlpha = if (colors.isLight) 0.08f else 0.12f
+        val isLight = colors.isLight
+
+        // Everything below is remembered: the backdrop element compares its lambdas by
+        // identity and treats a new one as a changed capture. A fresh lambda on every
+        // recomposition (a tab switch, a theme toggle) made the glass re-sample and
+        // re-run blur + lens even though nothing about it had changed.
+        val ambientShadowDraw: DrawScope.() -> Unit = remember(ambientShadowPaint, barCornerRadiusPx) {
+            {
+                drawIntoCanvas { canvas ->
+                    val lift = 2.dp.toPx()
+                    canvas.nativeCanvas.drawRoundRect(
+                        0f,
+                        lift,
+                        size.width,
+                        size.height + lift,
+                        barCornerRadiusPx,
+                        barCornerRadiusPx,
+                        ambientShadowPaint,
+                    )
+                }
+            }
+        }
+        val capsuleScaleLayer: GraphicsLayerScope.() -> Unit = remember {
+            {
+                val p = pressProgress.value
+                scaleX = 1f + 0.025f * p
+                scaleY = 1f + 0.06f * p
+            }
+        }
+        val capsuleAppearance: Modifier = remember(backdrop, barShape, isLight, density) {
+            when {
+                backdrop != null && isRenderEffectSupported() -> Modifier.drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { barShape },
+                    effects = {
+                        // Mornye's clear glass: clarity 0.75 -> sigma 6,
+                        // refractionDepth 0.45, dispersion 0.99.
+                        blur(with(density) { (6.dp * 0.75f).toPx() })
+                        if (isRuntimeShaderSupported()) {
+                            lens(
+                                refractionHeight = with(density) { (20.dp * 0.75f).toPx() },
+                                refractionAmount = with(density) {
+                                    (20.dp * 0.45f * 0.75f).toPx()
+                                },
+                                magnification = 1.17f,
+                                depthEffect = true,
+                                chromaticAberration = true,
+                            )
+                        }
+                    },
+                    highlight = {
+                        Highlight(
+                            width = 0.9.dp,
+                            style = HighlightStyle.Default(
+                                color = Color.White.copy(alpha = if (isLight) 0.12f else 0.25f),
+                                angle = 0f,
+                            ),
+                        )
+                    },
+                    shadow = null,
+                    onDrawSurface = {
+                        // navigationOpacity 0.49 light / 0.36 dark, compounded
+                        // the same way as MornyeGlass.build.
+                        val veilColor = if (isLight) {
+                            Color(0xFFF7F6FA).copy(alpha = 0.53f)
+                        } else {
+                            Color(0xFF13121A).copy(alpha = 0.54f)
+                        }
+                        drawRect(color = veilColor)
+                    },
+                    backdropScale = 0.75f,
+                )
+                isLight -> Modifier.background(Color(0xFFF7F6FA).copy(alpha = 0.70f), barShape)
+                else -> Modifier.background(Color(0xFF13121A).copy(alpha = 0.68f), barShape)
+            }
+        }
 
         // Outer soft ambient shadow
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .drawBehind {
-                    drawIntoCanvas { canvas ->
-                        canvas.nativeCanvas.drawRoundRect(
-                            0f,
-                            with(density) { 2.dp.toPx() },
-                            size.width,
-                            size.height + with(density) { 2.dp.toPx() },
-                            barCornerRadiusPx,
-                            barCornerRadiusPx,
-                            ambientShadowPaint,
-                        )
-                    }
-                },
+                .drawBehind(ambientShadowDraw),
         )
 
         // The composed bar is recorded once per draw budget. The held lens below
@@ -982,27 +1101,31 @@ fun VrkaFloatingNavBar(
                                     (down.position.x / slotWidthPx).toInt()
                                         .coerceIn(0, destinations.lastIndex)
                                 }
-                                isPressing = true
+                                pressLensIn()
                             }
 
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                 if (!change.pressed) {
-                                    isPressing = false
+                                    if (pressLensEnabled) pressLensOut()
                                     if (isDrag) {
                                         change.consume()
                                         val shift = (change.position.x - down.position.x) / slotWidthPx
                                         val targetIndex = (basePos + shift).roundToInt().coerceIn(0, destinations.lastIndex)
                                         val targetDest = destinations[targetIndex]
                                         val releasePosition = dragPosition
-                                        val releasedFrom = latestPagerPosition
+                                        val releasedFrom = latestPagerPositionProvider?.invoke()
+                                        if (targetIndex != latestSelectedIndex) {
+                                            // Recorded before isDragging flips, so the pager
+                                            // sync sees the pending target on its first sample.
+                                            pendingPagerSync.from = releasedFrom
+                                            pendingPagerSync.target = if (releasedFrom == null) -1 else targetIndex
+                                        }
                                         coroutineScope.launch {
                                             indicatorPosition.snapTo(releasePosition)
                                             isDragging = false
                                             if (targetIndex != latestSelectedIndex) {
-                                                pendingPagerSyncFrom = releasedFrom
-                                                pendingPagerSyncTarget = if (releasedFrom == null) -1 else targetIndex
                                                 latestOnDestinationSelected(targetDest)
                                             } else {
                                                 indicatorPosition.animateTo(
@@ -1042,7 +1165,7 @@ fun VrkaFloatingNavBar(
                                 }
                             }
                         } finally {
-                            isPressing = false
+                            if (pressLensEnabled) pressLensOut()
                         }
                     }
                 },
@@ -1051,60 +1174,8 @@ fun VrkaFloatingNavBar(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        val p = pressProgress.value
-                        scaleX = 1f + 0.025f * p
-                        scaleY = 1f + 0.06f * p
-                    }
-                    .then(
-                        if (backdrop != null && isRenderEffectSupported()) {
-                            Modifier.drawBackdrop(
-                                backdrop = backdrop,
-                                shape = { barShape },
-                                effects = {
-                                    // Mornye's clear glass: clarity 0.75 -> sigma 6,
-                                    // refractionDepth 0.45, dispersion 0.99.
-                                    blur(with(density) { (6.dp * 0.75f).toPx() })
-                                    if (isRuntimeShaderSupported()) {
-                                        lens(
-                                            refractionHeight = with(density) { (20.dp * 0.75f).toPx() },
-                                            refractionAmount = with(density) {
-                                                (20.dp * 0.45f * 0.75f).toPx()
-                                            },
-                                            magnification = 1.17f,
-                                            depthEffect = true,
-                                            chromaticAberration = true,
-                                        )
-                                    }
-                                },
-                                highlight = {
-                                    Highlight(
-                                        width = 0.9.dp,
-                                        style = HighlightStyle.Default(
-                                            color = Color.White.copy(alpha = if (colors.isLight) 0.12f else 0.25f),
-                                            angle = 0f,
-                                        ),
-                                    )
-                                },
-                                shadow = null,
-                                onDrawSurface = {
-                                    // navigationOpacity 0.49 light / 0.36 dark, compounded
-                                    // the same way as MornyeGlass.build.
-                                    val veilColor = if (colors.isLight) {
-                                        Color(0xFFF7F6FA).copy(alpha = 0.53f)
-                                    } else {
-                                        Color(0xFF13121A).copy(alpha = 0.54f)
-                                    }
-                                    drawRect(color = veilColor)
-                                },
-                                backdropScale = 0.75f,
-                            )
-                        } else if (colors.isLight) {
-                            Modifier.background(Color(0xFFF7F6FA).copy(alpha = 0.70f), barShape)
-                        } else {
-                            Modifier.background(Color(0xFF13121A).copy(alpha = 0.68f), barShape)
-                        }
-                    )
+                    .graphicsLayer(capsuleScaleLayer)
+                    .then(capsuleAppearance)
                     .border(
                         width = 1.dp,
                         brush = capsuleBorderBrush,
@@ -1201,8 +1272,9 @@ fun VrkaFloatingNavBar(
 
         // Held lens (MornyeSelectionPill): a capsule grown 28% x 24% over 240ms
         // that samples the recorded bar and its icons. No blur, 0.18 refraction
-        // depth across 18dp, white wash and a 0.75dp illuminated outline. It is
-        // its own composable so press/drag frames recompose only the lens.
+        // depth across 18dp, white wash and a 0.75dp illuminated outline. It reads
+        // the press animation in the layout/draw phases, so a press recomposes the
+        // bar only when the lens enters or leaves composition (0 -> >0 -> 0).
         if (pressLensEnabled && lensVisible && measuredBoundsReady) {
             NavPressLens(
                 barBackdrop = barBackdrop,
@@ -1235,19 +1307,51 @@ private fun NavPressLens(
     isLight: Boolean,
     density: Density,
 ) {
-    val pressValue = pressProgress.value
-    val indicator = calculateNavIndicatorBounds(
-        position = anchorProvider(),
-        items = itemBounds,
-        slotInsetPx = insetPx,
-    ) ?: return
-    val pressLensBounds = calculateNavPressLensBounds(
-        indicator = indicator,
-        pressProgress = pressValue,
-        containerHeightPx = containerHeightPx,
-        restingHeightPx = restingHeightPx,
-    )
-    val lensShape = RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS)
+    val lensShape = remember { RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS) }
+    // Every lambda below is stable for the lifetime of the lens and reads the press
+    // value at draw time. A press used to recompose this composable on every frame,
+    // which handed drawBackdrop a fresh effects lambda each time and forced it to
+    // re-apply the effect chain and mark its capture dirty on all ~15 frames.
+    val lensEffects: BackdropEffectScope.() -> Unit = remember(density) {
+        {
+            if (isRuntimeShaderSupported()) {
+                lens(
+                    refractionHeight = with(density) { 18.dp.toPx() },
+                    refractionAmount = with(density) {
+                        (18.dp * 0.18f * pressProgress.value).toPx()
+                    },
+                    magnification = 1.018f,
+                    depthEffect = true,
+                    chromaticAberration = true,
+                )
+            }
+        }
+    }
+    val lensHighlight: () -> Highlight = remember(isLight) {
+        {
+            Highlight(
+                width = 1.2.dp,
+                style = HighlightStyle.Default(
+                    color = Color.White.copy(
+                        alpha = (if (isLight) 0.12f else 0.25f) * pressProgress.value,
+                    ),
+                    angle = 0f,
+                ),
+            )
+        }
+    }
+    val lensSurface: DrawScope.() -> Unit = remember(isLight) {
+        {
+            drawRect(
+                color = Color.White.copy(
+                    alpha = pressProgress.value * (if (isLight) 0.24f else 0.08f),
+                ),
+            )
+        }
+    }
+    val lensBorderWidthPx = with(density) { 0.75.dp.toPx() }
+    val lensCornerRadiusPx = with(density) { NAV_INDICATOR_CORNER_RADIUS.toPx() }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1255,55 +1359,49 @@ private fun NavPressLens(
     ) {
         Box(
             modifier = Modifier
-                .width(with(density) { pressLensBounds.widthPx.toDp() })
-                .height(with(density) { pressLensBounds.heightPx.toDp() })
-                .align(AbsoluteAlignment.TopLeft)
-                .absoluteOffset {
-                    IntOffset(pressLensBounds.leftPx.roundToInt(), pressLensBounds.topPx.roundToInt())
+                // Bounds and placement are resolved in the layout phase, so the growth
+                // animation invalidates layout and draw only.
+                .layout { measurable, _ ->
+                    val lens = calculateNavIndicatorBounds(
+                        position = anchorProvider(),
+                        items = itemBounds,
+                        slotInsetPx = insetPx,
+                    )?.let { indicator ->
+                        calculateNavPressLensBounds(
+                            indicator = indicator,
+                            pressProgress = pressProgress.value,
+                            containerHeightPx = containerHeightPx,
+                            restingHeightPx = restingHeightPx,
+                        )
+                    }
+                    val width = lens?.widthPx?.roundToInt()?.coerceAtLeast(1) ?: 1
+                    val height = lens?.heightPx?.roundToInt()?.coerceAtLeast(1) ?: 1
+                    val placeable = measurable.measure(Constraints.fixed(width, height))
+                    layout(width, height) {
+                        placeable.place(
+                            lens?.leftPx?.roundToInt() ?: 0,
+                            lens?.topPx?.roundToInt() ?: 0,
+                        )
+                    }
                 }
                 .drawBackdrop(
                     backdrop = barBackdrop,
                     shape = { lensShape },
-                    effects = {
-                        if (isRuntimeShaderSupported()) {
-                            lens(
-                                refractionHeight = with(density) { 18.dp.toPx() },
-                                refractionAmount = with(density) {
-                                    (18.dp * 0.18f * pressValue).toPx()
-                                },
-                                magnification = 1.018f,
-                                depthEffect = true,
-                                chromaticAberration = true,
-                            )
-                        }
-                    },
-                    highlight = {
-                        Highlight(
-                            width = 1.2.dp,
-                            style = HighlightStyle.Default(
-                                color = Color.White.copy(
-                                    alpha = (if (isLight) 0.12f else 0.25f) * pressValue,
-                                ),
-                                angle = 0f,
-                            ),
-                        )
-                    },
+                    effects = lensEffects,
+                    highlight = lensHighlight,
                     shadow = null,
-                    onDrawSurface = {
-                        drawRect(
-                            color = Color.White.copy(
-                                alpha = pressValue * (if (isLight) 0.24f else 0.08f),
-                            ),
-                        )
-                    },
+                    onDrawSurface = lensSurface,
                     backdropScale = 1f,
                 )
                 .clip(lensShape)
-                .border(
-                    width = 0.75.dp,
-                    color = Color.White.copy(alpha = 0.6f * pressValue),
-                    shape = lensShape,
-                ),
+                .drawWithContent {
+                    drawContent()
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.6f * pressProgress.value),
+                        cornerRadius = CornerRadius(lensCornerRadiusPx),
+                        style = Stroke(width = lensBorderWidthPx),
+                    )
+                },
         )
     }
 }
