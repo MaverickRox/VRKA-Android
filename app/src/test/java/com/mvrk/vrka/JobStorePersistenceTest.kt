@@ -284,6 +284,47 @@ class JobStorePersistenceTest {
     }
 
     @Test
+    fun byteCountsSurviveReloadForActiveAndCompletedJobs() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "active",
+                    request = sampleRequest(),
+                    state = JobState.DOWNLOADING,
+                    downloadedBytes = 12_400_000L,
+                    totalBytes = 48_200_000L,
+                    totalIsExact = true,
+                ),
+                DownloadJob(
+                    id = "done",
+                    request = sampleRequest(),
+                    state = JobState.DONE,
+                    downloadedBytes = 48_200_000L,
+                    totalBytes = 48_200_000L,
+                    totalIsExact = true,
+                ),
+                DownloadJob(
+                    id = "estimate-only",
+                    request = sampleRequest(),
+                    state = JobState.FAILED,
+                    totalBytes = 10_000_000L,
+                    totalIsExact = false,
+                ),
+            ),
+        )
+
+        val restored = store.load().associateBy { it.id }
+
+        assertEquals(12_400_000L, restored.getValue("active").downloadedBytes)
+        assertEquals(48_200_000L, restored.getValue("active").totalBytes)
+        assertTrue(restored.getValue("active").totalIsExact)
+        assertEquals(48_200_000L, restored.getValue("done").totalBytes)
+        assertEquals(10_000_000L, restored.getValue("estimate-only").totalBytes)
+        assertFalse(restored.getValue("estimate-only").totalIsExact)
+    }
+
+    @Test
     fun corruptedJsonFileRecoversGracefully() {
         val targetFile = File(tempFolder.root, "corrupted_jobs.json")
         targetFile.writeText("{ this is definitely not valid json !!! }", Charsets.UTF_8)

@@ -121,6 +121,17 @@ internal fun ActiveDownloadStrip(
                             maxLines = 1,
                         )
                     }
+                    downloadSizeLabel(LocalContext.current, job)?.let { size ->
+                        Text(
+                            text = size,
+                            fontFamily = VrkaMonoFamily,
+                            fontSize = 10.sp,
+                            color = VrkaTokens.TextTertiary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 1.dp),
+                        )
+                    }
                 }
             }
 

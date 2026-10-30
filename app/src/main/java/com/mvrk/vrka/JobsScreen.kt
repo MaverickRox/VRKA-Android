@@ -551,6 +551,8 @@ private fun JobCard(
     onShowFallback: (() -> Unit)? = null,
     onChooseFolder: (() -> Unit)? = null,
 ) {
+    val context = LocalContext.current
+    val sizeLabel = downloadSizeLabel(context, job)
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = if (isSelected) VrkaTokens.SurfaceInset else VrkaTokens.SurfaceCard,
@@ -629,6 +631,15 @@ private fun JobCard(
                     overflow = TextOverflow.Ellipsis,
                 )
 
+                if (job.state == JobState.DONE && sizeLabel != null) {
+                    Text(
+                        text = sizeLabel,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                        color = VrkaTokens.TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+
                 if (job.state == JobState.FAILED) {
                     Text(
                         text = friendlyFailureTitle(LocalContext.current, job),
@@ -649,6 +660,15 @@ private fun JobCard(
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                         color = VrkaTokens.TextSecondary,
                         modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+
+                if (job.state.isTerminal && job.state != JobState.DONE && sizeLabel != null) {
+                    Text(
+                        text = sizeLabel,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                        color = VrkaTokens.TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
 
@@ -680,6 +700,17 @@ private fun JobCard(
                             fontFamily = VrkaMonoFamily,
                             fontSize = 11.sp,
                             color = VrkaTokens.TextSecondary,
+                        )
+                    }
+                    if (sizeLabel != null) {
+                        Text(
+                            text = sizeLabel,
+                            fontFamily = VrkaMonoFamily,
+                            fontSize = 11.sp,
+                            color = VrkaTokens.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp),
                         )
                     }
                 }
