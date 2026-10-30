@@ -2,6 +2,9 @@ package com.mvrk.vrka
 
 import androidx.compose.runtime.Immutable
 
+internal const val INTERRUPTED_DOWNLOAD_ERROR =
+    "Download was interrupted when Android stopped VRKA. Tap retry."
+
 enum class JobState {
     QUEUED,
     PREPARING,
@@ -130,6 +133,9 @@ data class DownloadJob(
     val runtimeName: String = "",
     val runtimeVersion: String = "",
     val subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus = com.mvrk.vrka.subtitle.SubtitleStatus.NONE,
+    // Persisted before the first file is handed to MediaStore/DocumentsProvider. A job that
+    // died after this point is not auto-resumed because its outputs may already be published.
+    val publishStarted: Boolean = false,
 )
 
 enum class StreamSelectionState {

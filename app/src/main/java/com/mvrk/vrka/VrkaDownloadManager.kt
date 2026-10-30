@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import com.mvrk.vrka.engine.*
 import com.mvrk.vrka.update.AppUpdateManager
@@ -76,12 +77,18 @@ class VrkaDownloadManager(
     private val activeMediaProcesses = ConcurrentHashMap<String, Process>()
     private val initialized = AtomicBoolean(false)
     private val store = JobStore(context)
+    /** Set when a user-initiated transfer job is pending or has already started this process. */
+    private val transferJobWasScheduled =
+        DownloadTransferRuntime.wasTransferJobInvoked || DownloadTransferScheduler.isScheduled(context)
     private val publisher = OutputPublisher(context, settingsRepository)
     private val stagingRoot by lazy { File(context.getExternalFilesDir(null), "staging") }
     private val speedPattern = Regex("""\bat\s+([^\s]+/s)""", RegexOption.IGNORE_CASE)
 
     private val _jobs = MutableStateFlow<List<DownloadJob>>(
-        runCatching { store.load().sortedByDescending(DownloadJob::createdAt) }.getOrDefault(emptyList())
+        runCatching {
+            store.load(recoverActive = transferJobWasScheduled)
+                .sortedByDescending(DownloadJob::createdAt)
+        }.getOrDefault(emptyList())
     )
     val jobs: StateFlow<List<DownloadJob>> = _jobs.asStateFlow()
 
@@ -135,7 +142,10 @@ class VrkaDownloadManager(
             estimateCache.clear()
         }
         scope.launch(Dispatchers.IO) {
-            val initial = runCatching { store.load().sortedByDescending(DownloadJob::createdAt) }.getOrDefault(emptyList())
+            val initial = runCatching {
+                store.load(recoverActive = transferJobWasScheduled)
+                    .sortedByDescending(DownloadJob::createdAt)
+            }.getOrDefault(emptyList())
             synchronized(_jobs) {
                 val existingIds = _jobs.value.map { it.id }.toSet()
                 val missing = initial.filterNot { it.id in existingIds }
@@ -143,6 +153,8 @@ class VrkaDownloadManager(
                     _jobs.value = (_jobs.value + missing).sortedByDescending(DownloadJob::createdAt)
                 }
             }
+            // Runs after persisted state is merged so the plan sees every record.
+            resumeInterruptedWorkIfNeeded()
             for (ignored in persistRequests) {
                 store.save(_jobs.value)
             }
@@ -160,6 +172,60 @@ class VrkaDownloadManager(
                     triggerScheduler()
                 }
         }
+        scope.launch(Dispatchers.IO) {
+            _jobs.map { jobs -> jobs.any { it.state.isForegroundWork } }
+                .distinctUntilChanged()
+                .collect { active ->
+                    if (active) {
+                        DownloadTransferScheduler.schedule(context)
+                    } else {
+                        DownloadTransferScheduler.cancel(context)
+                    }
+                }
+        }
+    }
+
+    /**
+     * Called once per process. Persisted in-flight jobs are revived only when a transfer job
+     * is pending, which means Android (or the user returning to the app) expects the work to
+     * continue. Publishing-phase jobs fail closed because their outputs may already exist.
+     */
+    private fun resumeInterruptedWorkIfNeeded() {
+        if (!DownloadRecovery.shouldRecoverPersistedActiveWork(
+                Build.VERSION.SDK_INT,
+                transferJobWasScheduled,
+            )
+        ) {
+            return
+        }
+        val plan = DownloadRecovery.plan(_jobs.value)
+        if (plan.isEmpty) return
+        val resumeIds = plan.resumeIds.toSet()
+        val interruptedIds = plan.interruptedIds.toSet()
+        mutate(persist = true) { jobs ->
+            jobs.map { job ->
+                when (job.id) {
+                    in resumeIds -> job.copy(
+                        state = JobState.QUEUED,
+                        detail = "Resuming interrupted download",
+                        speed = "",
+                        etaSeconds = null,
+                        error = "",
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                    in interruptedIds -> job.copy(
+                        state = JobState.FAILED,
+                        detail = "Interrupted",
+                        error = INTERRUPTED_DOWNLOAD_ERROR,
+                        speed = "",
+                        etaSeconds = null,
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                    else -> job
+                }
+            }
+        }
+        plan.resumeIds.forEach(::admitToQueue)
     }
 
     private fun triggerScheduler() {
@@ -257,6 +323,7 @@ class VrkaDownloadManager(
             outputUris = emptyList(),
             error = "",
             attempt = previous.attempt + 1,
+            publishStarted = false,
             updatedAt = System.currentTimeMillis(),
         )
         replace(replacement, persist = true)
@@ -581,7 +648,7 @@ class VrkaDownloadManager(
 
         var currentStage = "Direct Extraction"
         update(jobId, state = JobState.PREPARING, detail = "Starting runtime", persist = true)
-        DownloadService.start(context)
+        startForegroundServiceSafely()
         try {
             ensureInitialized()
             var job = current(jobId) ?: return
@@ -811,7 +878,7 @@ class VrkaDownloadManager(
                                     updatedAt = System.currentTimeMillis(),
                                 )
                                 replace(updated, persist = true)
-                                DownloadService.start(context)
+                                startForegroundServiceSafely()
 
                                 currentStage = "Browser Fallback yt-dlp Transfer"
                                 Log.i(
@@ -907,8 +974,22 @@ class VrkaDownloadManager(
         } finally {
             activeFallbackEngines.remove(jobId)?.cancel()
             activeEngineTokens.remove(jobId)?.cancel()
-            DownloadService.stopIfIdle(context)
+            stopForegroundServiceIfIdleSafely()
         }
+    }
+
+    private fun startForegroundServiceSafely() {
+        runCatching { DownloadService.start(context) }
+            .onFailure {
+                Log.w(
+                    "VRKA",
+                    "Foreground service unavailable; transfer continues under the user-initiated job: ${safeError(it)}",
+                )
+            }
+    }
+
+    private fun stopForegroundServiceIfIdleSafely() {
+        runCatching { DownloadService.stopIfIdle(context) }
     }
 
     private suspend fun downloadOnce(job: DownloadJob, recoveryAttempt: Boolean = false) {
@@ -1024,6 +1105,7 @@ class VrkaDownloadManager(
             detail = "Publishing to Downloads",
             persist = true,
         )
+        markPublishStarted(job.id)
         var outputs = if (job.request.commandTemplateId != null) {
             directory.walkTopDown()
                 .filter { it.isFile && it.extension.lowercase() in PUBLISHABLE_EXTENSIONS && isInsideDirectory(directory, it) }
@@ -1431,6 +1513,19 @@ class VrkaDownloadManager(
                 else -> "yt-dlp " + version + " ready"
             },
         )
+    }
+
+    /**
+     * Writes the publish marker synchronously before any output leaves staging. If the
+     * process dies afterwards, restart recovery fails closed instead of publishing a copy.
+     */
+    private fun markPublishStarted(jobId: String) {
+        mutate(persist = false) { jobs ->
+            jobs.map { job ->
+                if (job.id == jobId) job.copy(publishStarted = true) else job
+            }
+        }
+        runCatching { store.save(_jobs.value) }
     }
 
     private fun stagingDirectory(jobId: String): File {
