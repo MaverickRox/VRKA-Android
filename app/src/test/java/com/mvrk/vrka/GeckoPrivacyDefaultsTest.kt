@@ -55,7 +55,7 @@ class GeckoPrivacyDefaultsTest {
     fun bundledEngineIsTheVerifiedStableLine() {
         assertTrue(
             "GeckoView should stay on the verified stable release line",
-            BuildConfig.GECKOVIEW_VERSION.startsWith("157."),
+            BuildConfig.GECKOVIEW_VERSION.startsWith("159."),
         )
     }
 }
