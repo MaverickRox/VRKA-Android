@@ -243,7 +243,7 @@ fun VrkaRoot(
                                         .fillMaxSize()
                                         .statusBarsPadding(),
                                     onEnqueue = handleEnqueue,
-                                    onEstimateSize = { request -> manager.estimateSize(request) },
+                                    onEstimateSize = { request, force -> manager.estimateSize(request, force) },
                                     onUpdateDownloadLocation = { uri, mode, configured ->
                                         scope.launch {
                                             manager.settingsRepository.setDownloadLocation(uri, mode, configured)

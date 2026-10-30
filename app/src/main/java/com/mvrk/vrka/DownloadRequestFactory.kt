@@ -57,8 +57,18 @@ internal object DownloadRequestFactory {
         if (qjsPath != null) {
             request.addOption("--js-runtimes", "quickjs:$qjsPath")
         }
-        request.addOption("--remote-components", "ejs:github")
+        // The bundled yt-dlp ships yt_dlp_ejs, so `ejs:github` is not required. Requesting it
+        // added a GitHub round-trip to every invocation (ytdl-android runs with
+        // --no-cache-dir), which delayed metadata preflights past their timeout on mobile
+        // networks. Custom runtimes can still opt in through their own arguments.
     }
+
+    fun formatSelectorFor(request: DownloadRequest): String =
+        if (request.mode == MediaMode.AUDIO) {
+            audioFormatSelector(request.audioFormat)
+        } else {
+            buildVideoFormat(request.quality.height, request.prefer60Fps)
+        }
 
     fun info(request: DownloadRequest): YoutubeDLRequest =
         YoutubeDLRequest(request.resolvedMediaUrl ?: request.url).apply {
@@ -86,11 +96,7 @@ internal object DownloadRequestFactory {
             } else {
                 addOption("--no-playlist")
             }
-            if (request.mode == MediaMode.AUDIO) {
-                addOption("-f", audioFormatSelector(request.audioFormat))
-            } else {
-                addOption("-f", buildVideoFormat(request.quality.height, request.prefer60Fps))
-            }
+            addOption("-f", formatSelectorFor(request))
             addJsRuntime(this)
             addSessionContext(request)
         }
@@ -135,7 +141,7 @@ internal object DownloadRequestFactory {
             }
 
             if (options.mode == MediaMode.AUDIO) {
-                addOption("-f", audioFormatSelector(options.audioFormat))
+                addOption("-f", formatSelectorFor(options))
                 addOption("--extract-audio")
                 addOption("--audio-format", options.audioFormat.codec)
                 if (options.audioFormat == AudioFormat.MP3) {
@@ -144,8 +150,7 @@ internal object DownloadRequestFactory {
                 }
                 if (options.embedThumbnail && options.audioFormat != AudioFormat.WAV) addOption("--embed-thumbnail")
             } else {
-                val format = buildVideoFormat(options.quality.height, options.prefer60Fps)
-                addOption("-f", format)
+                addOption("-f", formatSelectorFor(options))
                 if (options.prefer60Fps) {
                     addOption("-S", "res,fps")
                 }

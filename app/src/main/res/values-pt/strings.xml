@@ -142,6 +142,7 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="estimate_exact">Tamanho exato</string>
     <string name="estimate_skip_future">Não mostrar estimativas de tamanho antes das transferências</string>
     <string name="estimate_unavailable">Tamanho indisponível</string>
+    <string name="estimate_unavailable_hint">O VRKA não conseguiu ler um tamanho para esta ligação. Pode tentar novamente ou transferir mesmo assim.</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d restante</string>
     <string name="eta_format_minutes">%1$d:%2$02d restante</string>
     <string name="failure_auth_detail">A fonte poderá exigir uma sessão autenticada no navegador.</string>

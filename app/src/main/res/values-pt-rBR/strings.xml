@@ -142,6 +142,7 @@ Tem certeza de que deseja ativar downloads simultâneos?</string>
     <string name="estimate_exact">Tamanho exato</string>
     <string name="estimate_skip_future">Não mostrar estimativas de tamanho antes dos downloads</string>
     <string name="estimate_unavailable">Tamanho indisponível</string>
+    <string name="estimate_unavailable_hint">O VRKA não conseguiu ler um tamanho para este link. Você pode tentar novamente ou baixar mesmo assim.</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d restante</string>
     <string name="eta_format_minutes">%1$d:%2$02d restante</string>
     <string name="failure_auth_detail">A fonte pode exigir uma sessão autenticada no navegador.</string>
