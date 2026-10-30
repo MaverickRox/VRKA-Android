@@ -119,6 +119,16 @@ data class DownloadRequest(
     val resolvedHeadersOrigin: String = "",
 )
 
+/**
+ * A confirmed request paired with the preflight estimate that was visible when the user
+ * submitted it. The estimate is informational only: it never blocks the download and is
+ * replaced by the transfer's own reported size once bytes move.
+ */
+internal data class PendingDownload(
+    val request: DownloadRequest,
+    val estimate: SizeEstimate?,
+)
+
 @Immutable
 data class DownloadJob(
     val id: String,
@@ -129,11 +139,15 @@ data class DownloadJob(
     val progress: Float = 0f,
     val speed: String = "",
     val etaSeconds: Long? = null,
-    // Byte counts surfaced by the transfer itself. totalIsExact is false when the engine or
-    // yt-dlp only produced an estimate (`of ~ 48.20MiB`).
+    // Sizes have three distinct sources and are never mixed:
+    // - estimatedTotalBytes: metadata preflight, before any bytes move;
+    // - reportedTotalBytes: the total printed by the active transfer stream(s);
+    // - actualFinalFileBytes: the published document's size after completion.
+    val estimatedTotalBytes: Long? = null,
+    val estimatedSizeAccuracy: SizeEstimateKind = SizeEstimateKind.UNAVAILABLE,
     val downloadedBytes: Long? = null,
-    val totalBytes: Long? = null,
-    val totalIsExact: Boolean = false,
+    val reportedTotalBytes: Long? = null,
+    val reportedTotalIsExact: Boolean = false,
     // Size of the published output as reported by the content provider. Only set after the
     // file exists in its final destination, so it never inherits an estimate.
     val actualFinalFileBytes: Long? = null,

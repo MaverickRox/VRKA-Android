@@ -31,7 +31,7 @@ import java.util.UUID
  */
 class ShareReceiverActivity : ComponentActivity() {
     private var sharedLink by mutableStateOf<SharedLinkRequest?>(null)
-    private var pendingRequest: DownloadRequest? = null
+    private var pendingDownload: PendingDownload? = null
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(LocaleHelper.applyLocale(newBase))
@@ -110,9 +110,9 @@ class ShareReceiverActivity : ComponentActivity() {
         val notificationLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) {
-            val request = pendingRequest
-            pendingRequest = null
-            if (request != null) manager.enqueue(request)
+            val download = pendingDownload
+            pendingDownload = null
+            if (download != null) manager.enqueue(download.request, download.estimate)
             finishAndRemoveTask()
         }
 
@@ -131,7 +131,7 @@ class ShareReceiverActivity : ComponentActivity() {
                         settings = settings,
                         repository = manager.settingsRepository,
                         onEstimateSize = { downloadRequest, force -> manager.estimateSize(downloadRequest, force) },
-                        onEnqueue = { downloadRequest ->
+                        onEnqueue = { downloadRequest, estimate ->
                             val needsPermission =
                                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                                     ContextCompat.checkSelfPermission(
@@ -139,14 +139,14 @@ class ShareReceiverActivity : ComponentActivity() {
                                         Manifest.permission.POST_NOTIFICATIONS,
                                     ) != PackageManager.PERMISSION_GRANTED
                             if (needsPermission) {
-                                pendingRequest = downloadRequest
+                                pendingDownload = PendingDownload(downloadRequest, estimate)
                                 notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             } else {
-                                manager.enqueue(downloadRequest)
+                                manager.enqueue(downloadRequest, estimate)
                             }
                         },
                         onDismiss = {
-                            if (pendingRequest == null) finishAndRemoveTask()
+                            if (pendingDownload == null) finishAndRemoveTask()
                         },
                     )
                 }

@@ -273,7 +273,7 @@ class VrkaDownloadManager(
         }
     }
 
-    fun enqueue(request: DownloadRequest): String {
+    fun enqueue(request: DownloadRequest, estimate: SizeEstimate? = null): String {
         require(isHttpUrl(request.url)) { "Enter a valid http or https URL." }
         val settings = settingsRepository.settings.value
         val selectedTemplate = if (settings.customCommandMode) {
@@ -287,7 +287,13 @@ class VrkaDownloadManager(
             commandTemplateArguments = selectedTemplate?.arguments.orEmpty(),
         )
         val id = UUID.randomUUID().toString()
-        val job = DownloadJob(id = id, request = queuedRequest)
+        val job = DownloadJob(
+            id = id,
+            request = queuedRequest,
+            // Only a preflight result is an estimate; a transfer total is never stored here.
+            estimatedTotalBytes = estimate?.bytes?.takeIf { it > 0L },
+            estimatedSizeAccuracy = estimate?.kind ?: SizeEstimateKind.UNAVAILABLE,
+        )
         mutate(persist = true) { listOf(job) + it }
         admitToQueue(id)
         return id
@@ -322,8 +328,8 @@ class VrkaDownloadManager(
             speed = "",
             etaSeconds = null,
             downloadedBytes = null,
-            totalBytes = null,
-            totalIsExact = false,
+            reportedTotalBytes = null,
+            reportedTotalIsExact = false,
             outputUris = emptyList(),
             error = "",
             attempt = previous.attempt + 1,
@@ -983,6 +989,8 @@ class VrkaDownloadManager(
         var lastUiUpdate = 0L
         val outputLines = mutableListOf<String>()
         var transferStarted = false
+        // Separate video/audio streams report their own totals; the merged job total is the sum.
+        val sizeTracker = DownloadSizeTracker()
 
         val response = try {
             val includeSubtitles = job.request.resolvedMediaUrl == null
@@ -1022,7 +1030,11 @@ class VrkaDownloadManager(
                 val now = System.currentTimeMillis()
                 if (now - lastUiUpdate >= 250 || progress >= 100f) {
                     lastUiUpdate = now
-                    val sizeUpdate = if (isCommandLineEcho) null else DownloadSizeParser.parseProgressLine(line)
+                    val sizeUpdate = if (isCommandLineEcho) {
+                        null
+                    } else {
+                        DownloadSizeParser.parseProgressLine(line)?.let(sizeTracker::update)
+                    }
                     val detail = when {
                         line.contains("[Merger]", true) ||
                             line.contains("[ExtractAudio]", true) ||
@@ -1038,8 +1050,8 @@ class VrkaDownloadManager(
                         },
                         progress = progress.coerceIn(0f, 100f),
                         downloadedBytes = sizeUpdate?.downloadedBytes,
-                        totalBytes = sizeUpdate?.totalBytes,
-                        totalIsExact = sizeUpdate?.totalIsExact,
+                        reportedTotalBytes = sizeUpdate?.totalBytes,
+                        reportedTotalIsExact = sizeUpdate?.totalIsExact,
                         speed = speedPattern.find(line)?.groupValues?.getOrNull(1).orEmpty(),
                         etaSeconds = eta.takeIf { it >= 0 },
                         detail = detail,
@@ -1173,8 +1185,8 @@ class VrkaDownloadManager(
             progress = 100f,
             detail = doneDetail,
             downloadedBytes = finalBytes,
-            totalBytes = finalBytes,
-            totalIsExact = finalBytes != null,
+            reportedTotalBytes = finalBytes,
+            reportedTotalIsExact = finalBytes != null,
             actualFinalFileBytes = publishedBytes,
             outputUris = published,
             error = "",
@@ -1252,10 +1264,10 @@ class VrkaDownloadManager(
                                 speed = progress.speedBytesPerSec?.let { UnifiedProgressSnapshot.formatSpeed(it) }.orEmpty(),
                                 etaSeconds = progress.etaSeconds,
                                 downloadedBytes = progress.bytesRead,
-                                totalBytes = progress.totalBytes?.takeIf { it > 0L },
+                                reportedTotalBytes = progress.totalBytes?.takeIf { it > 0L },
                                 // Engines derive totals from Content-Length when available and
                                 // from duration/bitrate otherwise; treat them as approximate.
-                                totalIsExact = false,
+                                reportedTotalIsExact = false,
                                 detail = progress.detail.ifBlank { "Downloading stream" },
                             )
                         }
@@ -1301,8 +1313,8 @@ class VrkaDownloadManager(
                         progress = 100f,
                         detail = if (published.size == 1) "Saved to Downloads/VRKA" else "Saved ${published.size} files",
                         downloadedBytes = result.totalBytes,
-                        totalBytes = result.totalBytes,
-                        totalIsExact = result.totalBytes > 0L,
+                        reportedTotalBytes = result.totalBytes,
+                        reportedTotalIsExact = result.totalBytes > 0L,
                         actualFinalFileBytes = published
                             .mapNotNull(publisher::sizeOf)
                             .takeIf { it.isNotEmpty() }
@@ -1581,8 +1593,8 @@ class VrkaDownloadManager(
         speed: String? = null,
         etaSeconds: Long? = null,
         downloadedBytes: Long? = null,
-        totalBytes: Long? = null,
-        totalIsExact: Boolean? = null,
+        reportedTotalBytes: Long? = null,
+        reportedTotalIsExact: Boolean? = null,
         actualFinalFileBytes: Long? = null,
         resetSize: Boolean = false,
         outputUris: List<String>? = null,
@@ -1609,8 +1621,16 @@ class VrkaDownloadManager(
                         speed = speed ?: job.speed,
                         etaSeconds = etaSeconds ?: job.etaSeconds,
                         downloadedBytes = if (resetSize) null else downloadedBytes ?: job.downloadedBytes,
-                        totalBytes = if (resetSize) null else totalBytes ?: job.totalBytes,
-                        totalIsExact = if (resetSize) false else totalIsExact ?: job.totalIsExact,
+                        reportedTotalBytes = if (resetSize) {
+                            null
+                        } else {
+                            reportedTotalBytes ?: job.reportedTotalBytes
+                        },
+                        reportedTotalIsExact = if (resetSize) {
+                            false
+                        } else {
+                            reportedTotalIsExact ?: job.reportedTotalIsExact
+                        },
                         actualFinalFileBytes = if (resetSize) {
                             null
                         } else {

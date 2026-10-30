@@ -19,13 +19,16 @@ class DownloadSizeLabelTest {
         downloaded: Long?,
         total: Long?,
         exact: Boolean = true,
+        estimated: Long? = null,
     ) = DownloadJob(
         id = "size-label",
         request = DownloadRequest(url = "https://example.com/video.mp4"),
         state = state,
         downloadedBytes = downloaded,
-        totalBytes = total,
-        totalIsExact = exact,
+        estimatedTotalBytes = estimated,
+        estimatedSizeAccuracy = if (estimated != null) SizeEstimateKind.APPROXIMATE else SizeEstimateKind.UNAVAILABLE,
+        reportedTotalBytes = total,
+        reportedTotalIsExact = exact,
     )
 
     private val mib = 1024L * 1024L
@@ -68,5 +71,36 @@ class DownloadSizeLabelTest {
     @Test
     fun unknownSizeHidesTheRowInsteadOfGuessing() {
         assertNull(downloadSizeLabel(context, job(JobState.FAILED, null, null)))
+    }
+
+    @Test
+    fun queuedJobWithoutEstimateSaysSizeUnavailable() {
+        assertEquals(
+            "Size unavailable",
+            downloadSizeLabel(context, job(JobState.QUEUED, null, null)),
+        )
+    }
+
+    @Test
+    fun queuedJobShowsThePreflightEstimate() {
+        assertEquals(
+            "Total ~171.0 MiB",
+            downloadSizeLabel(context, job(JobState.QUEUED, null, null, estimated = (171.0 * mib).toLong())),
+        )
+    }
+
+    @Test
+    fun completedJobShowsThePublishedFinalSize() {
+        val job = DownloadJob(
+            id = "size-label-final",
+            request = DownloadRequest(url = "https://example.com/video.mp4"),
+            state = JobState.DONE,
+            downloadedBytes = (171.0 * mib).toLong(),
+            reportedTotalBytes = (171.0 * mib).toLong(),
+            reportedTotalIsExact = false,
+            actualFinalFileBytes = (80.0 * mib).toLong(),
+        )
+
+        assertEquals("Completed · 80.0 MiB", downloadSizeLabel(context, job))
     }
 }

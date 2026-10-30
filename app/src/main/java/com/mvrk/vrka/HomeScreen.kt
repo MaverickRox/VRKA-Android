@@ -65,7 +65,7 @@ internal fun HomeScreen(
     repository: SettingsRepository,
     runtime: RuntimeStatus,
     modifier: Modifier = Modifier,
-    onEnqueue: (DownloadRequest) -> Unit,
+    onEnqueue: (DownloadRequest, SizeEstimate?) -> Unit,
     onEstimateSize: suspend (DownloadRequest, Boolean) -> SizeEstimate,
     onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
 ) {
@@ -146,7 +146,8 @@ internal fun HomeScreen(
 
     fun beginConfirmation(request: DownloadRequest, needsLocation: Boolean, isLocationValid: Boolean) {
         if (!settings.showDownloadSizeConfirmation && !needsLocation) {
-            onEnqueue(request.copy(destinationTreeUri = settings.outputTreeUri))
+            // No preflight runs when size confirmation is off, so nothing is claimed.
+            onEnqueue(request.copy(destinationTreeUri = settings.outputTreeUri), null)
             url = ""
             validation = ""
             return
@@ -227,9 +228,9 @@ internal fun HomeScreen(
             } else {
                 onUpdateDownloadLocation(settings.outputTreeUri, saveMode, true)
             }
-            onEnqueue(request.copy(destinationTreeUri = dialogSelectedUri))
+            onEnqueue(request.copy(destinationTreeUri = dialogSelectedUri), sizeEstimate)
         } else {
-            onEnqueue(request.copy(destinationTreeUri = settings.outputTreeUri))
+            onEnqueue(request.copy(destinationTreeUri = settings.outputTreeUri), sizeEstimate)
         }
         url = ""
         validation = ""

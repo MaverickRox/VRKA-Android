@@ -74,8 +74,10 @@ internal class JobStore(private val target: File) {
             .put("speed", job.speed)
             .put("eta", job.etaSeconds)
             .put("downloadedBytes", job.downloadedBytes)
-            .put("totalBytes", job.totalBytes)
-            .put("totalIsExact", job.totalIsExact)
+            .put("estimatedTotalBytes", job.estimatedTotalBytes)
+            .put("estimatedSizeAccuracy", job.estimatedSizeAccuracy.name)
+            .put("reportedTotalBytes", job.reportedTotalBytes)
+            .put("reportedTotalIsExact", job.reportedTotalIsExact)
             .put("actualFinalBytes", job.actualFinalFileBytes)
             .put("created", job.createdAt)
             .put("updated", job.updatedAt)
@@ -211,8 +213,20 @@ internal class JobStore(private val target: File) {
             speed = value.optString("speed"),
             etaSeconds = value.optionalLong("eta"),
             downloadedBytes = value.optionalLong("downloadedBytes"),
-            totalBytes = value.optionalLong("totalBytes"),
-            totalIsExact = value.optBoolean("totalIsExact", false),
+            estimatedTotalBytes = value.optionalLong("estimatedTotalBytes"),
+            estimatedSizeAccuracy = enumValue(
+                value.optString("estimatedSizeAccuracy"),
+                SizeEstimateKind.UNAVAILABLE,
+            ),
+            // Records written before the estimated/reported split stored the transfer total
+            // under "totalBytes"; it belongs to the reported field, never the estimate.
+            reportedTotalBytes = value.optionalLong("reportedTotalBytes")
+                ?: value.optionalLong("totalBytes"),
+            reportedTotalIsExact = if (value.has("reportedTotalIsExact")) {
+                value.optBoolean("reportedTotalIsExact", false)
+            } else {
+                value.optBoolean("totalIsExact", false)
+            },
             actualFinalFileBytes = value.optionalLong("actualFinalBytes"),
             createdAt = value.optLong("created", System.currentTimeMillis()),
             updatedAt = value.optLong("updated", System.currentTimeMillis()),

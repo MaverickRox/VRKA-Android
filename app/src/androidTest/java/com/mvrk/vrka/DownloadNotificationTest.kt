@@ -38,8 +38,8 @@ class DownloadNotificationTest {
         title = "Test clip",
         progress = progress,
         downloadedBytes = 16L * 1024 * 1024,
-        totalBytes = 48L * 1024 * 1024,
-        totalIsExact = true,
+        reportedTotalBytes = 48L * 1024 * 1024,
+        reportedTotalIsExact = true,
     )
 
     @Test
