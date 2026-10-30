@@ -8,9 +8,16 @@ import org.mozilla.geckoview.ContentBlocking
 
 class GeckoPrivacyDefaultsTest {
     @Test
-    fun trackingProtectionUsesStrictLevels() {
-        assertEquals(ContentBlocking.AntiTracking.STRICT, GeckoPrivacyDefaults.ANTI_TRACKING)
-        assertEquals(ContentBlocking.EtpLevel.STRICT, GeckoPrivacyDefaults.ETP_LEVEL)
+    fun trackingProtectionKeepsTrackersButNotContentBlocking() {
+        val antiTracking = GeckoPrivacyDefaults.ANTI_TRACKING
+        assertEquals(0, antiTracking and ContentBlocking.AntiTracking.CONTENT)
+        assertTrue(antiTracking and ContentBlocking.AntiTracking.AD != 0)
+        assertTrue(antiTracking and ContentBlocking.AntiTracking.ANALYTIC != 0)
+        assertTrue(antiTracking and ContentBlocking.AntiTracking.SOCIAL != 0)
+        assertTrue(antiTracking and ContentBlocking.AntiTracking.CRYPTOMINING != 0)
+        assertTrue(antiTracking and ContentBlocking.AntiTracking.FINGERPRINTING != 0)
+        assertEquals(ContentBlocking.EtpLevel.DEFAULT, GeckoPrivacyDefaults.ETP_LEVEL)
+        assertTrue(GeckoPrivacyDefaults.ETP_LEVEL != ContentBlocking.EtpLevel.NONE)
     }
 
     @Test
