@@ -5,6 +5,9 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
@@ -170,6 +173,94 @@ class DownloadNotificationTest {
         }
     }
 
+    /**
+     * P8: the branded large icon is what the platform shows in the leading area. It must be
+     * attached to every download notification through the supported `setLargeIcon` API, while
+     * the separate monochrome small icon stays in place.
+     */
+    @Test
+    fun everyDownloadNotificationCarriesTheBrandedLargeIcon() {
+        DownloadNotifications.ensureChannel(context)
+        val progress = DownloadNotifications.build(context, job(33f, JobState.DOWNLOADING))
+        val completed = DownloadNotifications.buildCompleted(
+            context,
+            job(100f, JobState.DONE),
+        )
+        val interrupted = DownloadNotifications.buildInterrupted(context)
+
+        listOf("progress" to progress, "completed" to completed, "interrupted" to interrupted)
+            .forEach { (label, notification) ->
+                assertNotNull(
+                    "$label: the large icon must be set",
+                    notification.extras.get(Notification.EXTRA_LARGE_ICON),
+                )
+                assertNotNull("$label: the small icon must stay", notification.smallIcon)
+                assertNull("$label: no custom RemoteViews", notification.contentView)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    assertEquals(
+                        "$label: the small icon must remain the monochrome glyph",
+                        R.drawable.ic_notification,
+                        notification.smallIcon.resId,
+                    )
+                }
+            }
+    }
+
+    /**
+     * The asset itself: opaque edge to edge (no transparent padding around the artwork), and the
+     * wolf keeps its original proportions so nothing is stretched.
+     */
+    @Test
+    fun brandedLargeIconFillsItsSquareWithoutDistortingTheArtwork() {
+        val drawable = checkNotNull(context.getDrawable(R.drawable.ic_notification_large))
+        val size = LARGE_ICON_SIZE
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, size, size)
+        drawable.draw(Canvas(bitmap))
+
+        val corners = listOf(
+            bitmap.getPixel(0, 0),
+            bitmap.getPixel(size - 1, 0),
+            bitmap.getPixel(0, size - 1),
+            bitmap.getPixel(size - 1, size - 1),
+        )
+        corners.forEach { pixel ->
+            assertEquals("the background must be opaque, not transparent", 0xFF, Color.alpha(pixel))
+        }
+
+        var minX = size
+        var minY = size
+        var maxX = -1
+        var maxY = -1
+        for (y in 0 until size) {
+            for (x in 0 until size) {
+                val pixel = bitmap.getPixel(x, y)
+                val isBackground = Color.red(pixel) > 245 &&
+                    Color.green(pixel) > 245 &&
+                    Color.blue(pixel) > 245
+                if (!isBackground) {
+                    if (x < minX) minX = x
+                    if (x > maxX) maxX = x
+                    if (y < minY) minY = y
+                    if (y > maxY) maxY = y
+                }
+            }
+        }
+        val artworkWidth = maxX - minX + 1
+        val artworkHeight = maxY - minY + 1
+        Log.i(QA_TAG, "large icon artwork ${artworkWidth}x$artworkHeight")
+        assertTrue(
+            "artwork must use the square: $artworkWidth x $artworkHeight",
+            artworkHeight >= size * 0.8f,
+        )
+        assertEquals(
+            "artwork must keep the source aspect ratio",
+            SOURCE_ASPECT_RATIO,
+            artworkWidth.toFloat() / artworkHeight,
+            0.03f,
+        )
+    }
+
     /** [NotificationManager.notify] is asynchronous on some builds. */
     private fun awaitActive(
         manager: NotificationManager,
@@ -199,5 +290,7 @@ class DownloadNotificationTest {
 
     private companion object {
         const val QA_TAG = "LiveUpdateQA"
+        const val LARGE_ICON_SIZE = 512
+        const val SOURCE_ASPECT_RATIO = 310f / 352f
     }
 }
