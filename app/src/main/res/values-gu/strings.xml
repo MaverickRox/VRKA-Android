@@ -114,11 +114,6 @@
     <string name="download_size_downloaded">%1$s ડાઉનલોડ થયું</string>
     <string name="download_size_downloaded_of">%1$s ડાઉનલોડ થયું / %2$s</string>
     <string name="download_size_total">કુલ %1$s</string>
-    <string name="pref_live_updates">લાઇવ અપડેટ્સ</string>
-    <string name="desc_live_updates_enabled">પ્રમોટ કરેલી પ્રગતિ સૂચનાઓ સક્ષમ છે</string>
-    <string name="desc_live_updates_disabled">લૉક સ્ક્રીન અને સ્ટેટસ બાર પર VRKA ડાઉનલોડ્સ પ્રમોટ કરો</string>
-    <string name="desc_live_updates_unavailable">આ ઉપકરણ લાઇવ અપડેટ સેટિંગ્સ ઉપલબ્ધ કરાવતું નથી</string>
-    <string name="btn_live_update_settings">સેટિંગ્સ ખોલો</string>
     <string name="diagnostics_empty">કોઈ ડાયગ્નોસ્ટિક એન્ટ્રી નથી. ડાઉનલોડમાં સમસ્યા આવે ત્યારે અહીં લૉગ્સ સાચવવામાં આવે છે.</string>
     <string name="diagnostics_failure_plural">%1$d નોંધાયેલ નિષ્ફળતાઓ</string>
     <string name="diagnostics_failure_single">1 નોંધાયેલ નિષ્ફળતા</string>

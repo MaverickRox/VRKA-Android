@@ -114,11 +114,6 @@
     <string name="download_size_downloaded">%1$s baixados</string>
     <string name="download_size_downloaded_of">%1$s baixados / %2$s</string>
     <string name="download_size_total">Total %1$s</string>
-    <string name="pref_live_updates">Atualizações ao vivo</string>
-    <string name="desc_live_updates_enabled">As notificações de progresso promovidas estão ativadas</string>
-    <string name="desc_live_updates_disabled">Promova downloads do VRKA na tela de bloqueio e na barra de status</string>
-    <string name="desc_live_updates_unavailable">Este dispositivo não oferece configurações de Atualizações ao vivo</string>
-    <string name="btn_live_update_settings">Abrir configurações</string>
     <string name="diagnostics_empty">Nenhuma entrada de diagnóstico registrada.</string>
     <string name="diagnostics_failure_plural">%1$d falhas registradas</string>
     <string name="diagnostics_failure_single">1 falha registrada</string>

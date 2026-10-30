@@ -14,7 +14,6 @@ import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -24,6 +23,9 @@ import com.mvrk.vrka.R
  * Single source of truth for download notification content. Both the foreground service and
  * the user-initiated transfer worker render the same notification ID and content, so a
  * handoff after the six-hour FGS window does not produce a duplicate notification.
+ *
+ * Only the standard platform progress notification is used. A promoted/live-update rendering
+ * cannot be verified on the supported hardware, so the app does not request one.
  */
 internal object DownloadNotifications {
     const val CHANNEL_ID = "vrka_downloads"
@@ -40,43 +42,6 @@ internal object DownloadNotifications {
     private const val COMPLETION_TAG_PREFIX = "completed:"
 
     internal fun completionTagFor(jobId: String): String = COMPLETION_TAG_PREFIX + jobId
-
-    /**
-     * Public as a typed constant only from API 36.1, but Android 16.0 reads the same extras
-     * key when the system decides whether to promote an ongoing notification.
-     */
-    internal const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
-
-    /**
-     * Live Update promotion changed between Android 16.0 and Android 16 QPR1, and QPR1 keeps the
-     * old behaviour when its rich-ongoing flag is off. A version number therefore cannot decide
-     * this. Instead, ask the platform: a probe carrying the QPR1 request is promotable only when
-     * QPR1 semantics are actually live. The result cannot change during the process lifetime.
-     */
-    @Volatile
-    private var richOngoingContract: Boolean? = null
-
-    internal fun usesRichOngoingContract(context: Context): Boolean {
-        richOngoingContract?.let { return it }
-        val detected = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
-            false
-        } else {
-            buildProbe(context).hasPromotableCharacteristics()
-        }
-        richOngoingContract = detected
-        return detected
-    }
-
-    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
-    private fun buildProbe(context: Context): Notification =
-        Notification.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(context.getString(R.string.app_name))
-            .setOngoing(true)
-            .setColorized(false)
-            .setStyle(Notification.ProgressStyle().setProgress(0))
-            .apply { extras.putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true) }
-            .build()
 
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
@@ -240,88 +205,14 @@ internal object DownloadNotifications {
             if (progress == it.detail) "$status • ${requestSummary(context, it.request)}"
             else "$status • $progress"
         } ?: context.getString(R.string.notification_preparing_download)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
-            buildLiveUpdateNotification(context, job, title, status, summary, openIntent)
-        } else {
-            buildCompatNotification(context, job, title, status, summary, openIntent)
-        }
+        return buildProgressNotification(context, job, title, status, summary, openIntent)
     }
 
-    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
-    private fun buildLiveUpdateNotification(
-        context: Context,
-        job: DownloadJob?,
-        title: String,
-        status: String,
-        summary: String,
-        openIntent: PendingIntent,
-    ): Notification {
-        val richOngoing = usesRichOngoingContract(context)
-        val builder = Notification.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
-            .setContentTitle(title)
-            .setContentText(summary)
-            // The shade already labels the notification with the app name; repeating it
-            // here produced "VRKA • VRKA • Downloading".
-            .setSubText(status)
-            .setContentIntent(openIntent)
-            .setOnlyAlertOnce(true)
-            .setOngoing(true)
-            .setCategory(Notification.CATEGORY_PROGRESS)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
-
-        // Without this, Android 12+ may defer the first foreground notification by up to
-        // ten seconds, which also delays the Live Update chip.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-        }
-
-        if (job == null) {
-            builder.setStyle(Notification.BigTextStyle().bigText(summary))
-            return builder.build()
-        }
-
-        // Android 16.0 only promotes colorized notifications; QPR1 disqualifies them and asks
-        // for the request extra instead.
-        builder.setColorized(!richOngoing)
-        builder.setShortCriticalText(shortCriticalText(context, job))
-
-        val style = Notification.ProgressStyle()
-        val percent = determinateProgressPercent(job.state, job.progress)
-        if (percent != null) {
-            style.setProgress(percent)
-            style.setProgressIndeterminate(false)
-        } else {
-            style.setProgressIndeterminate(true)
-        }
-        // A null tracker icon makes some system UIs fall back to a moving glyph on the track.
-        // A fully transparent icon keeps the bar solid without adding any visible marker.
-        style.setProgressTrackerIcon(
-            Icon.createWithResource(context, R.drawable.ic_progress_tracker_none),
-        )
-        builder.setStyle(style)
-        builder.addAction(cancelAction(context, job))
-
-        // The same key the QPR1 setRequestPromotedOngoing() writes; Android 16.0 ignores it and
-        // relies on the colorized flag above.
-        builder.extras.putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true)
-        return builder.build()
-    }
-
-    private fun shortCriticalText(context: Context, job: DownloadJob): String = when {
-        job.state == JobState.DOWNLOADING && job.progress > 0f -> "${job.progress.toInt()}%"
-        else -> localizedJobStateLabel(context, job.state)
-    }
-
-    /** True when the user has allowed this app to post promoted ongoing notifications. */
-    fun supportsPromotion(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) return false
-        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
-        return manager.canPostPromotedNotifications()
-    }
-
-    internal fun buildCompatNotification(
+    /**
+     * The ordinary progress notification. It is used on every API level: the platform owns the
+     * rendering, and the app only supplies the real percentage, bytes and cancellation action.
+     */
+    internal fun buildProgressNotification(
         context: Context,
         job: DownloadJob?,
         title: String,
@@ -334,6 +225,8 @@ internal object DownloadNotifications {
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
             .setContentTitle(title)
             .setContentText(summary)
+            // The shade already labels the notification with the app name; repeating it
+            // here produced "VRKA • VRKA • Downloading".
             .setSubText(status)
             .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
             .setContentIntent(openIntent)
@@ -341,6 +234,8 @@ internal object DownloadNotifications {
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            // Without this, Android 12+ may defer the first foreground notification by up to
+            // ten seconds.
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
 
         if (job != null) {
@@ -375,13 +270,6 @@ internal object DownloadNotifications {
             .addAction(R.drawable.ic_download, context.getString(R.string.btn_open_queue), openIntent)
             .build()
     }
-
-    private fun cancelAction(context: Context, job: DownloadJob): Notification.Action =
-        Notification.Action.Builder(
-            Icon.createWithResource(context, R.drawable.ic_close),
-            context.getString(R.string.btn_cancel),
-            cancelIntent(context, job),
-        ).build()
 
     private fun cancelIntent(context: Context, job: DownloadJob): PendingIntent = PendingIntent.getService(
         context,

@@ -114,11 +114,6 @@
     <string name="download_size_downloaded">Downloaded %1$s</string>
     <string name="download_size_downloaded_of">Downloaded %1$s / %2$s</string>
     <string name="download_size_total">Total %1$s</string>
-    <string name="pref_live_updates">Live Updates</string>
-    <string name="desc_live_updates_enabled">Promoted progress notifications are enabled</string>
-    <string name="desc_live_updates_disabled">Promote VRKA downloads on the lock screen and status bar</string>
-    <string name="desc_live_updates_unavailable">This device does not expose Live Update settings</string>
-    <string name="btn_live_update_settings">Open settings</string>
     <string name="diagnostics_empty">No diagnostic entries recorded. Diagnostic logs are captured locally when a download encounters an error.</string>
     <string name="diagnostics_failure_plural">%1$d recorded failures</string>
     <string name="diagnostics_failure_single">1 recorded failure</string>
