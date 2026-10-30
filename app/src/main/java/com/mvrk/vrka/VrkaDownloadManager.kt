@@ -19,7 +19,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -113,7 +112,9 @@ class VrkaDownloadManager(
         },
     )
     private val estimateCache = MetadataEstimateCache()
-    private val estimateInFlight = HashMap<String, CompletableDeferred<SizeEstimate>>()
+    private val documentCache = MetadataDocumentCache()
+    private val documentInFlight =
+        HashMap<String, CompletableDeferred<MetadataDocumentCache.Document?>>()
     private val recordedEstimateDiagnostics = ConcurrentHashMap.newKeySet<String>()
 
     fun clearDiagnostics() {
@@ -316,10 +317,13 @@ class VrkaDownloadManager(
         val replacement = previous.copy(
             request = request,
             state = JobState.QUEUED,
-            detail = "Queued retry (attempt ${previous.attempt + 1})",
+            detail = "Queued retry",
             progress = 0f,
             speed = "",
             etaSeconds = null,
+            downloadedBytes = null,
+            totalBytes = null,
+            totalIsExact = false,
             outputUris = emptyList(),
             error = "",
             attempt = previous.attempt + 1,
@@ -468,48 +472,101 @@ class VrkaDownloadManager(
     }
 
     /**
-     * Metadata-only preflight for the confirmation UI. Runs on the active runtime after
-     * runtime initialization; failures degrade to an "unavailable" estimate.
+     * Metadata-only preflight for the confirmation and share UIs. Runs on the active runtime
+     * after runtime initialization; failures degrade to an "unavailable" estimate.
      *
-     * Results are reused across UI stages (share card -> confirmation) and concurrent
-     * callers with the same key share one yt-dlp process. [forceRefresh] bypasses the cache
-     * for the user-visible retry action.
+     * The raw metadata document is cached separately from the per-selection estimate. Changing
+     * quality or format therefore recalculates locally instead of launching another yt-dlp
+     * extraction, and concurrent callers for the same source share one process. [forceRefresh]
+     * bypasses both caches for the user-visible retry action.
      */
     suspend fun estimateSize(request: DownloadRequest, forceRefresh: Boolean = false): SizeEstimate =
         kotlinx.coroutines.withContext(Dispatchers.IO) {
+            val startedAt = System.currentTimeMillis()
             ensureInitialized()
             val runtimeVersion = normalizedVersion(ytDlpRuntimeManager.activeVersion())
-            val key = MetadataEstimateCache.keyFor(request, runtimeVersion)
+            val formatKey = MetadataEstimateCache.formatKeyFor(request)
+            val estimateKey = MetadataEstimateCache.keyFor(request, runtimeVersion)
             if (!forceRefresh) {
-                estimateCache.get(key)?.let { return@withContext it }
+                estimateCache.get(estimateKey)?.let {
+                    logEstimateLatency("estimate-cache", startedAt)
+                    return@withContext it
+                }
             }
-            val (deferred, owner) = synchronized(estimateInFlight) {
-                val existing = estimateInFlight[key]
+
+            val documentKey = MetadataDocumentCache.keyFor(request, runtimeVersion)
+            if (!forceRefresh) {
+                documentCache.get(documentKey)?.let { document ->
+                    val estimate = estimateFromDocument(document, request, formatKey)
+                    estimateCache.put(estimateKey, estimate)
+                    logEstimateLatency("document-cache", startedAt)
+                    return@withContext estimate
+                }
+            }
+
+            val (deferred, owner) = synchronized(documentInFlight) {
+                val existing = documentInFlight[documentKey]
                 if (existing != null) {
                     existing to false
                 } else {
-                    CompletableDeferred<SizeEstimate>().also { estimateInFlight[key] = it } to true
+                    CompletableDeferred<MetadataDocumentCache.Document?>()
+                        .also { documentInFlight[documentKey] = it } to true
                 }
             }
-            if (!owner) return@withContext deferred.await()
+            if (!owner) {
+                val document = deferred.await()
+                    ?: return@withContext SizeEstimate.unavailable("process")
+                val estimate = estimateFromDocument(document, request, formatKey)
+                estimateCache.put(estimateKey, estimate)
+                logEstimateLatency("shared-in-flight", startedAt)
+                return@withContext estimate
+            }
             try {
                 val preflight = sizeEstimator.probe(request)
-                estimateCache.put(key, preflight.estimate)
+                val document = preflight.document?.let {
+                    MetadataDocumentCache.Document(it, formatKey, System.currentTimeMillis())
+                }
+                if (document != null) documentCache.put(documentKey, document)
+                estimateCache.put(estimateKey, preflight.estimate)
                 if (!preflight.estimate.isAvailable &&
                     preflight.estimate.detail != "custom-command" &&
-                    rememberEstimateDiagnostic(key)
+                    rememberEstimateDiagnostic(estimateKey)
                 ) {
                     recordSizeDiagnostic(request, preflight)
                 }
-                deferred.complete(preflight.estimate)
+                deferred.complete(document)
+                logEstimateLatency(
+                    if (preflight.document != null) "extraction" else "extraction-failed",
+                    startedAt,
+                    preflight.durationMs,
+                )
                 preflight.estimate
             } catch (error: Throwable) {
-                deferred.completeExceptionally(error)
+                deferred.complete(null)
                 throw error
             } finally {
-                synchronized(estimateInFlight) { estimateInFlight.remove(key) }
+                synchronized(documentInFlight) { documentInFlight.remove(documentKey) }
             }
         }
+
+    private fun estimateFromDocument(
+        document: MetadataDocumentCache.Document,
+        request: DownloadRequest,
+        formatKey: String,
+    ): SizeEstimate = sizeEstimator.estimateFromDocument(
+        document = document.json,
+        request = request,
+        recalculateSelection = document.sourceFormatKey != formatKey,
+    )
+
+    /** Stage timing for latency measurement; never includes URLs or request headers. */
+    private fun logEstimateLatency(source: String, startedAt: Long, preflightMs: Long? = null) {
+        val total = System.currentTimeMillis() - startedAt
+        Log.d(
+            "VRKA",
+            "Size estimate source=$source totalMs=$total" + (preflightMs?.let { " preflightMs=$it" } ?: ""),
+        )
+    }
 
     private fun rememberEstimateDiagnostic(key: String): Boolean {
         if (recordedEstimateDiagnostics.size >= MAX_ESTIMATE_DIAGNOSTICS) {
@@ -679,105 +736,21 @@ class VrkaDownloadManager(
 
             job = current(jobId) ?: return
 
+            // v5.0.2 contract: one automatic native attempt. The user explicitly rejected
+            // automatic retries, so a failure is classified once and either enters browser
+            // fallback immediately or is reported with the manual Retry action.
             val priorCategories = mutableListOf<FailureCategory>()
-            val initialErrorText = failure?.message.orEmpty()
-            val initialCleanedError = cleanErrorOutput(initialErrorText)
             if (failure != null) {
-                val firstCategory = classifyDownloadError(initialCleanedError)
+                val firstCategory = classifyDownloadError(cleanErrorOutput(failure.message.orEmpty()))
                 if (firstCategory != FailureCategory.UNKNOWN) {
                     priorCategories.add(firstCategory)
                 }
             }
 
-            val execFailure = failure as? DownloadExecutionException
-            val initialTransferStarted = execFailure?.transferStarted == true || job.progress > 0f
-
-            val isImpersonationFailure = failure != null &&
-                classifyDownloadError(initialCleanedError) == FailureCategory.IMPERSONATION
-
-            if (!customCommandMode && isImpersonationFailure && !initialTransferStarted && !isCancelled(jobId)) {
-                Log.w("VRKA", "Attempt encountered unsupported impersonation target; retrying native yt-dlp without impersonation")
-                currentStage = "Native Retry"
-                DownloadRequestFactory.setImpersonationSupported(false)
-                cleanupStaging(job.id)
-                update(
-                    job.id,
-                    state = JobState.PREPARING,
-                    detail = "Retrying native extraction without impersonation",
-                    persist = true,
-                )
-                failure = runCatching { downloadOnce(job, recoveryAttempt = false) }.exceptionOrNull()
-                if (failure != null) {
-                    Log.e("VRKA", "Native retry without impersonation failed: ${safeError(failure)}")
-                    val retryCategory = classifyDownloadError(cleanErrorOutput(failure.message.orEmpty()))
-                    if (retryCategory != FailureCategory.UNKNOWN) {
-                        priorCategories.add(retryCategory)
-                    }
-                }
-            }
-
-            // Bounded automatic retries for transient direct failures. Skipped after a
-            // real transfer started, for resolved browser candidates, and for custom commands.
-            if (failure != null && !customCommandMode && job.request.resolvedMediaUrl == null && !initialTransferStarted) {
-                var retriesUsed = 0
-                while (failure != null && retriesUsed < RetryPolicy.MAX_TOTAL_ATTEMPTS - 1 && !isCancelled(jobId)) {
-                    val attemptFailure = failure ?: break
-                    val attemptTail = (attemptFailure as? DownloadExecutionException)?.outputTail
-                        ?.joinToString("\n")
-                        .orEmpty()
-                    val attemptMessage = attemptFailure.message.orEmpty()
-                    val category = classifyDownloadError(cleanErrorOutput(attemptMessage))
-                    val decision = RetryPolicy.decide(
-                        category = category,
-                        errorMessage = buildString {
-                            append(attemptMessage)
-                            append('\n')
-                            append(attemptTail)
-                        },
-                        transferStarted = (attemptFailure as? DownloadExecutionException)?.transferStarted == true ||
-                            (current(jobId)?.progress ?: 0f) > 0f,
-                        hasResolvedMediaUrl = false,
-                    )
-                    if (!decision.retryable) break
-
-                    retriesUsed++
-                    val delayMs = RetryPolicy.delayForRetry(retriesUsed)
-                    currentStage = "Automatic Retry"
-                    update(
-                        job.id,
-                        state = JobState.PREPARING,
-                        detail = "Retrying in ${(delayMs / 1000).coerceAtLeast(1)}s " +
-                            "(attempt ${retriesUsed + 1} of ${RetryPolicy.MAX_TOTAL_ATTEMPTS})",
-                        progress = 0f,
-                        speed = "",
-                        etaSeconds = null,
-                        persist = true,
-                        expectedAttempt = job.attempt,
-                    )
-                    delay(delayMs)
-                    if (isCancelled(jobId)) return
-                    cleanupStaging(job.id)
-                    update(
-                        job.id,
-                        state = JobState.PREPARING,
-                        detail = "Retrying direct extraction (attempt ${retriesUsed + 1} of ${RetryPolicy.MAX_TOTAL_ATTEMPTS})",
-                        persist = true,
-                        expectedAttempt = job.attempt,
-                    )
-                    failure = runCatching { downloadOnce(job, recoveryAttempt = true) }.exceptionOrNull()
-                    if (failure != null) {
-                        Log.e("VRKA", "Automatic retry $retriesUsed failed: ${safeError(failure!!)}")
-                        if (category != FailureCategory.UNKNOWN) {
-                            priorCategories.add(category)
-                        }
-                    } else {
-                        Log.i("VRKA", "Automatic retry $retriesUsed succeeded for $jobId")
-                    }
-                }
-            }
-
-            // Subtitle failure isolation: If download failed specifically due to subtitles,
-            // retry downloading media without subtitles so subtitle errors never abort the video.
+            // Subtitle failure isolation: a subtitle-only failure must not discard an
+            // otherwise valid media transfer. This is a deterministic media-preservation
+            // path, not a transient retry, and it never repeats transferred media bytes
+            // because the second pass runs without subtitles against the same staging files.
             if (
                 failure != null &&
                 !customCommandMode &&
@@ -788,16 +761,16 @@ class VrkaDownloadManager(
                     (failure as? DownloadExecutionException)?.outputTail?.joinToString("\n").orEmpty()
                 )
             ) {
-                Log.w("VRKA", "Job $jobId failed due to subtitle issue; retrying media download without subtitles to preserve media")
+                Log.w("VRKA", "Job $jobId failed due to subtitle issue; saving media without subtitles")
                 cleanupStaging(job.id)
                 update(
                     job.id,
                     state = JobState.PREPARING,
-                    detail = "Retrying media download without subtitles",
+                    detail = "Saving media without subtitles",
                     persist = true,
                 )
                 val mediaOnlyJob = job.copy(request = job.request.copy(downloadSubtitles = false))
-                failure = runCatching { downloadOnce(mediaOnlyJob, recoveryAttempt = false) }.exceptionOrNull()
+                failure = runCatching { downloadOnce(mediaOnlyJob) }.exceptionOrNull()
             }
 
             // Failure classification and browser-fallback eligibility
@@ -992,7 +965,7 @@ class VrkaDownloadManager(
         runCatching { DownloadService.stopIfIdle(context) }
     }
 
-    private suspend fun downloadOnce(job: DownloadJob, recoveryAttempt: Boolean = false) {
+    private suspend fun downloadOnce(job: DownloadJob) {
         if (isCancelled(job.id)) return
         val directory = stagingDirectory(job.id)
         update(
@@ -1004,6 +977,7 @@ class VrkaDownloadManager(
             // runtime this job's process actually runs on for its whole lifetime.
             runtimeName = ytDlpRuntimeManager.activeDescription(),
             runtimeVersion = normalizedVersion(ytDlpRuntimeManager.activeVersion()),
+            resetSize = true,
             persist = true,
         )
         var lastUiUpdate = 0L
@@ -1013,7 +987,7 @@ class VrkaDownloadManager(
         val response = try {
             val includeSubtitles = job.request.resolvedMediaUrl == null
             YoutubeDL.getInstance().execute(
-                DownloadRequestFactory.download(job, directory, recoveryAttempt, includeSubtitles = includeSubtitles),
+                DownloadRequestFactory.download(job, directory, includeSubtitles = includeSubtitles),
                 job.id,
             ) { progress, eta, line ->
                 outputLines.add(line)
@@ -1048,6 +1022,7 @@ class VrkaDownloadManager(
                 val now = System.currentTimeMillis()
                 if (now - lastUiUpdate >= 250 || progress >= 100f) {
                     lastUiUpdate = now
+                    val sizeUpdate = if (isCommandLineEcho) null else DownloadSizeParser.parseProgressLine(line)
                     val detail = when {
                         line.contains("[Merger]", true) ||
                             line.contains("[ExtractAudio]", true) ||
@@ -1062,6 +1037,9 @@ class VrkaDownloadManager(
                             JobState.DOWNLOADING
                         },
                         progress = progress.coerceIn(0f, 100f),
+                        downloadedBytes = sizeUpdate?.downloadedBytes,
+                        totalBytes = sizeUpdate?.totalBytes,
+                        totalIsExact = sizeUpdate?.totalIsExact,
                         speed = speedPattern.find(line)?.groupValues?.getOrNull(1).orEmpty(),
                         etaSeconds = eta.takeIf { it >= 0 },
                         detail = detail,
@@ -1154,6 +1132,12 @@ class VrkaDownloadManager(
         } else {
             requireAudioStreams(job, outputs)
         }
+        // Final on-disk size is the most accurate number for the queue; per-stream progress
+        // totals only describe the last video/audio download.
+        val finalBytes = outputs
+            .filter { it.extension.lowercase() in VIDEO_EXTENSIONS || it.extension.lowercase() in AUDIO_EXTENSIONS }
+            .sumOf { file -> runCatching { file.length() }.getOrDefault(0L) }
+            .takeIf { it > 0L }
         if (isCancelled(job.id)) throw CancellationException("Download cancelled")
         val published = mutableListOf<String>()
         try {
@@ -1181,6 +1165,9 @@ class VrkaDownloadManager(
             state = JobState.DONE,
             progress = 100f,
             detail = doneDetail,
+            downloadedBytes = finalBytes,
+            totalBytes = finalBytes,
+            totalIsExact = finalBytes != null,
             outputUris = published,
             error = "",
             subtitleStatus = jobSubStatus,
@@ -1238,6 +1225,7 @@ class VrkaDownloadManager(
                 state = JobState.DOWNLOADING,
                 detail = "Downloading media stream",
                 error = "",
+                resetSize = true,
                 persist = true,
             )
 
@@ -1254,6 +1242,11 @@ class VrkaDownloadManager(
                                 progress = progress.percentage,
                                 speed = progress.speedBytesPerSec?.let { UnifiedProgressSnapshot.formatSpeed(it) }.orEmpty(),
                                 etaSeconds = progress.etaSeconds,
+                                downloadedBytes = progress.bytesRead,
+                                totalBytes = progress.totalBytes?.takeIf { it > 0L },
+                                // Engines derive totals from Content-Length when available and
+                                // from duration/bitrate otherwise; treat them as approximate.
+                                totalIsExact = false,
                                 detail = progress.detail.ifBlank { "Downloading stream" },
                             )
                         }
@@ -1298,6 +1291,9 @@ class VrkaDownloadManager(
                         state = JobState.DONE,
                         progress = 100f,
                         detail = if (published.size == 1) "Saved to Downloads/VRKA" else "Saved ${published.size} files",
+                        downloadedBytes = result.totalBytes,
+                        totalBytes = result.totalBytes,
+                        totalIsExact = result.totalBytes > 0L,
                         outputUris = published,
                         error = "",
                         persist = true,
@@ -1569,6 +1565,10 @@ class VrkaDownloadManager(
         progress: Float? = null,
         speed: String? = null,
         etaSeconds: Long? = null,
+        downloadedBytes: Long? = null,
+        totalBytes: Long? = null,
+        totalIsExact: Boolean? = null,
+        resetSize: Boolean = false,
         outputUris: List<String>? = null,
         error: String? = null,
         actualResolution: String? = null,
@@ -1592,6 +1592,9 @@ class VrkaDownloadManager(
                         progress = progress ?: job.progress,
                         speed = speed ?: job.speed,
                         etaSeconds = etaSeconds ?: job.etaSeconds,
+                        downloadedBytes = if (resetSize) null else downloadedBytes ?: job.downloadedBytes,
+                        totalBytes = if (resetSize) null else totalBytes ?: job.totalBytes,
+                        totalIsExact = if (resetSize) false else totalIsExact ?: job.totalIsExact,
                         outputUris = outputUris ?: job.outputUris,
                         error = error ?: job.error,
                         actualResolution = actualResolution ?: job.actualResolution,
