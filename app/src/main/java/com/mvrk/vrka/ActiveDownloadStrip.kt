@@ -138,7 +138,7 @@ internal fun ActiveDownloadStrip(
             if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
                 VrkaGlowProgressBar(
                     progress = job.progress / 100f,
-                    height = 3.dp,
+                    trackHeight = 3.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
