@@ -27,8 +27,8 @@ class NavIndicatorGeometryTest {
 
     @Test
     fun test16_identicalIndicatorHeight() {
-        assertEquals(54f, NAV_INDICATOR_HEIGHT.value, 0.001f)
-        assertEquals(64f, NAV_BAR_HEIGHT.value, 0.001f)
+        assertEquals(60f, NAV_INDICATOR_HEIGHT.value, 0.001f)
+        assertEquals(70f, NAV_BAR_HEIGHT.value, 0.001f)
         assertEquals(5f, NAV_TAB_INSET_VERTICAL.value, 0.001f)
         assertEquals(6f, NAV_TAB_INSET_HORIZONTAL.value, 0.001f)
         assertEquals(
@@ -36,6 +36,31 @@ class NavIndicatorGeometryTest {
             NAV_INDICATOR_HEIGHT.value,
             0.001f,
         )
+    }
+
+    @Test
+    fun test16b_barAndPillMatchTheReleaseGeometry() {
+        assertTrue(NAV_BAR_HEIGHT.value in 68f..72f)
+        assertTrue(NAV_INDICATOR_HEIGHT.value in 58f..60f)
+        assertEquals(NAV_BAR_HEIGHT.value / 2f, NAV_BAR_CORNER_RADIUS.value, 0.001f)
+        assertEquals(NAV_INDICATOR_HEIGHT.value / 2f, NAV_INDICATOR_CORNER_RADIUS.value, 0.001f)
+    }
+
+    @Test
+    fun test16c_selectionRoundsToTheNearestSlotAndClamps() {
+        assertEquals(0, navSelectedIndex(-0.4f, 3))
+        assertEquals(0, navSelectedIndex(0.49f, 3))
+        assertEquals(1, navSelectedIndex(0.5f, 3))
+        assertEquals(3, navSelectedIndex(3.6f, 3))
+        assertEquals(0, navSelectedIndex(2f, 0))
+    }
+
+    @Test
+    fun test16d_itemFocusFadesWithinOneSlot() {
+        assertEquals(1f, navItemFocus(1f, 1), 0.001f)
+        assertEquals(0.5f, navItemFocus(1.5f, 1), 0.001f)
+        assertEquals(0f, navItemFocus(2f, 1), 0.001f)
+        assertEquals(0f, navItemFocus(-1f, 0), 0.001f)
     }
 
     @Test

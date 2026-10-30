@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -64,11 +65,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -82,6 +86,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalViewConfiguration
+import com.mvrk.vrka.ui.backdrop.Backdrop
 import com.mvrk.vrka.ui.backdrop.backdrops.layerBackdrop
 import com.mvrk.vrka.ui.backdrop.backdrops.rememberLayerBackdrop
 import com.mvrk.vrka.ui.backdrop.drawBackdrop
@@ -96,6 +101,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -635,22 +641,27 @@ fun VrkaSectionContainer(
     }
 }
 
-val NAV_BAR_HEIGHT = 64.dp
-val NAV_BAR_CORNER_RADIUS = 32.dp
+val NAV_BAR_HEIGHT = 70.dp
+val NAV_BAR_CORNER_RADIUS = 35.dp
 val NAV_BAR_HORIZONTAL_MARGIN = 20.dp
 val NAV_BAR_MAX_WIDTH = 600.dp
 
-// MornyeSelectionPill padding: 6dp horizontal, 5dp vertical inside the 64dp bar.
+// MornyeSelectionPill padding: 6dp horizontal, 5dp vertical inside the 70dp bar.
 val NAV_TAB_INSET_HORIZONTAL = 6.dp
 val NAV_TAB_INSET_VERTICAL = 5.dp
-val NAV_INDICATOR_HEIGHT = NAV_BAR_HEIGHT - (NAV_TAB_INSET_VERTICAL * 2) // 54.dp
-val NAV_INDICATOR_CORNER_RADIUS = NAV_BAR_CORNER_RADIUS // 32.dp
+val NAV_INDICATOR_HEIGHT = NAV_BAR_HEIGHT - (NAV_TAB_INSET_VERTICAL * 2) // 60.dp
+val NAV_INDICATOR_CORNER_RADIUS = 30.dp
 private val NAV_ITEM_HORIZONTAL_CONTENT_PADDING = 4.dp
-private val NAV_INDICATOR_CONTENT_INSET = 4.dp
 
 // MornyeSelectionPill defaults: _heldWidthGrowth / _heldHeightGrowth.
 const val NAV_PRESS_WIDTH_GROWTH = 0.28f
 const val NAV_PRESS_HEIGHT_GROWTH = 0.24f
+
+internal fun navSelectedIndex(position: Float, lastIndex: Int): Int =
+    if (lastIndex < 0) 0 else position.roundToInt().coerceIn(0, lastIndex)
+
+internal fun navItemFocus(position: Float, index: Int): Float =
+    (1f - kotlin.math.abs(position - index)).coerceIn(0f, 1f)
 
 // Mornye curves: Curves.easeOutCubic / Curves.easeInCubic.
 internal val NAV_EASE_OUT_CUBIC = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)
@@ -668,7 +679,6 @@ internal data class NavIndicatorBounds(val leftPx: Float, val widthPx: Float)
 internal fun calculateNavIndicatorBounds(
     position: Float,
     items: List<NavItemMeasuredBounds>,
-    contentInsetPx: Float = 0f,
     slotInsetPx: Float = 4f,
 ): NavIndicatorBounds? {
     if (items.isEmpty() || items.any { it.slotWidthPx <= 0f }) return null
@@ -887,42 +897,23 @@ fun VrkaFloatingNavBar(
         val slotWidthPx = measuredWidths.takeIf { it.size == destinations.size }
             ?.average()?.toFloat() ?: if (destinations.isNotEmpty()) capsuleWidthPx / destinations.size else 0f
         val insetPx = with(density) { NAV_TAB_INSET_HORIZONTAL.toPx() }
-        val contentInsetPx = with(density) { NAV_INDICATOR_CONTENT_INSET.toPx() }
         val restingHeightPx = with(density) { NAV_INDICATOR_HEIGHT.toPx() }
+        val pillCornerRadiusPx = with(density) { NAV_INDICATOR_CORNER_RADIUS.toPx() }
         val measuredBoundsReady = itemBounds.size == destinations.size && itemBounds.all {
             it.slotWidthPx > 0f
         }
         val barCornerRadiusPx = with(density) { NAV_BAR_CORNER_RADIUS.toPx() }
         val barShape = RoundedCornerShape(NAV_BAR_CORNER_RADIUS)
-        val pressValue = pressProgress.value
-        val activePosition = if (isDragging) dragPosition else indicatorPosition.value
-        val indicatorBounds = if (measuredBoundsReady) {
-            calculateNavIndicatorBounds(
-                position = activePosition,
-                items = itemBounds,
-                contentInsetPx = contentInsetPx,
-                slotInsetPx = insetPx,
-            )
-        } else null
-        // The held lens follows the finger (or the drag preview) exactly like
-        // Mornye's _pressedIndex; it stays anchored while it contracts on release.
-        val pressAnchor = if (isDragging) dragPosition else pressedSlotIndex.toFloat()
-        val pressIndicatorBounds = if (measuredBoundsReady) {
-            calculateNavIndicatorBounds(
-                position = pressAnchor,
-                items = itemBounds,
-                contentInsetPx = contentInsetPx,
-                slotInsetPx = insetPx,
-            )
-        } else null
-        val pressLensBounds = pressIndicatorBounds?.let {
-            calculateNavPressLensBounds(
-                indicator = it,
-                pressProgress = pressValue,
-                containerHeightPx = capsuleHeightPx,
-                restingHeightPx = restingHeightPx,
-            )
+        // Continuous position is only read in draw and graphics-layer phases, so pager
+        // animation and drag frames invalidate drawing instead of recomposing the bar.
+        val positionProvider = remember {
+            { if (isDragging) dragPosition else indicatorPosition.value }
         }
+        val lensVisible by remember(pressLensEnabled) {
+            derivedStateOf { pressLensEnabled && pressProgress.value > 0f }
+        }
+        val pillColor = MaterialTheme.colorScheme.onSurface
+        val pillFillAlpha = if (colors.isLight) 0.08f else 0.12f
 
         // Outer soft ambient shadow
         Box(
@@ -1102,41 +1093,43 @@ fun VrkaFloatingNavBar(
             )
 
             // Resting selection capsule: neutral translucent fill, hairline outline
-            // and 1dp shadow, fading into the held lens on press.
-            if (indicatorBounds != null) {
-                val restingOpacity = (1f - pressValue).coerceIn(0f, 1f)
-                val pillShape = RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS)
-                val pillTopPx = (capsuleHeightPx - restingHeightPx) / 2f
-                val pillColor = MaterialTheme.colorScheme.onSurface
+            // and 1dp shadow, fading into the held lens on press. Drawn in the draw
+            // phase so slot changes and pager motion never recompose the bar.
+            if (measuredBoundsReady) {
                 Box(
                     modifier = Modifier
-                        .width(with(density) { indicatorBounds.widthPx.toDp() })
-                        .height(NAV_INDICATOR_HEIGHT)
-                        .align(AbsoluteAlignment.TopLeft)
-                        .absoluteOffset {
-                            IntOffset(indicatorBounds.leftPx.roundToInt(), pillTopPx.roundToInt())
-                        }
+                        .fillMaxSize()
                         .drawBehind {
+                            val bounds = calculateNavIndicatorBounds(
+                                position = positionProvider(),
+                                items = itemBounds,
+                                slotInsetPx = insetPx,
+                            ) ?: return@drawBehind
+                            val restingOpacity = (1f - pressProgress.value).coerceIn(0f, 1f)
+                            if (restingOpacity <= 0f) return@drawBehind
+                            val pillTop = (size.height - restingHeightPx) / 2f
+                            val pillSize = Size(bounds.widthPx, restingHeightPx)
+                            val pillCorner = CornerRadius(pillCornerRadiusPx)
                             drawRoundRect(
                                 color = Color.Black.copy(alpha = 0.08f * restingOpacity),
-                                topLeft = Offset(0f, with(density) { 0.5.dp.toPx() }),
-                                size = size,
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                                    with(density) { NAV_INDICATOR_CORNER_RADIUS.toPx() },
-                                ),
+                                topLeft = Offset(bounds.leftPx, pillTop + 0.5.dp.toPx()),
+                                size = pillSize,
+                                cornerRadius = pillCorner,
                             )
-                        }
-                        .background(
-                            color = pillColor.copy(
-                                alpha = (if (colors.isLight) 0.08f else 0.12f) * restingOpacity,
-                            ),
-                            shape = pillShape,
-                        )
-                        .border(
-                            width = 0.5.dp,
-                            color = pillColor.copy(alpha = 0.05f * restingOpacity),
-                            shape = pillShape,
-                        ),
+                            drawRoundRect(
+                                color = pillColor.copy(alpha = pillFillAlpha * restingOpacity),
+                                topLeft = Offset(bounds.leftPx, pillTop),
+                                size = pillSize,
+                                cornerRadius = pillCorner,
+                            )
+                            drawRoundRect(
+                                color = pillColor.copy(alpha = 0.05f * restingOpacity),
+                                topLeft = Offset(bounds.leftPx, pillTop),
+                                size = pillSize,
+                                cornerRadius = pillCorner,
+                                style = Stroke(width = 0.5.dp.toPx()),
+                            )
+                        },
                 )
             }
 
@@ -1153,14 +1146,12 @@ fun VrkaFloatingNavBar(
                             onDestinationSelected(item)
                         }
                     }
-                    val activePosition = if (isDragging) dragPosition else indicatorPosition.value
-                    val isTabSelected = activePosition.roundToInt().coerceIn(0, destinations.lastIndex) == index
-                    val focus = (1f - kotlin.math.abs(activePosition - index).coerceIn(0f, 1f))
                     VrkaNavItem(
                         item = item,
-                        isSelected = isTabSelected,
+                        index = index,
+                        lastIndex = destinations.lastIndex,
+                        positionProvider = positionProvider,
                         isLight = colors.isLight,
-                        focus = focus,
                         reduceMotion = reduceMotion,
                         onClick = onItemClick,
                         onContentMeasured = { contentLeft, contentWidth ->
@@ -1190,82 +1181,130 @@ fun VrkaFloatingNavBar(
 
         // Held lens (MornyeSelectionPill): a capsule grown 28% x 24% over 240ms
         // that samples the recorded bar and its icons. No blur, 0.18 refraction
-        // depth across 18dp, white wash and a 0.75dp illuminated outline.
-        if (pressLensEnabled && pressLensBounds != null && pressValue > 0f) {
-            val lensShape = RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(barShape),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(with(density) { pressLensBounds.widthPx.toDp() })
-                        .height(with(density) { pressLensBounds.heightPx.toDp() })
-                        .align(AbsoluteAlignment.TopLeft)
-                        .absoluteOffset {
-                            IntOffset(pressLensBounds.leftPx.roundToInt(), pressLensBounds.topPx.roundToInt())
-                        }
-                        .drawBackdrop(
-                            backdrop = barBackdrop,
-                            shape = { lensShape },
-                            effects = {
-                                if (isRuntimeShaderSupported()) {
-                                    lens(
-                                        refractionHeight = with(density) { 18.dp.toPx() },
-                                        refractionAmount = with(density) {
-                                            (18.dp * 0.18f * pressValue).toPx()
-                                        },
-                                        magnification = 1.018f,
-                                        depthEffect = true,
-                                        chromaticAberration = true,
-                                    )
-                                }
-                            },
-                            highlight = {
-                                Highlight(
-                                    width = 1.2.dp,
-                                    style = HighlightStyle.Default(
-                                        color = Color.White.copy(
-                                            alpha = (if (colors.isLight) 0.12f else 0.25f) * pressValue,
-                                        ),
-                                        angle = 0f,
-                                    ),
-                                )
-                            },
-                            shadow = null,
-                            onDrawSurface = {
-                                drawRect(
-                                    color = Color.White.copy(
-                                        alpha = pressValue * (if (colors.isLight) 0.24f else 0.08f),
-                                    ),
-                                )
-                            },
-                            backdropScale = 1f,
-                        )
-                        .clip(lensShape)
-                        .border(
-                            width = 0.75.dp,
-                            color = Color.White.copy(alpha = 0.6f * pressValue),
-                            shape = lensShape,
-                        ),
-                )
-            }
+        // depth across 18dp, white wash and a 0.75dp illuminated outline. It is
+        // its own composable so press/drag frames recompose only the lens.
+        if (pressLensEnabled && lensVisible && measuredBoundsReady) {
+            NavPressLens(
+                barBackdrop = barBackdrop,
+                pressProgress = pressProgress,
+                itemBounds = itemBounds,
+                anchorProvider = remember {
+                    { if (isDragging) dragPosition else pressedSlotIndex.toFloat() }
+                },
+                insetPx = insetPx,
+                containerHeightPx = capsuleHeightPx,
+                restingHeightPx = restingHeightPx,
+                barShape = barShape,
+                isLight = colors.isLight,
+                density = density,
+            )
         }
+    }
+}
+
+@Composable
+private fun NavPressLens(
+    barBackdrop: Backdrop,
+    pressProgress: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+    itemBounds: List<NavItemMeasuredBounds>,
+    anchorProvider: () -> Float,
+    insetPx: Float,
+    containerHeightPx: Float,
+    restingHeightPx: Float,
+    barShape: RoundedCornerShape,
+    isLight: Boolean,
+    density: Density,
+) {
+    val pressValue = pressProgress.value
+    val indicator = calculateNavIndicatorBounds(
+        position = anchorProvider(),
+        items = itemBounds,
+        slotInsetPx = insetPx,
+    ) ?: return
+    val pressLensBounds = calculateNavPressLensBounds(
+        indicator = indicator,
+        pressProgress = pressValue,
+        containerHeightPx = containerHeightPx,
+        restingHeightPx = restingHeightPx,
+    )
+    val lensShape = RoundedCornerShape(NAV_INDICATOR_CORNER_RADIUS)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(barShape),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(with(density) { pressLensBounds.widthPx.toDp() })
+                .height(with(density) { pressLensBounds.heightPx.toDp() })
+                .align(AbsoluteAlignment.TopLeft)
+                .absoluteOffset {
+                    IntOffset(pressLensBounds.leftPx.roundToInt(), pressLensBounds.topPx.roundToInt())
+                }
+                .drawBackdrop(
+                    backdrop = barBackdrop,
+                    shape = { lensShape },
+                    effects = {
+                        if (isRuntimeShaderSupported()) {
+                            lens(
+                                refractionHeight = with(density) { 18.dp.toPx() },
+                                refractionAmount = with(density) {
+                                    (18.dp * 0.18f * pressValue).toPx()
+                                },
+                                magnification = 1.018f,
+                                depthEffect = true,
+                                chromaticAberration = true,
+                            )
+                        }
+                    },
+                    highlight = {
+                        Highlight(
+                            width = 1.2.dp,
+                            style = HighlightStyle.Default(
+                                color = Color.White.copy(
+                                    alpha = (if (isLight) 0.12f else 0.25f) * pressValue,
+                                ),
+                                angle = 0f,
+                            ),
+                        )
+                    },
+                    shadow = null,
+                    onDrawSurface = {
+                        drawRect(
+                            color = Color.White.copy(
+                                alpha = pressValue * (if (isLight) 0.24f else 0.08f),
+                            ),
+                        )
+                    },
+                    backdropScale = 1f,
+                )
+                .clip(lensShape)
+                .border(
+                    width = 0.75.dp,
+                    color = Color.White.copy(alpha = 0.6f * pressValue),
+                    shape = lensShape,
+                ),
+        )
     }
 }
 
 @Composable
 private fun VrkaNavItem(
     item: VrkaDestination,
-    isSelected: Boolean,
+    index: Int,
+    lastIndex: Int,
+    positionProvider: () -> Float,
     isLight: Boolean,
-    focus: Float,
     reduceMotion: Boolean,
     onClick: () -> Unit,
     onContentMeasured: (leftInSlotPx: Float, widthPx: Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Only the selected/unselected flip is observed in composition; the continuous
+    // position feeds a graphics layer, so drag frames never recompose the item.
+    val isSelected by remember(index, lastIndex) {
+        derivedStateOf { navSelectedIndex(positionProvider(), lastIndex) == index }
+    }
     val activeColor = if (isLight) NAV_ACTIVE_LIGHT else NAV_ACTIVE_DARK
     val inactiveColor = if (isLight) NAV_UNSELECTED_LIGHT else NAV_UNSELECTED_DARK
     val contentColor by animateColorAsState(
@@ -1300,7 +1339,11 @@ private fun VrkaNavItem(
                 // Scaling is deliberately avoided so the icon artwork never changes
                 // size during selection or the held-lens animation.
                 .graphicsLayer {
-                    translationY = if (reduceMotion) 0f else -focus.coerceIn(0f, 1f) * 1.5.dp.toPx()
+                    translationY = if (reduceMotion) {
+                        0f
+                    } else {
+                        -navItemFocus(positionProvider(), index) * 1.5.dp.toPx()
+                    }
                 }
                 .padding(horizontal = NAV_ITEM_HORIZONTAL_CONTENT_PADDING),
         ) {
