@@ -2,6 +2,7 @@ package com.mvrk.vrka.runtime
 
 import android.content.Context
 import android.util.Log
+import com.mvrk.vrka.InstalledComponentVersionReader
 import com.mvrk.vrka.SecureComponentUpdater
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.CoroutineScope
@@ -76,8 +77,34 @@ class YtDlpRuntimeManager(
         return stockVersion()
     }
 
-    fun stockVersion(): String =
-        runCatching { YoutubeDL.getInstance().versionName(context) }.getOrNull().orEmpty()
+    /**
+     * Executing the binary is authoritative, but a fresh install (or a device that cannot run
+     * it, such as an x86_64 emulator translating ARM64 code) has to fall back to the artifact
+     * metadata, the same order the Components card uses. The result is cached against the
+     * binary's identity so a component update re-reads it and recomposition stays off disk.
+     */
+    fun stockVersion(): String {
+        val binary = stockBinary()
+        val stamp = binary.lastModified() to binary.length()
+        if (cachedStockVersionStamp == stamp && cachedStockVersion.isNotEmpty()) {
+            return cachedStockVersion
+        }
+        val version = runCatching { YoutubeDL.getInstance().versionName(context) }
+            .getOrNull()
+            ?.takeIf(String::isNotBlank)
+            ?: InstalledComponentVersionReader.readYtDlpVersion(binary)
+            ?: InstalledComponentVersionReader.readBundledYtDlpVersion(context)
+            ?: return ""
+        cachedStockVersion = version
+        cachedStockVersionStamp = stamp
+        return version
+    }
+
+    @Volatile
+    private var cachedStockVersion: String = ""
+
+    @Volatile
+    private var cachedStockVersionStamp: Pair<Long, Long>? = null
 
     fun activeDescription(): String {
         val runtime = _state.value.snapshot.activeRuntime()
