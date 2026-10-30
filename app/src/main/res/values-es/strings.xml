@@ -107,6 +107,16 @@
     <string name="desc_size_confirmation_helper">Solo usa metadatos de yt-dlp; no se descarga nada para calcular el tamaño. Los valores aproximados se etiquetan como aproximados.</string>
     <string name="desc_up_to_date">VRKA está actualizado</string>
     <string name="desc_update_available">v%1$s disponible</string>
+    <string name="download_size_calculating">Calculando tamaño</string>
+    <string name="download_size_calculating_with_bytes">%1$s descargados / calculando tamaño</string>
+    <string name="download_size_completed">Completado · %1$s</string>
+    <string name="download_size_downloaded">%1$s descargados</string>
+    <string name="download_size_downloaded_of">%1$s descargados / %2$s</string>
+    <string name="download_size_total">Total %1$s</string>
+    <string name="pref_live_updates">Actualizaciones en vivo</string>
+    <string name="desc_live_updates_enabled">Las notificaciones de progreso promocionadas están activadas</string>
+    <string name="desc_live_updates_disabled">Promociona las descargas de VRKA en la pantalla de bloqueo y la barra de estado</string>
+    <string name="btn_live_update_settings">Abrir ajustes</string>
     <string name="diagnostics_empty">No hay entradas de diagnóstico registradas.</string>
     <string name="diagnostics_failure_plural">%1$d errores registrados</string>
     <string name="diagnostics_failure_single">1 error registrado</string>

@@ -107,6 +107,16 @@
     <string name="desc_size_confirmation_helper">Utilise uniquement les métadonnées yt-dlp ; rien n’est téléchargé pour calculer la taille. Les valeurs approximatives sont signalées comme telles.</string>
     <string name="desc_up_to_date">VRKA est à jour</string>
     <string name="desc_update_available">v%1$s disponible</string>
+    <string name="download_size_calculating">Calcul de la taille</string>
+    <string name="download_size_calculating_with_bytes">%1$s téléchargés / calcul de la taille</string>
+    <string name="download_size_completed">Terminé · %1$s</string>
+    <string name="download_size_downloaded">%1$s téléchargés</string>
+    <string name="download_size_downloaded_of">%1$s téléchargés / %2$s</string>
+    <string name="download_size_total">Total %1$s</string>
+    <string name="pref_live_updates">Mises à jour en direct</string>
+    <string name="desc_live_updates_enabled">Les notifications de progression promues sont activées</string>
+    <string name="desc_live_updates_disabled">Mettre en avant les téléchargements VRKA sur l’écran verrouillé et la barre d’état</string>
+    <string name="btn_live_update_settings">Ouvrir les paramètres</string>
     <string name="diagnostics_empty">Aucune entrée de diagnostic enregistrée.</string>
     <string name="diagnostics_failure_plural">%1$d défaillances enregistrées</string>
     <string name="diagnostics_failure_single">1 défaillance enregistrée</string>

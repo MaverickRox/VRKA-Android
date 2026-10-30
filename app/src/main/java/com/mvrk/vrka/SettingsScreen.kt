@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.res.stringResource
@@ -186,15 +188,11 @@ internal fun SettingsScreen(
                     stringResource(R.string.desc_size_confirmation_disabled)
                 },
             ) {
-                Switch(
+                VrkaSwitch(
                     checked = settings.showDownloadSizeConfirmation,
                     onCheckedChange = { enabled ->
                         scope.launch { repository.setShowDownloadSizeConfirmation(enabled) }
                     },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = VrkaTokens.Accent,
-                    ),
                 )
             }
             Text(
@@ -216,7 +214,7 @@ internal fun SettingsScreen(
                     stringResource(R.string.desc_concurrent_disabled)
                 },
             ) {
-                Switch(
+                VrkaSwitch(
                     checked = settings.concurrentDownloadsEnabled,
                     onCheckedChange = { enable ->
                         if (enable) {
@@ -225,10 +223,6 @@ internal fun SettingsScreen(
                             scope.launch { repository.setConcurrentDownloadsEnabled(false) }
                         }
                     },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = VrkaTokens.Accent,
-                    ),
                 )
             }
 
@@ -324,13 +318,9 @@ internal fun SettingsScreen(
                     stringResource(R.string.desc_h264_disabled)
                 },
             ) {
-                Switch(
+                VrkaSwitch(
                     checked = settings.h264CompatibilityMode,
                     onCheckedChange = { scope.launch { repository.setH264CompatibilityMode(it) } },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = VrkaTokens.Accent,
-                    ),
                 )
             }
             Text(
@@ -350,13 +340,9 @@ internal fun SettingsScreen(
                     stringResource(R.string.desc_custom_commands_disabled)
                 },
             ) {
-                Switch(
+                VrkaSwitch(
                     checked = settings.customCommandMode,
                     onCheckedChange = { scope.launch { repository.setCustomCommandMode(it) } },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = VrkaTokens.Accent,
-                    ),
                 )
             }
             Text(
@@ -523,14 +509,10 @@ internal fun SettingsScreen(
                 title = stringResource(R.string.pref_amoled),
                 subtitle = stringResource(R.string.desc_amoled),
             ) {
-                Switch(
+                VrkaSwitch(
                     checked = settings.amoled,
                     enabled = settings.themeMode == ThemeMode.DARK,
                     onCheckedChange = { scope.launch { repository.setAmoled(it) } },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = VrkaTokens.Accent,
-                    ),
                 )
             }
 
@@ -1536,10 +1518,37 @@ internal fun SettingsScreen(
                 )
             }
 
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+                VrkaSettingRow(
+                    title = stringResource(R.string.pref_live_updates),
+                    subtitle = if (DownloadNotifications.supportsPromotion(context)) {
+                        stringResource(R.string.desc_live_updates_enabled)
+                    } else {
+                        stringResource(R.string.desc_live_updates_disabled)
+                    },
+                    isSubtitleMono = true,
+                ) {
+                    VrkaOutlinedButton(
+                        text = stringResource(R.string.btn_live_update_settings),
+                        onClick = { openLiveUpdateSettings(context) },
+                        height = 32.dp,
+                    )
+                }
+            }
+
 
         }
         Spacer(Modifier.navigationBarsPadding().height(110.dp))
     }
+}
+
+private fun openLiveUpdateSettings(context: Context) {
+    val promotionIntent = Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+    val notificationIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+    runCatching { context.startActivity(promotionIntent) }
+        .onFailure { runCatching { context.startActivity(notificationIntent) } }
 }
 
 @Composable

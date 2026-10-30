@@ -107,6 +107,16 @@
     <string name="desc_size_confirmation_helper">仅使用 yt-dlp 元数据；计算大小时不会下载任何内容。近似值会标注为近似。</string>
     <string name="desc_up_to_date">当前已是最新版本</string>
     <string name="desc_update_available">新版本 v%1$s 可用</string>
+    <string name="download_size_calculating">正在计算大小</string>
+    <string name="download_size_calculating_with_bytes">已下载 %1$s / 正在计算大小</string>
+    <string name="download_size_completed">已完成 · %1$s</string>
+    <string name="download_size_downloaded">已下载 %1$s</string>
+    <string name="download_size_downloaded_of">已下载 %1$s / %2$s</string>
+    <string name="download_size_total">总计 %1$s</string>
+    <string name="pref_live_updates">实时更新</string>
+    <string name="desc_live_updates_enabled">已启用推广的进度通知</string>
+    <string name="desc_live_updates_disabled">在锁定屏幕和状态栏上推广 VRKA 下载</string>
+    <string name="btn_live_update_settings">打开设置</string>
     <string name="diagnostics_empty">暂无诊断记录。下载发生异常时将自动在本地记录详细诊断日志。</string>
     <string name="diagnostics_failure_plural">已记录 %1$d 次失败</string>
     <string name="diagnostics_failure_single">已记录 1 次失败</string>
