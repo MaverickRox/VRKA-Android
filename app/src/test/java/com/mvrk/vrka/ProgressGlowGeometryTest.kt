@@ -7,40 +7,43 @@ import org.junit.Test
 
 class ProgressGlowGeometryTest {
     @Test
-    fun zeroProgressDrawsNoFillOrSheen() {
+    fun zeroProgressDrawsNoFillOrHead() {
         val geometry = glowProgressGeometry(0f, TRACK_WIDTH, reduceMotion = false)
 
         assertEquals(0f, geometry.fillWidthPx, 0.001f)
         assertEquals(0f, geometry.headCenterPx, 0.001f)
         assertEquals(0f, geometry.glowAlpha, 0.001f)
-        assertFalse(geometry.sheenVisible)
+        assertFalse(geometry.headVisible)
     }
 
     @Test
-    fun midProgressFillsHalfTheTrackAndShowsTheSheen() {
+    fun midProgressFillsHalfTheTrackAndShowsTheHead() {
         val geometry = glowProgressGeometry(0.5f, TRACK_WIDTH, reduceMotion = false)
 
         assertEquals(TRACK_WIDTH / 2f, geometry.fillWidthPx, 0.001f)
         assertEquals(geometry.fillWidthPx, geometry.headCenterPx, 0.001f)
         assertTrue(geometry.glowAlpha > 0f)
-        assertTrue(geometry.sheenVisible)
+        assertTrue(geometry.headVisible)
     }
 
     @Test
-    fun completeProgressStopsTheSheen() {
+    fun completeProgressKeepsTheHeadAtTheEndOfTheFill() {
         val geometry = glowProgressGeometry(1f, TRACK_WIDTH, reduceMotion = false)
 
         assertEquals(TRACK_WIDTH, geometry.fillWidthPx, 0.001f)
-        assertFalse(geometry.sheenVisible)
+        assertEquals(TRACK_WIDTH, geometry.headCenterPx, 0.001f)
+        assertTrue(geometry.headVisible)
     }
 
     @Test
-    fun reduceMotionKeepsTheFillButRemovesTheSheen() {
-        val geometry = glowProgressGeometry(0.5f, TRACK_WIDTH, reduceMotion = true)
+    fun reduceMotionKeepsTheSameStaticGeometry() {
+        val animated = glowProgressGeometry(0.5f, TRACK_WIDTH, reduceMotion = false)
+        val reduced = glowProgressGeometry(0.5f, TRACK_WIDTH, reduceMotion = true)
 
-        assertEquals(TRACK_WIDTH / 2f, geometry.fillWidthPx, 0.001f)
-        assertTrue(geometry.glowAlpha > 0f)
-        assertFalse(geometry.sheenVisible)
+        assertEquals(animated.fillWidthPx, reduced.fillWidthPx, 0.001f)
+        assertEquals(animated.headCenterPx, reduced.headCenterPx, 0.001f)
+        assertEquals(animated.glowAlpha, reduced.glowAlpha, 0.001f)
+        assertEquals(animated.headVisible, reduced.headVisible)
     }
 
     @Test

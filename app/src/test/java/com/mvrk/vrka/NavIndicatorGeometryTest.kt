@@ -27,8 +27,8 @@ class NavIndicatorGeometryTest {
 
     @Test
     fun test16_identicalIndicatorHeight() {
-        assertEquals(60f, NAV_INDICATOR_HEIGHT.value, 0.001f)
-        assertEquals(70f, NAV_BAR_HEIGHT.value, 0.001f)
+        assertEquals(54f, NAV_INDICATOR_HEIGHT.value, 0.001f)
+        assertEquals(64f, NAV_BAR_HEIGHT.value, 0.001f)
         assertEquals(5f, NAV_TAB_INSET_VERTICAL.value, 0.001f)
         assertEquals(6f, NAV_TAB_INSET_HORIZONTAL.value, 0.001f)
         assertEquals(
@@ -40,10 +40,34 @@ class NavIndicatorGeometryTest {
 
     @Test
     fun test16b_barAndPillMatchTheReleaseGeometry() {
-        assertTrue(NAV_BAR_HEIGHT.value in 68f..72f)
-        assertTrue(NAV_INDICATOR_HEIGHT.value in 58f..60f)
+        // fd12ad5 reference: 64dp bar, 54dp pill, 32dp radii.
+        assertEquals(64f, NAV_BAR_HEIGHT.value, 0.001f)
+        assertEquals(54f, NAV_INDICATOR_HEIGHT.value, 0.001f)
+        assertEquals(32f, NAV_BAR_CORNER_RADIUS.value, 0.001f)
+        assertEquals(32f, NAV_INDICATOR_CORNER_RADIUS.value, 0.001f)
         assertEquals(NAV_BAR_HEIGHT.value / 2f, NAV_BAR_CORNER_RADIUS.value, 0.001f)
-        assertEquals(NAV_INDICATOR_HEIGHT.value / 2f, NAV_INDICATOR_CORNER_RADIUS.value, 0.001f)
+    }
+
+    @Test
+    fun test16e_pressedLensStaysAConcentricCapsule() {
+        // The lens is clipped to the 64dp bar at full press. With a 32dp radius the
+        // result is a capsule, not a rounded square, and its center never drifts.
+        val indicator = NavIndicatorBounds(leftPx = 106f, widthPx = 88f)
+        val lens = calculateNavPressLensBounds(indicator, 1f, 64f, 54f)
+        assertEquals(64f, lens.heightPx, 0.001f)
+        assertEquals(lens.heightPx / 2f, NAV_INDICATOR_CORNER_RADIUS.value, 0.001f)
+        assertEquals(
+            indicator.leftPx + indicator.widthPx / 2f,
+            lens.leftPx + lens.widthPx / 2f,
+            0.001f,
+        )
+    }
+
+    @Test
+    fun test16f_labelHasClearanceInsideThePill() {
+        assertTrue(NAV_ITEM_HORIZONTAL_CONTENT_PADDING.value > NAV_TAB_INSET_HORIZONTAL.value)
+        assertTrue(NAV_LABEL_FONT_SIZE.value in 9.5f..10.2f)
+        assertTrue(NAV_LABEL_LINE_HEIGHT.value <= NAV_INDICATOR_HEIGHT.value / 3f)
     }
 
     @Test
