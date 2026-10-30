@@ -675,7 +675,7 @@ private fun JobCard(
                 if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
                     VrkaGlowProgressBar(
                         progress = job.progress / 100f,
-                        height = 4.dp,
+                        trackHeight = 4.dp,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 10.dp),
