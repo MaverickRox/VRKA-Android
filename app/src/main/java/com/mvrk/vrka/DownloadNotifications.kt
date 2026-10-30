@@ -21,6 +21,43 @@ import com.mvrk.vrka.R
 internal object DownloadNotifications {
     const val CHANNEL_ID = "vrka_downloads"
 
+    /**
+     * Public as a typed constant only from API 36.1, but Android 16.0 reads the same extras
+     * key when the system decides whether to promote an ongoing notification.
+     */
+    internal const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
+
+    /**
+     * Live Update promotion changed between Android 16.0 and Android 16 QPR1, and QPR1 keeps the
+     * old behaviour when its rich-ongoing flag is off. A version number therefore cannot decide
+     * this. Instead, ask the platform: a probe carrying the QPR1 request is promotable only when
+     * QPR1 semantics are actually live. The result cannot change during the process lifetime.
+     */
+    @Volatile
+    private var richOngoingContract: Boolean? = null
+
+    internal fun usesRichOngoingContract(context: Context): Boolean {
+        richOngoingContract?.let { return it }
+        val detected = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
+            false
+        } else {
+            buildProbe(context).hasPromotableCharacteristics()
+        }
+        richOngoingContract = detected
+        return detected
+    }
+
+    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
+    private fun buildProbe(context: Context): Notification =
+        Notification.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.app_name))
+            .setOngoing(true)
+            .setColorized(false)
+            .setStyle(Notification.ProgressStyle().setProgress(0))
+            .apply { extras.putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true) }
+            .build()
+
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(
@@ -60,6 +97,7 @@ internal object DownloadNotifications {
         summary: String,
         openIntent: PendingIntent,
     ): Notification {
+        val richOngoing = usesRichOngoingContract(context)
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
@@ -85,10 +123,11 @@ internal object DownloadNotifications {
             return builder.build()
         }
 
+        // Android 16.0 only promotes colorized notifications; QPR1 disqualifies them and asks
+        // for the request extra instead.
+        builder.setColorized(!richOngoing)
         builder.setShortCriticalText(shortCriticalText(context, job))
 
-        // No progress tracker icon: the system draws its own moving marker, and a custom
-        // one made the determinate bar look like an indeterminate download animation.
         val style = Notification.ProgressStyle()
         val percent = determinateProgressPercent(job.state, job.progress)
         if (percent != null) {
@@ -97,32 +136,18 @@ internal object DownloadNotifications {
         } else {
             style.setProgressIndeterminate(true)
         }
+        // A null tracker icon makes some system UIs fall back to a moving glyph on the track.
+        // A fully transparent icon keeps the bar solid without adding any visible marker.
+        style.setProgressTrackerIcon(
+            Icon.createWithResource(context, R.drawable.ic_progress_tracker_none),
+        )
         builder.setStyle(style)
         builder.addAction(cancelAction(context, job))
 
-        val notification = builder.build()
-        // Promotion exists from 36.1; on 36.0 the Live Update ProgressStyle still applies.
-        if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1 &&
-            requestPromotion(context, builder, notification)
-        ) {
-            return builder.build()
-        }
-        return notification
-    }
-
-    @RequiresApi(Build.VERSION_CODES_FULL.BAKLAVA_1)
-    private fun requestPromotion(
-        context: Context,
-        builder: Notification.Builder,
-        notification: Notification,
-    ): Boolean {
-        // Request promotion only for a notification the platform actually considers
-        // promotable, otherwise the request is silently dropped.
-        if (!supportsPromotion(context) || !notification.hasPromotableCharacteristics()) {
-            return false
-        }
-        builder.setRequestPromotedOngoing(true)
-        return true
+        // The same key the QPR1 setRequestPromotedOngoing() writes; Android 16.0 ignores it and
+        // relies on the colorized flag above.
+        builder.extras.putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true)
+        return builder.build()
     }
 
     private fun shortCriticalText(context: Context, job: DownloadJob): String = when {
@@ -130,13 +155,14 @@ internal object DownloadNotifications {
         else -> localizedJobStateLabel(context, job.state)
     }
 
+    /** True when the user has allowed this app to post promoted ongoing notifications. */
     fun supportsPromotion(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT_FULL < Build.VERSION_CODES_FULL.BAKLAVA_1) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) return false
         val manager = context.getSystemService(NotificationManager::class.java) ?: return false
         return manager.canPostPromotedNotifications()
     }
 
-    private fun buildCompatNotification(
+    internal fun buildCompatNotification(
         context: Context,
         job: DownloadJob?,
         title: String,

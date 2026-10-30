@@ -116,6 +116,7 @@
     <string name="pref_live_updates">Atualizações em direto</string>
     <string name="desc_live_updates_enabled">As notificações de progresso promovidas estão ativadas</string>
     <string name="desc_live_updates_disabled">Promover transferências do VRKA no ecrã de bloqueio e na barra de estado</string>
+    <string name="desc_live_updates_unavailable">Este dispositivo não disponibiliza definições de Atualizações em direto</string>
     <string name="btn_live_update_settings">Abrir definições</string>
     <string name="diagnostics_empty">Nenhuma entrada de diagnóstico registada.</string>
     <string name="diagnostics_failure_plural">%1$d falhas registadas</string>

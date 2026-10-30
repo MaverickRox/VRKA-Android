@@ -116,6 +116,7 @@
     <string name="pref_live_updates">التحديثات المباشرة</string>
     <string name="desc_live_updates_enabled">إشعارات التقدم المُروَّجة مفعّلة</string>
     <string name="desc_live_updates_disabled">روّج تنزيلات VRKA على شاشة القفل وشريط الحالة</string>
+    <string name="desc_live_updates_unavailable">لا يعرض هذا الجهاز إعدادات التحديثات المباشرة</string>
     <string name="btn_live_update_settings">فتح الإعدادات</string>
     <string name="diagnostics_empty">لم يتم تسجيل أي إدخالات تشخيصية.</string>
     <string name="diagnostics_failure_plural">%1$d حالات فشل مسجلة</string>
