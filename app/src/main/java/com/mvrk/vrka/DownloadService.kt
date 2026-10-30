@@ -11,7 +11,6 @@ import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.IBinder
-import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -28,26 +27,10 @@ internal const val PENDING_NOTIFICATION_ID = 4107
 // Fallback notification posted when Android ends the data-sync foreground window.
 internal const val INTERRUPTED_NOTIFICATION_ID = 4108
 
-// Live Update notices require API 36; promotion arrived with 36.1.
-internal const val LIVE_UPDATE_SDK = 36
-
 internal const val NOTIFICATION_ID_BASE = 4200
 
 internal fun notificationIdFor(jobId: String): Int =
     NOTIFICATION_ID_BASE + (jobId.hashCode() and 0xFFFF)
-
-@ChecksSdkIntAtLeast(parameter = 0, api = LIVE_UPDATE_SDK)
-internal fun shouldRequestPromotion(
-    sdkInt: Int,
-    sdkIntFull: Int,
-    canPostPromoted: Boolean,
-): Boolean = sdkInt >= LIVE_UPDATE_SDK &&
-    sdkIntFull >= PROMOTION_SDK_INT_FULL &&
-    canPostPromoted
-
-// Build.VERSION_CODES_FULL.BAKLAVA_1, inlined because SDK_INT_FULL is read only
-// on API 36+ where the field exists.
-internal const val PROMOTION_SDK_INT_FULL = 3_600_001
 
 internal fun determinateProgressPercent(state: JobState, progress: Float): Int? =
     if (state == JobState.DOWNLOADING && progress > 0f && progress.isFinite()) {
@@ -212,12 +195,10 @@ class DownloadService : Service() {
         }
         builder.setStyle(style)
         builder.addAction(cancelAction(job))
-        val canPromote = shouldRequestPromotion(
-            Build.VERSION.SDK_INT,
-            Build.VERSION.SDK_INT_FULL,
-            notificationManager.canPostPromotedNotifications(),
-        )
-        if (canPromote) {
+        // Promotion exists from 36.1; on 36.0 the Live Update style still applies.
+        if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1 &&
+            notificationManager.canPostPromotedNotifications()
+        ) {
             builder.setRequestPromotedOngoing(true)
         }
         return builder.build()

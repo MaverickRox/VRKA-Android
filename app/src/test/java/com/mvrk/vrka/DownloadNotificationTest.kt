@@ -1,7 +1,6 @@
 package com.mvrk.vrka
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,15 +22,6 @@ class DownloadNotificationTest {
             .map(::notificationIdFor)
 
         assertEquals(ids.size, ids.toSet().size)
-    }
-
-    @Test
-    fun promotionIsOnlyRequestedOnLiveUpdatePlatformsWithPermission() {
-        assertFalse(shouldRequestPromotion(35, 3_500_000, canPostPromoted = true))
-        assertFalse(shouldRequestPromotion(36, 3_600_000, canPostPromoted = true))
-        assertFalse(shouldRequestPromotion(36, 3_600_001, canPostPromoted = false))
-        assertTrue(shouldRequestPromotion(36, 3_600_001, canPostPromoted = true))
-        assertTrue(shouldRequestPromotion(37, 3_700_000, canPostPromoted = true))
     }
 
     @Test
