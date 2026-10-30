@@ -194,14 +194,7 @@ class DownloadRequestFactoryTest {
 
         val dlReq = built(DownloadRequest(url = ytUrl))
         assertFalse(dlReq.hasOption("--extractor-args"))
-
-        val recoveryReq = DownloadRequestFactory.download(
-            DownloadJob(id = "test-job", request = DownloadRequest(url = ytUrl)),
-            staging,
-            recoveryAttempt = true,
-        )
-        assertFalse(recoveryReq.hasOption("--extractor-args"))
-        assertFalse(recoveryReq.hasOption("--impersonate"))
+        assertFalse(dlReq.hasOption("--impersonate"))
     }
 
     @Test
@@ -267,17 +260,22 @@ class DownloadRequestFactoryTest {
     }
 
     @Test
-    fun directRecoveryUsesAndroidCompatibleHeadersAndGenericRetry() {
-        val recovery = DownloadRequestFactory.download(
-            DownloadJob(id = "test-job", request = DownloadRequest(url = URL)),
+    fun browserCandidateUsesAndroidCompatibleHeaders() {
+        val candidate = DownloadRequestFactory.download(
+            DownloadJob(
+                id = "test-job",
+                request = DownloadRequest(
+                    url = URL,
+                    resolvedMediaUrl = "https://cdn.example.test/media.mp4",
+                ),
+            ),
             staging,
-            recoveryAttempt = true,
         )
 
-        assertEquals(null, recovery.getOption("--impersonate"))
-        assertFalse(recovery.hasOption("--extractor-args"))
-        assertEquals(URL, recovery.getOption("--referer"))
-        assertTrue(recovery.getOption("--user-agent").orEmpty().contains("Chrome/"))
+        assertEquals(null, candidate.getOption("--impersonate"))
+        assertFalse(candidate.hasOption("--extractor-args"))
+        assertEquals(URL, candidate.getOption("--referer"))
+        assertTrue(candidate.getOption("--user-agent").orEmpty().contains("Chrome/"))
     }
 
     @Test
