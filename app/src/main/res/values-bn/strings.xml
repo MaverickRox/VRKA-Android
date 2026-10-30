@@ -107,6 +107,16 @@
     <string name="desc_size_confirmation_helper">শুধুমাত্র yt-dlp মেটাডেটা ব্যবহার করে; আকার গণনা করতে কিছুই ডাউনলোড করা হয় না। আনুমানিক মানগুলি আনুমানিক হিসেবে চিহ্নিত করা হয়।</string>
     <string name="desc_up_to_date">VRKA আপ-টু-ডেট আছে</string>
     <string name="desc_update_available">v%1$s উপলব্ধ</string>
+    <string name="download_size_calculating">আকার গণনা করা হচ্ছে</string>
+    <string name="download_size_calculating_with_bytes">%1$s ডাউনলোড হয়েছে / আকার গণনা করা হচ্ছে</string>
+    <string name="download_size_completed">সম্পন্ন · %1$s</string>
+    <string name="download_size_downloaded">%1$s ডাউনলোড হয়েছে</string>
+    <string name="download_size_downloaded_of">%1$s ডাউনলোড হয়েছে / %2$s</string>
+    <string name="download_size_total">মোট %1$s</string>
+    <string name="pref_live_updates">লাইভ আপডেট</string>
+    <string name="desc_live_updates_enabled">প্রচারিত অগ্রগতি বিজ্ঞপ্তি সক্রিয় আছে</string>
+    <string name="desc_live_updates_disabled">লক স্ক্রিন ও স্ট্যাটাস বারে VRKA ডাউনলোড প্রচার করুন</string>
+    <string name="btn_live_update_settings">সেটিংস খুলুন</string>
     <string name="diagnostics_empty">কোনো ডায়াগনস্টিক রেকর্ড করা হয়নি।</string>
     <string name="diagnostics_failure_plural">%1$dটি রেকর্ড করা ব্যর্থতা</string>
     <string name="diagnostics_failure_single">১টি রেকর্ড করা ব্যর্থতা</string>

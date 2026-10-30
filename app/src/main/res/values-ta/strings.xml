@@ -107,6 +107,16 @@
     <string name="desc_size_confirmation_helper">yt-dlp மெட்டாடேட்டாவை மட்டுமே பயன்படுத்துகிறது; அளவைக் கணக்கிட எதுவும் பதிவிறக்கப்படாது. தோராயமான மதிப்புகள் தோராயமானவை எனக் குறிக்கப்படும்.</string>
     <string name="desc_up_to_date">VRKA புதுப்பித்த நிலையில் உள்ளது</string>
     <string name="desc_update_available">v%1$s கிடைக்கிறது</string>
+    <string name="download_size_calculating">அளவு கணக்கிடப்படுகிறது</string>
+    <string name="download_size_calculating_with_bytes">%1$s பதிவிறக்கப்பட்டது / அளவு கணக்கிடப்படுகிறது</string>
+    <string name="download_size_completed">முடிந்தது · %1$s</string>
+    <string name="download_size_downloaded">%1$s பதிவிறக்கப்பட்டது</string>
+    <string name="download_size_downloaded_of">%1$s பதிவிறக்கப்பட்டது / %2$s</string>
+    <string name="download_size_total">மொத்தம் %1$s</string>
+    <string name="pref_live_updates">நேரடி புதுப்பிப்புகள்</string>
+    <string name="desc_live_updates_enabled">விளம்பரப்படுத்தப்பட்ட முன்னேற்ற அறிவிப்புகள் இயக்கப்பட்டுள்ளன</string>
+    <string name="desc_live_updates_disabled">லாக் திரை மற்றும் நிலைப் பட்டியில் VRKA பதிவிறக்கங்களை விளம்பரப்படுத்தவும்</string>
+    <string name="btn_live_update_settings">அமைப்புகளைத் திறக்கவும்</string>
     <string name="diagnostics_empty">கண்டறியும் உள்ளீடுகள் எதுவும் பதிவு செய்யப்படவில்லை.</string>
     <string name="diagnostics_failure_plural">%1$d பதிவுசெய்யப்பட்ட தோல்விகள்</string>
     <string name="diagnostics_failure_single">1 பதிவுசெய்யப்பட்ட தோல்வி</string>

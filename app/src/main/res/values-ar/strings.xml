@@ -107,6 +107,16 @@
     <string name="desc_size_confirmation_helper">يستخدم بيانات yt-dlp الوصفية فقط؛ لا يتم تنزيل أي شيء لحساب الحجم. يتم تمييز القيم التقريبية على أنها تقريبية.</string>
     <string name="desc_up_to_date">VRKA محدث إلى آخر إصدار</string>
     <string name="desc_update_available">v%1$s متاح الآن</string>
+    <string name="download_size_calculating">جارٍ حساب الحجم</string>
+    <string name="download_size_calculating_with_bytes">تم تنزيل %1$s / جارٍ حساب الحجم</string>
+    <string name="download_size_completed">اكتمل · %1$s</string>
+    <string name="download_size_downloaded">تم تنزيل %1$s</string>
+    <string name="download_size_downloaded_of">تم تنزيل %1$s / %2$s</string>
+    <string name="download_size_total">الإجمالي %1$s</string>
+    <string name="pref_live_updates">التحديثات المباشرة</string>
+    <string name="desc_live_updates_enabled">إشعارات التقدم المُروَّجة مفعّلة</string>
+    <string name="desc_live_updates_disabled">روّج تنزيلات VRKA على شاشة القفل وشريط الحالة</string>
+    <string name="btn_live_update_settings">فتح الإعدادات</string>
     <string name="diagnostics_empty">لم يتم تسجيل أي إدخالات تشخيصية.</string>
     <string name="diagnostics_failure_plural">%1$d حالات فشل مسجلة</string>
     <string name="diagnostics_failure_single">فشل 1 مسجل</string>

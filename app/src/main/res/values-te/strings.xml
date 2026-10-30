@@ -107,6 +107,16 @@
     <string name="desc_size_confirmation_helper">yt-dlp మెటాడేటాను మాత్రమే ఉపయోగిస్తుంది; పరిమాణాన్ని లెక్కించడానికి ఏమీ డౌన్లోడ్ చేయబడదు. అంచనా విలువలు అంచనాగా లేబుల్ చేయబడతాయి.</string>
     <string name="desc_up_to_date">VRKA తాజాగా ఉంది</string>
     <string name="desc_update_available">v%1$s అందుబాటులో ఉంది</string>
+    <string name="download_size_calculating">పరిమాణం లెక్కిస్తోంది</string>
+    <string name="download_size_calculating_with_bytes">%1$s డౌన్‌లోడ్ అయింది / పరిమాణం లెక్కిస్తోంది</string>
+    <string name="download_size_completed">పూర్తయింది · %1$s</string>
+    <string name="download_size_downloaded">%1$s డౌన్‌లోడ్ అయింది</string>
+    <string name="download_size_downloaded_of">%1$s డౌన్‌లోడ్ అయింది / %2$s</string>
+    <string name="download_size_total">మొత్తం %1$s</string>
+    <string name="pref_live_updates">లైవ్ అప్డేట్లు</string>
+    <string name="desc_live_updates_enabled">ప్రమోట్ చేసిన పురోగతి నోటిఫికేషన్లు ప్రారంభించబడ్డాయి</string>
+    <string name="desc_live_updates_disabled">లాక్ స్క్రీన్ మరియు స్టేటస్ బార్లో VRKA డౌన్లోడ్లను ప్రమోట్ చేయండి</string>
+    <string name="btn_live_update_settings">సెట్టింగ్లను తెరవండి</string>
     <string name="diagnostics_empty">డయాగ్నస్టిక్ ఎంట్రీలు ఏవీ నమోదు కాలేదు.</string>
     <string name="diagnostics_failure_plural">%1$d నమోదైన వైఫల్యాలు</string>
     <string name="diagnostics_failure_single">1 నమోదైన వైఫల్యం</string>

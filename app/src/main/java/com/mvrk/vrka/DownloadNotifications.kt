@@ -65,20 +65,31 @@ internal object DownloadNotifications {
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
             .setContentTitle(title)
             .setContentText(summary)
-            .setSubText("VRKA • $status")
+            // The shade already labels the notification with the app name; repeating it
+            // here produced "VRKA • VRKA • Downloading".
+            .setSubText(status)
             .setContentIntent(openIntent)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
 
+        // Without this, Android 12+ may defer the first foreground notification by up to
+        // ten seconds, which also delays the Live Update chip.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+        }
+
         if (job == null) {
             builder.setStyle(Notification.BigTextStyle().bigText(summary))
             return builder.build()
         }
 
+        builder.setShortCriticalText(shortCriticalText(context, job))
+
+        // No progress tracker icon: the system draws its own moving marker, and a custom
+        // one made the determinate bar look like an indeterminate download animation.
         val style = Notification.ProgressStyle()
-            .setProgressTrackerIcon(Icon.createWithResource(context, R.drawable.ic_download))
         val percent = determinateProgressPercent(job.state, job.progress)
         if (percent != null) {
             style.setProgress(percent)
@@ -88,14 +99,41 @@ internal object DownloadNotifications {
         }
         builder.setStyle(style)
         builder.addAction(cancelAction(context, job))
-        // Promotion exists from 36.1; on 36.0 the Live Update style still applies.
-        val notificationManager = context.getSystemService(NotificationManager::class.java)
+
+        val notification = builder.build()
+        // Promotion exists from 36.1; on 36.0 the Live Update ProgressStyle still applies.
         if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1 &&
-            notificationManager?.canPostPromotedNotifications() == true
+            requestPromotion(context, builder, notification)
         ) {
-            builder.setRequestPromotedOngoing(true)
+            return builder.build()
         }
-        return builder.build()
+        return notification
+    }
+
+    @RequiresApi(Build.VERSION_CODES_FULL.BAKLAVA_1)
+    private fun requestPromotion(
+        context: Context,
+        builder: Notification.Builder,
+        notification: Notification,
+    ): Boolean {
+        // Request promotion only for a notification the platform actually considers
+        // promotable, otherwise the request is silently dropped.
+        if (!supportsPromotion(context) || !notification.hasPromotableCharacteristics()) {
+            return false
+        }
+        builder.setRequestPromotedOngoing(true)
+        return true
+    }
+
+    private fun shortCriticalText(context: Context, job: DownloadJob): String = when {
+        job.state == JobState.DOWNLOADING && job.progress > 0f -> "${job.progress.toInt()}%"
+        else -> localizedJobStateLabel(context, job.state)
+    }
+
+    fun supportsPromotion(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT_FULL < Build.VERSION_CODES_FULL.BAKLAVA_1) return false
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        return manager.canPostPromotedNotifications()
     }
 
     private fun buildCompatNotification(
@@ -111,13 +149,14 @@ internal object DownloadNotifications {
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
             .setContentTitle(title)
             .setContentText(summary)
-            .setSubText("VRKA • $status")
+            .setSubText(status)
             .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
             .setContentIntent(openIntent)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
 
         if (job != null) {
             val percent = determinateProgressPercent(job.state, job.progress)
