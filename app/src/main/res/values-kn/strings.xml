@@ -142,6 +142,7 @@
     <string name="estimate_exact">ನಿಖರ ಗಾತ್ರ</string>
     <string name="estimate_skip_future">ಡೌನ್ಲೋಡ್ಗಳ ಮೊದಲು ಗಾತ್ರದ ಅಂದಾಜುಗಳನ್ನು ತೋರಿಸಬೇಡಿ</string>
     <string name="estimate_unavailable">ಗಾತ್ರ ಲಭ್ಯವಿಲ್ಲ</string>
+    <string name="estimate_unavailable_hint">VRKA ಈ ಲಿಂಕ್‌ನ ಗಾತ್ರವನ್ನು ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ನೀವು ಮರುಪ್ರಯತ್ನಿಸಬಹುದು ಅಥವಾ ಹಾಗೆಯೇ ಡೌನ್‌ಲೋಡ್ ಮಾಡಬಹುದು.</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d ಬಾಕಿ ಇದೆ</string>
     <string name="eta_format_minutes">%1$d:%2$02d ಬಾಕಿ ಇದೆ</string>
     <string name="failure_auth_detail">ಮೂಲಕ್ಕೆ ದೃಢೀಕರಿಸಿದ ಬ್ರೌಸರ್ ಸೆಷನ್ ಅಗತ್ಯವಿರಬಹುದು.</string>

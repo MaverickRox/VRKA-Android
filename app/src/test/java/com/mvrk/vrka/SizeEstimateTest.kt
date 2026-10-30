@@ -32,7 +32,7 @@ class SizeEstimateTest {
     }
 
     @Test
-    fun mergedExactComponentsAreSummedAndReportedAsExact() {
+    fun mergedExactComponentsAreSummedButNeverClaimedAsExact() {
         val estimate = estimate(
             DownloadRequest(url = URL),
             """
@@ -47,9 +47,178 @@ class SizeEstimateTest {
             """,
         )
 
-        assertEquals(SizeEstimateKind.EXACT, estimate.kind)
+        // Muxing into a new container changes the final byte count, so only the sum is known.
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
         assertEquals(1_250_000L, estimate.bytes)
+        assertEquals("merged", estimate.detail)
         assertEquals("Merged sample", estimate.title)
+    }
+
+    @Test
+    fun singleFormatWithExactFilesizeStaysExact() {
+        val estimate = estimate(
+            DownloadRequest(url = URL, quality = VideoQuality.P480),
+            """{"title": "Progressive", "filesize": 900000}""",
+        )
+
+        assertEquals(SizeEstimateKind.EXACT, estimate.kind)
+        assertEquals(900_000L, estimate.bytes)
+    }
+
+    @Test
+    fun nullFilesizeFallsBackToFilesizeApproxAndFormatsTable() {
+        // Shape captured from a real yt-dlp run: merged `filesize` is null while the
+        // selected components still carry exact/approximate sizes.
+        val estimate = estimate(
+            DownloadRequest(url = URL),
+            """
+            {
+              "_type": "video",
+              "title": "Me at the zoo",
+              "duration": 18.9,
+              "filesize": null,
+              "filesize_approx": 475961,
+              "requested_formats": [
+                {"format_id": "395", "ext": "mp4", "filesize": 223779, "filesize_approx": 223778, "tbr": 94.556},
+                {"format_id": "251", "ext": "webm", "filesize": 252182, "filesize_approx": 252180, "tbr": 106.064}
+              ],
+              "formats": [
+                {"format_id": "395", "filesize": 223779},
+                {"format_id": "251", "filesize": 252182}
+              ]
+            }
+            """,
+        )
+
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+        assertEquals(223_779L + 252_182L, estimate.bytes)
+        assertEquals("Me at the zoo", estimate.title)
+    }
+
+    @Test
+    fun realisticMergedMetadataFromYtDlpIsEstimatedFromComponents() {
+        val json = javaClass.classLoader!!
+            .getResourceAsStream("ytdlp/youtube-merged.json")!!
+            .bufferedReader(Charsets.UTF_8)
+            .use { it.readText() }
+
+        val estimate = estimate(DownloadRequest(url = URL), json)
+
+        // Captured shape: top-level filesize is null, the selected streams live under
+        // requested_downloads[0].requested_formats, and their sum is only an approximation.
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+        assertEquals(475_961L, estimate.bytes)
+        assertEquals("merged", estimate.detail)
+        assertEquals("Me at the zoo", estimate.title)
+    }
+
+    @Test
+    fun singleDownloadMetadataWithoutRequestedFormatsUsesTheDownloadsEntry() {
+        val estimate = estimate(
+            DownloadRequest(url = URL, quality = VideoQuality.P480),
+            """
+            {
+              "title": "Single download",
+              "duration": 30,
+              "filesize": null,
+              "requested_downloads": [{"format_id": "18", "filesize": 500000}]
+            }
+            """,
+        )
+
+        assertEquals(SizeEstimateKind.EXACT, estimate.kind)
+        assertEquals(500_000L, estimate.bytes)
+    }
+
+    @Test
+    fun missingComponentSizesResolveThroughTheFormatsTable() {
+        val estimate = estimate(
+            DownloadRequest(url = URL),
+            """
+            {
+              "title": "Lookup",
+              "duration": 20,
+              "requested_formats": [
+                {"format_id": "137", "ext": "mp4"},
+                {"format_id": "140", "ext": "m4a"}
+              ],
+              "formats": [
+                {"format_id": "137", "filesize": 8000000},
+                {"format_id": "140", "filesize": 320000},
+                {"format_id": "137", "filesize": 1},
+                {"format_id": "999", "filesize": 1}
+              ]
+            }
+            """,
+        )
+
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+        assertEquals(8_320_000L, estimate.bytes)
+    }
+
+    @Test
+    fun missingSizesFallBackToBitrateAndDuration() {
+        val estimate = estimate(
+            DownloadRequest(url = URL),
+            """
+            {
+              "title": "Bitrate fallback",
+              "duration": 100,
+              "requested_formats": [
+                {"format_id": "v", "tbr": 800},
+                {"format_id": "a", "tbr": 128}
+              ]
+            }
+            """,
+        )
+
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+        assertEquals((800 + 128) * 125L * 100L, estimate.bytes)
+    }
+
+    @Test
+    fun leadingProcessNoticesDoNotHideValidJson() {
+        val estimate = estimate(
+            DownloadRequest(url = URL),
+            """
+            [youtube] Extracting URL: https://example.test/video
+            [youtube] jNQXAC9IVRw: Downloading webpage
+            {"title": "Notice tolerant", "duration": 10, "filesize": 123456}
+            """.trimIndent(),
+        )
+
+        assertEquals(SizeEstimateKind.EXACT, estimate.kind)
+        assertEquals(123_456L, estimate.bytes)
+        assertEquals("Notice tolerant", estimate.title)
+    }
+
+    @Test
+    fun audioOnlyEstimateUsesTheSelectedStreamSize() {
+        val estimate = estimate(
+            DownloadRequest(url = URL, mode = MediaMode.AUDIO, audioFormat = AudioFormat.OPUS),
+            """
+            {
+              "title": "Audio",
+              "duration": 60,
+              "requested_formats": [{"format_id": "251", "filesize": 750000}]
+            }
+            """,
+        )
+
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+        assertEquals(750_000L, estimate.bytes)
+        assertEquals("source", estimate.detail)
+    }
+
+    @Test
+    fun unavailableEstimateCarriesADiagnosticReason() {
+        val estimate = estimate(
+            DownloadRequest(url = URL),
+            """{"title": "No sizes", "duration": 60, "requested_formats": [{"format_id": "v"}, {"format_id": "a"}]}""",
+        )
+
+        assertEquals(SizeEstimateKind.UNAVAILABLE, estimate.kind)
+        assertTrue(estimate.diagnostic.contains("no filesize"))
     }
 
     @Test

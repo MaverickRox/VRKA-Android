@@ -142,6 +142,7 @@
     <string name="estimate_exact">துல்லியமான அளவு</string>
     <string name="estimate_skip_future">பதிவிறக்கங்களுக்கு முன் அளவு மதிப்பீடுகளைக் காட்ட வேண்டாம்</string>
     <string name="estimate_unavailable">அளவு கிடைக்கவில்லை</string>
+    <string name="estimate_unavailable_hint">VRKA இந்த இணைப்பிற்கான அளவைப் படிக்க முடியவில்லை. மீண்டும் முயலலாம் அல்லது எப்படியும் பதிவிறக்கலாம்.</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d மீதமுள்ளது</string>
     <string name="eta_format_minutes">%1$d:%2$02d மீதமுள்ளது</string>
     <string name="failure_auth_detail">மூலத்திற்கு அங்கீகரிக்கப்பட்ட உலாவி அமர்வு தேவைப்படலாம்.</string>

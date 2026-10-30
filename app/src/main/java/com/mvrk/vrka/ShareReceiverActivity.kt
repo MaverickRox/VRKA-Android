@@ -130,7 +130,7 @@ class ShareReceiverActivity : ComponentActivity() {
                         link = request,
                         settings = settings,
                         repository = manager.settingsRepository,
-                        onEstimateSize = { downloadRequest -> manager.estimateSize(downloadRequest) },
+                        onEstimateSize = { downloadRequest, force -> manager.estimateSize(downloadRequest, force) },
                         onEnqueue = { downloadRequest ->
                             val needsPermission =
                                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&

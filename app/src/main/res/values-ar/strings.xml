@@ -142,6 +142,7 @@
     <string name="estimate_exact">حجم دقيق</string>
     <string name="estimate_skip_future">عدم إظهار تقديرات الحجم قبل التنزيلات</string>
     <string name="estimate_unavailable">الحجم غير متاح</string>
+    <string name="estimate_unavailable_hint">تعذّر على VRKA قراءة الحجم لهذا الرابط. يمكنك إعادة المحاولة أو التنزيل على أي حال.</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d متبقٍ</string>
     <string name="eta_format_minutes">%1$d:%2$02d متبقٍ</string>
     <string name="failure_auth_detail">قد يتطلب المصدر جلسة متصفح مصادق عليها.</string>

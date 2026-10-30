@@ -142,6 +142,7 @@
     <string name="estimate_exact">ఖచ్చితమైన పరిమాణం</string>
     <string name="estimate_skip_future">డౌన్లోడ్ల ముందు పరిమాణ అంచనాలను చూపవద్దు</string>
     <string name="estimate_unavailable">పరిమాణం అందుబాటులో లేదు</string>
+    <string name="estimate_unavailable_hint">VRKA ఈ లింక్ కోసం పరిమాణాన్ని చదవలేకపోయింది. మీరు మళ్లీ ప్రయత్నించవచ్చు లేదా అయినా డౌన్‌లోడ్ చేయవచ్చు.</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d మిగిలి ఉంది</string>
     <string name="eta_format_minutes">%1$d:%2$02d మిగిలి ఉంది</string>
     <string name="failure_auth_detail">మూలానికి ప్రమాణీకరించబడిన బ్రౌజర్ సెషన్ అవసరం కావచ్చు.</string>

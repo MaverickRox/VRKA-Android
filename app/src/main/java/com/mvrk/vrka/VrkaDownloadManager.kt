@@ -98,7 +98,16 @@ class VrkaDownloadManager(
     val componentUpdateManager = ComponentUpdateManager.getInstance(context)
     val subtitleManager = com.mvrk.vrka.subtitle.VrkaSubtitleManager(context)
     val ytDlpRuntimeManager = com.mvrk.vrka.runtime.YtDlpRuntimeManager(context, scope)
-    private val sizeEstimator = SizeEstimator()
+    private val sizeEstimator = SizeEstimator(
+        runtimeLabel = {
+            val name = ytDlpRuntimeManager.activeDescription()
+            val version = normalizedVersion(ytDlpRuntimeManager.activeVersion())
+            if (version.isBlank()) name else "$name • yt-dlp $version"
+        },
+    )
+    private val estimateCache = MetadataEstimateCache()
+    private val estimateInFlight = HashMap<String, CompletableDeferred<SizeEstimate>>()
+    private val recordedEstimateDiagnostics = ConcurrentHashMap.newKeySet<String>()
 
     fun clearDiagnostics() {
         scope.launch(Dispatchers.IO) {
@@ -121,7 +130,10 @@ class VrkaDownloadManager(
         ytDlpRuntimeManager.setBusyPredicate {
             _jobs.value.any { it.state.isForegroundWork }
         }
-        ytDlpRuntimeManager.onActiveRuntimeChanged = { refreshRuntimeStatus() }
+        ytDlpRuntimeManager.onActiveRuntimeChanged = {
+            refreshRuntimeStatus()
+            estimateCache.clear()
+        }
         scope.launch(Dispatchers.IO) {
             val initial = runCatching { store.load().sortedByDescending(DownloadJob::createdAt) }.getOrDefault(emptyList())
             synchronized(_jobs) {
@@ -391,12 +403,91 @@ class VrkaDownloadManager(
     /**
      * Metadata-only preflight for the confirmation UI. Runs on the active runtime after
      * runtime initialization; failures degrade to an "unavailable" estimate.
+     *
+     * Results are reused across UI stages (share card -> confirmation) and concurrent
+     * callers with the same key share one yt-dlp process. [forceRefresh] bypasses the cache
+     * for the user-visible retry action.
      */
-    suspend fun estimateSize(request: DownloadRequest): SizeEstimate =
+    suspend fun estimateSize(request: DownloadRequest, forceRefresh: Boolean = false): SizeEstimate =
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             ensureInitialized()
-            sizeEstimator.estimate(request)
+            val runtimeVersion = normalizedVersion(ytDlpRuntimeManager.activeVersion())
+            val key = MetadataEstimateCache.keyFor(request, runtimeVersion)
+            if (!forceRefresh) {
+                estimateCache.get(key)?.let { return@withContext it }
+            }
+            val (deferred, owner) = synchronized(estimateInFlight) {
+                val existing = estimateInFlight[key]
+                if (existing != null) {
+                    existing to false
+                } else {
+                    CompletableDeferred<SizeEstimate>().also { estimateInFlight[key] = it } to true
+                }
+            }
+            if (!owner) return@withContext deferred.await()
+            try {
+                val preflight = sizeEstimator.probe(request)
+                estimateCache.put(key, preflight.estimate)
+                if (!preflight.estimate.isAvailable &&
+                    preflight.estimate.detail != "custom-command" &&
+                    rememberEstimateDiagnostic(key)
+                ) {
+                    recordSizeDiagnostic(request, preflight)
+                }
+                deferred.complete(preflight.estimate)
+                preflight.estimate
+            } catch (error: Throwable) {
+                deferred.completeExceptionally(error)
+                throw error
+            } finally {
+                synchronized(estimateInFlight) { estimateInFlight.remove(key) }
+            }
         }
+
+    private fun rememberEstimateDiagnostic(key: String): Boolean {
+        if (recordedEstimateDiagnostics.size >= MAX_ESTIMATE_DIAGNOSTICS) {
+            recordedEstimateDiagnostics.clear()
+        }
+        return recordedEstimateDiagnostics.add(key)
+    }
+
+    private suspend fun recordSizeDiagnostic(request: DownloadRequest, preflight: SizePreflight) {
+        val estimate = preflight.estimate
+        diagnosticStore.record(
+            DiagnosticEntry(
+                jobId = "preflight-" + UUID.randomUUID(),
+                title = estimate.title.ifBlank { request.url },
+                stage = "Size preflight",
+                failureCategory = "SIZE_UNAVAILABLE",
+                summary = buildString {
+                    append("Size estimate unavailable: ")
+                    append(estimate.detail.ifBlank { "unknown" })
+                    if (preflight.timedOut) {
+                        append(" (timed out after ").append(preflight.durationMs).append(" ms)")
+                    }
+                },
+                detail = buildString {
+                    appendLine("mode=${request.mode} quality=${request.quality.label} fps60=${request.prefer60Fps}")
+                    appendLine("selector=${preflight.formatSelector}")
+                    appendLine("runtime=${preflight.runtimeLabel}")
+                    appendLine(
+                        "startedAt=${preflight.startedAtEpochMs} durationMs=${preflight.durationMs} " +
+                            "exit=${preflight.exitCode ?: "unknown"} timedOut=${preflight.timedOut} " +
+                            "stdoutChars=${preflight.stdoutChars}",
+                    )
+                    if (estimate.diagnostic.isNotBlank()) appendLine(estimate.diagnostic)
+                    if (preflight.stderrTail.isNotBlank()) {
+                        appendLine("stderr:")
+                        appendLine(preflight.stderrTail)
+                    }
+                },
+                url = request.url,
+                quality = request.quality.label,
+                acquisitionMethod = "Native yt-dlp",
+                runtime = preflight.runtimeLabel,
+            ),
+        )
+    }
 
     fun updateRuntime(channel: UpdatePreference) {
         if (_runtime.value.busy) return
@@ -1459,6 +1550,7 @@ class VrkaDownloadManager(
     private fun isHttpUrl(value: String): Boolean = CustomCommandPolicy.isHttpUrl(value)
 
     companion object {
+        private const val MAX_ESTIMATE_DIAGNOSTICS = 64
         private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "webm", "mov", "m4v", "ts")
         private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "mka", "aac", "opus", "flac", "wav", "ogg")
         private val PUBLISHABLE_EXTENSIONS = VIDEO_EXTENSIONS + AUDIO_EXTENSIONS + setOf("srt", "vtt", "ass", "ssa")

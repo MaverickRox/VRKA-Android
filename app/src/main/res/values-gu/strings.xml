@@ -142,6 +142,7 @@
     <string name="estimate_exact">ચોક્કસ કદ</string>
     <string name="estimate_skip_future">ડાઉનલોડ પહેલાં કદના અંદાજો ન દર્શાવો</string>
     <string name="estimate_unavailable">કદ ઉપલબ્ધ નથી</string>
+    <string name="estimate_unavailable_hint">VRKA આ લિંક માટે કદ વાંચી શક્યું નથી. તમે ફરી પ્રયાસ કરી શકો છો અથવા તેમ છતાં ડાઉનલોડ કરી શકો છો.</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d બાકી</string>
     <string name="eta_format_minutes">%1$d:%2$02d બાકી</string>
     <string name="failure_auth_detail">આ સાઇટ માટે લૉગિન કરેલ બ્રાઉઝર સેશનની જરૂર હોઈ શકે છે.</string>

@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -53,7 +54,7 @@ internal fun ShareConfigSheet(
     link: SharedLinkRequest,
     settings: AppSettings,
     repository: SettingsRepository,
-    onEstimateSize: suspend (DownloadRequest) -> SizeEstimate,
+    onEstimateSize: suspend (DownloadRequest, Boolean) -> SizeEstimate,
     onEnqueue: (DownloadRequest) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -125,8 +126,9 @@ internal fun ShareConfigSheet(
     val estimateGate = remember(link.id) { SizeEstimateGate() }
     var estimate by remember(link.id) { mutableStateOf<SizeEstimate?>(null) }
     var estimating by remember(link.id) { mutableStateOf(settings.showDownloadSizeConfirmation) }
+    var estimateRetryToken by remember(link.id) { mutableStateOf(0) }
 
-    LaunchedEffect(previewRequest, settings.showDownloadSizeConfirmation) {
+    LaunchedEffect(previewRequest, settings.showDownloadSizeConfirmation, estimateRetryToken) {
         estimateGate.invalidate()
         if (!settings.showDownloadSizeConfirmation) {
             estimate = null
@@ -136,8 +138,9 @@ internal fun ShareConfigSheet(
         estimating = true
         estimate = null
         val token = estimateGate.begin()
-        delay(ESTIMATE_DEBOUNCE_MS)
-        val result = runCatching { onEstimateSize(previewRequest) }
+        // Retries are explicit user actions; skip the selection debounce.
+        if (estimateRetryToken == 0) delay(ESTIMATE_DEBOUNCE_MS)
+        val result = runCatching { onEstimateSize(previewRequest, estimateRetryToken > 0) }
             .getOrElse { SizeEstimate.unavailable("error") }
         if (!estimateGate.accepts(token)) return@LaunchedEffect
         estimate = result
@@ -326,6 +329,7 @@ internal fun ShareConfigSheet(
                 ShareEstimateCard(
                     estimate = estimate,
                     pending = estimating,
+                    onRetry = { estimateRetryToken++ },
                 )
             }
 
@@ -463,6 +467,7 @@ private fun ShareOptionToggle(
 private fun ShareEstimateCard(
     estimate: SizeEstimate?,
     pending: Boolean,
+    onRetry: () -> Unit,
 ) {
     val context = LocalContext.current
     Surface(
@@ -510,11 +515,27 @@ private fun ShareEstimateCard(
                         color = VrkaTokens.TextPrimary,
                     )
                 }
-                else -> Text(
-                    stringResource(R.string.estimate_unavailable),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = VrkaTokens.TextSecondary,
-                )
+                else -> {
+                    Text(
+                        stringResource(R.string.estimate_unavailable),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = VrkaTokens.TextSecondary,
+                    )
+                    Text(
+                        stringResource(R.string.estimate_unavailable_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VrkaTokens.TextTertiary,
+                    )
+                    TextButton(
+                        onClick = onRetry,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 0.dp,
+                            vertical = 0.dp,
+                        ),
+                    ) {
+                        Text(stringResource(R.string.action_retry))
+                    }
+                }
             }
         }
     }

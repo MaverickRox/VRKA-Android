@@ -142,6 +142,7 @@
     <string name="estimate_exact">सटीक आकार</string>
     <string name="estimate_skip_future">डाउनलोड से पहले आकार का अनुमान न दिखाएँ</string>
     <string name="estimate_unavailable">आकार उपलब्ध नहीं</string>
+    <string name="estimate_unavailable_hint">VRKA इस लिंक के लिए आकार नहीं पढ़ सका। आप पुनः प्रयास कर सकते हैं या फिर भी डाउनलोड कर सकते हैं।</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d शेष</string>
     <string name="eta_format_minutes">%1$d:%2$02d शेष</string>
     <string name="failure_auth_detail">स्रोत को प्रमाणित ब्राउज़र सत्र की आवश्यकता हो सकती है।</string>

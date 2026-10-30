@@ -1,0 +1,26 @@
+{
+  "_type": "video",
+  "id": "jNQXAC9IVRw",
+  "title": "Me at the zoo",
+  "duration": 18.933,
+  "format_id": "395+251",
+  "filesize": null,
+  "filesize_approx": 475961,
+  "requested_downloads": [
+    {
+      "requested_formats": [
+        {"format_id": "395", "ext": "mp4", "filesize": 223779, "filesize_approx": 223778, "tbr": 94.556, "height": 240, "fps": 15, "vcodec": "av01.0.00M.08.0.110.05.01.06.0", "acodec": "none"},
+        {"format_id": "251", "ext": "webm", "filesize": 252182, "filesize_approx": 252180, "tbr": 106.064, "vcodec": "none", "acodec": "opus"}
+      ]
+    }
+  ],
+  "formats": [
+    {"format_id": "139", "ext": "m4a", "filesize": 117526, "filesize_approx": 117524, "tbr": 49.14, "vcodec": "none", "acodec": "mp4a.40.5"},
+    {"format_id": "249", "ext": "webm", "filesize": 112596, "filesize_approx": 112594, "tbr": 47.356, "vcodec": "none", "acodec": "opus"},
+    {"format_id": "140", "ext": "m4a", "filesize": 309288, "filesize_approx": 309287, "tbr": 129.796, "vcodec": "none", "acodec": "mp4a.40.2"},
+    {"format_id": "251", "ext": "webm", "filesize": 252182, "filesize_approx": 252180, "tbr": 106.064, "vcodec": "none", "acodec": "opus"},
+    {"format_id": "160", "ext": "mp4", "filesize": 70017, "filesize_approx": 70016, "tbr": 29.219, "height": 144, "fps": 15, "vcodec": "avc1.4d400c", "acodec": "none"},
+    {"format_id": "395", "ext": "mp4", "filesize": 223779, "filesize_approx": 223778, "tbr": 94.556, "height": 240, "fps": 15, "vcodec": "av01.0.00M.08.0.110.05.01.06.0", "acodec": "none"},
+    {"format_id": "18", "ext": "mp4", "filesize": 475961, "filesize_approx": 475960, "tbr": 202.145, "height": 240, "fps": 15, "vcodec": "avc1.42001E", "acodec": "mp4a.40.2"}
+  ]
+}

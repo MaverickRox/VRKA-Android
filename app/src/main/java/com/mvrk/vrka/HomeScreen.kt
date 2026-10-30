@@ -64,7 +64,7 @@ internal fun HomeScreen(
     runtime: RuntimeStatus,
     modifier: Modifier = Modifier,
     onEnqueue: (DownloadRequest) -> Unit,
-    onEstimateSize: suspend (DownloadRequest) -> SizeEstimate,
+    onEstimateSize: suspend (DownloadRequest, Boolean) -> SizeEstimate,
     onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val context = LocalContext.current
@@ -128,6 +128,20 @@ internal fun HomeScreen(
         skipFutureEstimates = false
     }
 
+    fun requestSizeEstimate(request: DownloadRequest, forceRefresh: Boolean) {
+        sizeEstimate = null
+        estimatePending = true
+        val token = estimateGate.begin()
+        scope.launch {
+            val result = runCatching { onEstimateSize(request, forceRefresh) }
+                .getOrElse { SizeEstimate.unavailable("error") }
+            // Reject metadata that belongs to an older selection or a dismissed sheet.
+            if (!estimateGate.accepts(token)) return@launch
+            sizeEstimate = result
+            estimatePending = false
+        }
+    }
+
     fun beginConfirmation(request: DownloadRequest, needsLocation: Boolean, isLocationValid: Boolean) {
         if (!settings.showDownloadSizeConfirmation && !needsLocation) {
             onEnqueue(request.copy(destinationTreeUri = settings.outputTreeUri))
@@ -150,17 +164,7 @@ internal fun HomeScreen(
             estimatePending = false
             return
         }
-        sizeEstimate = null
-        estimatePending = true
-        val token = estimateGate.begin()
-        scope.launch {
-            val result = runCatching { onEstimateSize(request) }
-                .getOrElse { SizeEstimate.unavailable("error") }
-            // Reject metadata that belongs to an older selection or a dismissed sheet.
-            if (!estimateGate.accepts(token)) return@launch
-            sizeEstimate = result
-            estimatePending = false
-        }
+        requestSizeEstimate(request, forceRefresh = false)
     }
 
     fun confirmDownload() {
@@ -868,6 +872,9 @@ internal fun HomeScreen(
                 onToggleSkipFuture = { skipFutureEstimates = it },
                 onChooseLocation = { folderPicker.launch(null) },
                 onToggleSetDefault = { setAsDefaultChecked = it },
+                onRetryEstimate = {
+                    confirmationRequest?.let { requestSizeEstimate(it, forceRefresh = true) }
+                },
                 onConfirm = { confirmDownload() },
                 onDismiss = { dismissConfirmation() },
             )
@@ -949,6 +956,7 @@ private fun DownloadConfirmationDialog(
     onToggleSkipFuture: (Boolean) -> Unit,
     onChooseLocation: () -> Unit,
     onToggleSetDefault: (Boolean) -> Unit,
+    onRetryEstimate: () -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -1067,11 +1075,29 @@ private fun DownloadConfirmationDialog(
                                         color = VrkaTokens.TextPrimary,
                                     )
                                 }
-                                else -> Text(
-                                    stringResource(R.string.estimate_unavailable),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = VrkaTokens.TextSecondary,
-                                )
+                                else -> Column(
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        stringResource(R.string.estimate_unavailable),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = VrkaTokens.TextSecondary,
+                                    )
+                                    Text(
+                                        stringResource(R.string.estimate_unavailable_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = VrkaTokens.TextTertiary,
+                                    )
+                                    TextButton(
+                                        onClick = onRetryEstimate,
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                            horizontal = 0.dp,
+                                            vertical = 0.dp,
+                                        ),
+                                    ) {
+                                        Text(stringResource(R.string.action_retry))
+                                    }
+                                }
                             }
                         }
                     }

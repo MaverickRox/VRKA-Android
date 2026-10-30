@@ -142,6 +142,7 @@ Möchten Sie parallele Downloads wirklich aktivieren?</string>
     <string name="estimate_exact">Genaue Größe</string>
     <string name="estimate_skip_future">Größenschätzungen vor Downloads nicht anzeigen</string>
     <string name="estimate_unavailable">Größe nicht verfügbar</string>
+    <string name="estimate_unavailable_hint">VRKA konnte für diesen Link keine Größe ermitteln. Du kannst es erneut versuchen oder trotzdem herunterladen.</string>
     <string name="eta_format_hours">noch %1$d:%2$02d:%3$02d</string>
     <string name="eta_format_minutes">noch %1$d:%2$02d</string>
     <string name="failure_auth_detail">Die Quelle erfordert möglicherweise eine authentifizierte Browser-Sitzung.</string>
