@@ -112,6 +112,64 @@ class MetadataEstimateCacheTest {
         assertEquals(available, cache.get(third))
     }
 
+    @Test
+    fun documentKeyIgnoresFormatSelectionAndTrim() {
+        val base = DownloadRequest(url = URL)
+        val key = MetadataDocumentCache.keyFor(base, "2026.01.01")
+
+        // The cached document contains every stream, so these changes only affect the local
+        // recalculation and must not trigger another extraction.
+        assertEquals(key, MetadataDocumentCache.keyFor(base.copy(quality = VideoQuality.P720), "2026.01.01"))
+        assertEquals(key, MetadataDocumentCache.keyFor(base.copy(prefer60Fps = true), "2026.01.01"))
+        assertEquals(
+            key,
+            MetadataDocumentCache.keyFor(
+                base.copy(mode = MediaMode.AUDIO, audioFormat = AudioFormat.MP3, mp3Bitrate = 320),
+                "2026.01.01",
+            ),
+        )
+        assertEquals(key, MetadataDocumentCache.keyFor(base.copy(trimStart = "00:01:00"), "2026.01.01"))
+    }
+
+    @Test
+    fun documentKeyTracksSourceRuntimeRangeAndHeaders() {
+        val base = DownloadRequest(url = URL)
+        val key = MetadataDocumentCache.keyFor(base, "2026.01.01")
+
+        assertNotEquals(key, MetadataDocumentCache.keyFor(base.copy(url = "$URL/2"), "2026.01.01"))
+        assertNotEquals(key, MetadataDocumentCache.keyFor(base, "2026.02.02"))
+        assertNotEquals(
+            key,
+            MetadataDocumentCache.keyFor(base.copy(isPlaylist = true, playlistStart = 2), "2026.01.01"),
+        )
+        assertNotEquals(
+            key,
+            MetadataDocumentCache.keyFor(
+                base.copy(resolvedHeaders = mapOf("Referer" to "https://private.example/a")),
+                "2026.01.01",
+            ),
+        )
+    }
+
+    @Test
+    fun documentCacheExpiresAndStaysBounded() {
+        val cache = MetadataDocumentCache(maxEntries = 2, ttlMs = 60_000L, clock = { now })
+        cache.put("a", MetadataDocumentCache.Document("{}", "video|best", now))
+        cache.put("b", MetadataDocumentCache.Document("{}", "video|best", now))
+        cache.get("a")
+        cache.put("c", MetadataDocumentCache.Document("{}", "video|best", now))
+
+        assertEquals(2, cache.size())
+        assertTrue(cache.get("a") != null)
+        assertNull(cache.get("b"))
+        assertTrue(cache.get("c") != null)
+
+        now += 60_001L
+        assertNull(cache.get("a"))
+        assertNull(cache.get("c"))
+        assertEquals(0, cache.size())
+    }
+
     private companion object {
         const val URL = "https://example.test/video"
     }

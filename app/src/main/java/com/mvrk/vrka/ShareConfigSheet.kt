@@ -127,6 +127,7 @@ internal fun ShareConfigSheet(
     var estimate by remember(link.id) { mutableStateOf<SizeEstimate?>(null) }
     var estimating by remember(link.id) { mutableStateOf(settings.showDownloadSizeConfirmation) }
     var estimateRetryToken by remember(link.id) { mutableStateOf(0) }
+    var firstPreflight by remember(link.id) { mutableStateOf(true) }
 
     LaunchedEffect(previewRequest, settings.showDownloadSizeConfirmation, estimateRetryToken) {
         estimateGate.invalidate()
@@ -138,8 +139,11 @@ internal fun ShareConfigSheet(
         estimating = true
         estimate = null
         val token = estimateGate.begin()
-        // Retries are explicit user actions; skip the selection debounce.
-        if (estimateRetryToken == 0) delay(ESTIMATE_DEBOUNCE_MS)
+        // The sheet appears immediately. Only selection changes are debounced; the first
+        // preflight and explicit retries start at once.
+        val immediate = estimateRetryToken > 0 || firstPreflight
+        firstPreflight = false
+        if (!immediate) delay(ESTIMATE_DEBOUNCE_MS)
         val result = runCatching { onEstimateSize(previewRequest, estimateRetryToken > 0) }
             .getOrElse { SizeEstimate.unavailable("error") }
         if (!estimateGate.accepts(token)) return@LaunchedEffect
@@ -151,8 +155,8 @@ internal fun ShareConfigSheet(
     }
 
     val locationReady = !needsLocation || locationUri.isNotBlank()
-    val estimateReady = !settings.showDownloadSizeConfirmation || (!estimating && estimate != null)
-    val canDownload = locationReady && estimateReady && !submitted
+    // Size metadata is informational; a slow or failed preflight must not block the download.
+    val canDownload = locationReady && !submitted
 
     fun submit() {
         if (!canDownload) return

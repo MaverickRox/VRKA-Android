@@ -407,10 +407,146 @@ class SizeEstimateTest {
         assertTrue(request.hasOption("--dump-single-json"))
     }
 
+    @Test
+    fun localRecalculationSelectsCachedFormatsForANewQuality() {
+        val request = DownloadRequest(url = URL, quality = VideoQuality.P720)
+        val estimate = localEstimate(request)
+
+        // 720p video + best audio, from the cached table: no second extraction.
+        assertEquals(9_000_000L, estimate.bytes)
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+        assertEquals("local-merged", estimate.detail)
+
+        // Without local recalculation the document still describes the old 2160p selection.
+        val stale = SizeEstimateCalculator.fromMetadataJson(FORMAT_DOCUMENT, request)
+        assertEquals(101_000_000L, stale.bytes)
+    }
+
+    @Test
+    fun localRecalculationPrefersSixtyFpsWhenRequested() {
+        // yt-dlp's `bestvideo[height<=H][fps>=60]` accepts a lower resolution to get 60fps.
+        val document = """
+            {
+              "title": "Fps preference",
+              "duration": 100,
+              "formats": [
+                {"format_id": "v1080-30", "vcodec": "avc1", "acodec": "none", "height": 1080, "fps": 30, "filesize": 20000000},
+                {"format_id": "v720-60", "vcodec": "avc1", "acodec": "none", "height": 720, "fps": 60, "filesize": 8000000},
+                {"format_id": "a", "vcodec": "none", "acodec": "mp4a", "filesize": 1000000}
+              ]
+            }
+        """
+        val base = DownloadRequest(url = URL, quality = VideoQuality.P1080, prefer60Fps = true)
+        assertEquals(9_000_000L, localEstimate(base, document).bytes)
+        assertEquals(21_000_000L, localEstimate(base.copy(prefer60Fps = false), document).bytes)
+    }
+
+    @Test
+    fun localRecalculationNeverClaimsExactness() {
+        val estimate = localEstimate(
+            DownloadRequest(url = URL, quality = VideoQuality.P720),
+            """
+            {
+              "title": "Progressive",
+              "duration": 60,
+              "formats": [
+                {"format_id": "22", "vcodec": "avc1", "acodec": "mp4a", "height": 720, "filesize": 5000000}
+              ]
+            }
+            """,
+        )
+
+        assertEquals(5_000_000L, estimate.bytes)
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+        assertEquals("local", estimate.detail)
+    }
+
+    @Test
+    fun localRecalculationUsesDirectMediaSizeWithoutAFormatTable() {
+        val estimate = localEstimate(
+            DownloadRequest(url = URL, quality = VideoQuality.P480),
+            """{"title": "Direct", "duration": 10, "filesize": 4000000}""",
+        )
+
+        assertEquals(4_000_000L, estimate.bytes)
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+    }
+
+    @Test
+    fun localRecalculationSelectsBestAudioStream() {
+        val estimate = localEstimate(
+            DownloadRequest(url = URL, mode = MediaMode.AUDIO, audioFormat = AudioFormat.OPUS),
+            """
+            {
+              "title": "Audio",
+              "duration": 100,
+              "formats": [
+                {"format_id": "v", "vcodec": "avc1", "acodec": "none", "height": 1080, "filesize": 9000000},
+                {"format_id": "a128", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 128, "filesize": 1000000},
+                {"format_id": "aopus", "vcodec": "none", "acodec": "opus", "abr": 160, "filesize": 1500000}
+              ]
+            }
+            """,
+        )
+
+        assertEquals(1_500_000L, estimate.bytes)
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+    }
+
+    @Test
+    fun localRecalculationOfPlaylistEntriesUsesEachEntryTable() {
+        val estimate = localEstimate(
+            DownloadRequest(url = URL, quality = VideoQuality.P1080, isPlaylist = true),
+            """
+            {
+              "_type": "playlist",
+              "title": "List",
+              "entries": [
+                {
+                  "title": "One",
+                  "duration": 10,
+                  "formats": [
+                    {"format_id": "v", "vcodec": "avc1", "acodec": "none", "height": 1080, "filesize": 2000000},
+                    {"format_id": "a", "vcodec": "none", "acodec": "mp4a", "filesize": 500000}
+                  ]
+                }
+              ]
+            }
+            """,
+        )
+
+        assertEquals(2_500_000L, estimate.bytes)
+        assertEquals(SizeEstimateKind.APPROXIMATE, estimate.kind)
+        assertEquals("playlist", estimate.detail)
+    }
+
     private fun estimate(request: DownloadRequest, json: String): SizeEstimate =
         SizeEstimateCalculator.fromMetadataJson(json, request)
 
+    private fun localEstimate(
+        request: DownloadRequest,
+        json: String = FORMAT_DOCUMENT,
+    ): SizeEstimate = SizeEstimateCalculator.fromMetadataJson(json, request, recalculateSelection = true)
+
     private companion object {
         const val URL = "https://example.test/video"
+
+        val FORMAT_DOCUMENT = """
+            {
+              "title": "Cached formats",
+              "duration": 100,
+              "formats": [
+                {"format_id": "v2160", "vcodec": "avc1", "acodec": "none", "height": 2160, "fps": 30, "filesize": 100000000},
+                {"format_id": "v1080-30", "vcodec": "avc1", "acodec": "none", "height": 1080, "fps": 30, "filesize": 20000000},
+                {"format_id": "v1080-60", "vcodec": "avc1", "acodec": "none", "height": 1080, "fps": 60, "filesize": 30000000},
+                {"format_id": "v720", "vcodec": "avc1", "acodec": "none", "height": 720, "fps": 30, "filesize": 8000000},
+                {"format_id": "a", "vcodec": "none", "acodec": "mp4a", "abr": 128, "filesize": 1000000}
+              ],
+              "requested_formats": [
+                {"format_id": "v2160", "filesize": 100000000},
+                {"format_id": "a", "filesize": 1000000}
+              ]
+            }
+        """
     }
 }

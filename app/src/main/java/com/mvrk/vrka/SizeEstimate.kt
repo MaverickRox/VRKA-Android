@@ -61,7 +61,18 @@ object SizeEstimateCalculator {
     private const val DEFAULT_SAMPLE_RATE = 48_000
     private const val DEFAULT_CHANNELS = 2
 
-    fun fromMetadataJson(jsonText: String, request: DownloadRequest): SizeEstimate {
+    /**
+     * @param recalculateSelection when the document was produced for a different quality or
+     * format, `requested_formats` describes the old selection. In that case the streams are
+     * re-selected locally from the cached `formats` table so no second extraction is needed.
+     * Those results are always approximate because the local ranking mirrors, but cannot
+     * guarantee, yt-dlp's own sort order.
+     */
+    fun fromMetadataJson(
+        jsonText: String,
+        request: DownloadRequest,
+        recalculateSelection: Boolean = false,
+    ): SizeEstimate {
         val root = parseRoot(jsonText)
             ?: return SizeEstimate.unavailable(
                 detail = "parse",
@@ -70,9 +81,9 @@ object SizeEstimateCalculator {
         val title = root.optString("title").trim().take(MAX_TITLE_LENGTH)
         val entries = root.optJSONArray("entries")
         return if (root.optString("_type") == "playlist" || entries != null) {
-            playlist(entries, request, title)
+            playlist(entries, request, title, recalculateSelection)
         } else {
-            single(root, request, title)
+            single(root, request, title, recalculateSelection)
         }
     }
 
@@ -93,7 +104,12 @@ object SizeEstimateCalculator {
         return runCatching { JSONObject(candidate) }.getOrNull()
     }
 
-    private fun playlist(entries: JSONArray?, request: DownloadRequest, title: String): SizeEstimate {
+    private fun playlist(
+        entries: JSONArray?,
+        request: DownloadRequest,
+        title: String,
+        recalculateSelection: Boolean,
+    ): SizeEstimate {
         if (entries == null || entries.length() == 0) {
             return SizeEstimate.unavailable("playlist-empty").copy(title = title)
         }
@@ -102,7 +118,7 @@ object SizeEstimateCalculator {
         for (index in 0 until entries.length()) {
             val entry = entries.optJSONObject(index)
                 ?: return SizeEstimate.unavailable("playlist-entry").copy(title = title)
-            val item = single(entry, request, "")
+            val item = single(entry, request, "", recalculateSelection)
             val bytes = item.bytes
             if (!item.isAvailable || bytes == null) {
                 return SizeEstimate.unavailable(
@@ -122,14 +138,19 @@ object SizeEstimateCalculator {
         )
     }
 
-    private fun single(json: JSONObject, request: DownloadRequest, title: String): SizeEstimate {
+    private fun single(
+        json: JSONObject,
+        request: DownloadRequest,
+        title: String,
+        recalculateSelection: Boolean,
+    ): SizeEstimate {
         val duration = json.optDouble("duration", Double.NaN)
             .takeIf { it.isFinite() && it > 0 }
         val effectiveDuration = effectiveDuration(request, duration)
         return if (request.mode == MediaMode.AUDIO) {
-            audio(json, request, duration, effectiveDuration, title)
+            audio(json, request, duration, effectiveDuration, title, recalculateSelection)
         } else {
-            video(json, request, duration, effectiveDuration, title)
+            video(json, request, duration, effectiveDuration, title, recalculateSelection)
         }
     }
 
@@ -139,7 +160,11 @@ object SizeEstimateCalculator {
         rawDuration: Double?,
         effectiveDuration: Double?,
         title: String,
+        recalculateSelection: Boolean,
     ): SizeEstimate {
+        if (recalculateSelection) {
+            return locallySelectedVideo(json, request, rawDuration, effectiveDuration, title)
+        }
         val formats = indexFormats(json)
         val requested = requestedFormats(json)
         var total = 0L
@@ -191,6 +216,151 @@ object SizeEstimateCalculator {
         )
     }
 
+    /**
+     * Re-selects video streams from the cached format table using the same tier order as
+     * [DownloadRequestFactory.buildVideoFormat]. Always reported as approximate because the
+     * local ranking mirrors the selector without being the selector itself.
+     */
+    private fun locallySelectedVideo(
+        json: JSONObject,
+        request: DownloadRequest,
+        rawDuration: Double?,
+        effectiveDuration: Double?,
+        title: String,
+    ): SizeEstimate {
+        val streams = selectLocalVideo(json, request)
+            ?: return SizeEstimate.unavailable(
+                detail = "selection-unavailable",
+                diagnostic = "cached metadata has no usable format table for local selection",
+            ).copy(title = title)
+        val formats = indexFormats(json)
+        var total = 0L
+        val missing = mutableListOf<String>()
+        streams.forEachIndexed { index, stream ->
+            val resolved = resolveSize(stream, formats, rawDuration)
+            if (resolved == null) {
+                missing += stream.optString("format_id").ifBlank { "stream-$index" }
+            } else {
+                total += resolved.bytes
+            }
+        }
+        if (missing.isNotEmpty() || total <= 0) return unavailableMissing(title, missing)
+
+        if (isTrimmed(request)) {
+            val scaled = scaleForTrim(total, rawDuration, effectiveDuration)
+                ?: return SizeEstimate.unavailable("trim-unknown").copy(title = title)
+            return SizeEstimate(SizeEstimateKind.APPROXIMATE, scaled, title, "trim")
+        }
+        return SizeEstimate(
+            kind = SizeEstimateKind.APPROXIMATE,
+            bytes = total,
+            title = title,
+            detail = if (streams.size > 1) "local-merged" else "local",
+        )
+    }
+
+    /**
+     * Tier order: 60fps video + audio, any video + audio, progressive at the requested
+     * height, then any progressive stream. Null means the document cannot be used locally.
+     */
+    private fun selectLocalVideo(json: JSONObject, request: DownloadRequest): List<JSONObject>? {
+        val formats = allFormats(json)
+        // Direct-media pages expose a single size on the root document instead of a table.
+        if (formats.isEmpty()) return listOf(json)
+        if (formats.any { !it.has("vcodec") || !it.has("acodec") }) return listOf(json)
+        val heightLimit = request.quality.height?.takeIf { it > 0 }
+        val videoOnly = formats.filter { it.isVideoOnly() }
+        val audioOnly = formats.filter { it.isAudioOnly() }
+        val progressive = formats.filter { it.isProgressive() }
+        val bestAudio = bestAudioStream(audioOnly)
+
+        if (bestAudio != null) {
+            if (request.prefer60Fps) {
+                bestVideoStream(videoOnly, heightLimit, minFps = 60.0)?.let {
+                    return listOf(it, bestAudio)
+                }
+            }
+            bestVideoStream(videoOnly, heightLimit, minFps = null)?.let {
+                return listOf(it, bestAudio)
+            }
+        }
+        bestProgressiveStream(progressive, heightLimit)?.let { return listOf(it) }
+        bestProgressiveStream(progressive, null)?.let { return listOf(it) }
+        val anyVideo = bestProgressiveStream(formats.filter { it.vcodec() != "none" }, null)
+        return anyVideo?.let { listOf(it) }
+    }
+
+    private fun selectLocalAudio(json: JSONObject, request: DownloadRequest): JSONObject? {
+        val formats = allFormats(json)
+        if (formats.isEmpty()) return null
+        if (formats.any { !it.has("acodec") || !it.has("vcodec") }) return null
+        val audioOnly = formats.filter { it.isAudioOnly() }
+        val preferred = if (request.audioFormat == AudioFormat.OPUS) {
+            audioOnly.filter { it.optString("acodec").startsWith("opus", ignoreCase = true) }
+        } else {
+            emptyList()
+        }
+        return bestAudioStream(preferred.ifEmpty { audioOnly })
+            ?: bestProgressiveStream(formats.filter { it.isProgressive() }, null)
+    }
+
+    private fun bestVideoStream(
+        candidates: List<JSONObject>,
+        heightLimit: Int?,
+        minFps: Double?,
+    ): JSONObject? = candidates
+        .filter { format ->
+            val height = format.optInt("height", 0)
+            val heightMatches = heightLimit == null || (height > 0 && height <= heightLimit)
+            val fpsMatches = minFps == null || format.optDouble("fps", 0.0) >= minFps
+            heightMatches && fpsMatches
+        }
+        .maxWithOrNull(
+            compareBy<JSONObject>({ it.optInt("height", 0) })
+                .thenBy { it.optDouble("fps", 0.0) }
+                .thenBy { it.optDouble("tbr", 0.0) },
+        )
+
+    private fun bestProgressiveStream(
+        candidates: List<JSONObject>,
+        heightLimit: Int?,
+    ): JSONObject? = candidates
+        .filter { format ->
+            val height = format.optInt("height", 0)
+            heightLimit == null || (height > 0 && height <= heightLimit)
+        }
+        .maxWithOrNull(
+            compareBy<JSONObject>({ it.optInt("height", 0) })
+                .thenBy { it.optDouble("fps", 0.0) }
+                .thenBy { it.optDouble("tbr", 0.0) },
+        )
+
+    private fun bestAudioStream(candidates: List<JSONObject>): JSONObject? =
+        candidates.maxWithOrNull(
+            compareBy<JSONObject>({ it.optDouble("abr", 0.0) })
+                .thenBy { it.optDouble("tbr", 0.0) }
+                .thenBy { it.optDouble("asr", 0.0) },
+        )
+
+    private fun allFormats(json: JSONObject): List<JSONObject> {
+        val formats = json.optJSONArray("formats") ?: return emptyList()
+        val result = ArrayList<JSONObject>(formats.length())
+        for (index in 0 until formats.length()) {
+            formats.optJSONObject(index)?.let { result.add(it) }
+        }
+        return result
+    }
+
+    private fun JSONObject.vcodec(): String = optString("vcodec", "none")
+
+    private fun JSONObject.acodec(): String = optString("acodec", "none")
+
+    private fun JSONObject.isVideoOnly(): Boolean = vcodec() != "none" && acodec() == "none"
+
+    private fun JSONObject.isAudioOnly(): Boolean = acodec() != "none" && vcodec() == "none"
+
+    private fun JSONObject.isProgressive(): Boolean = vcodec() != "none" && acodec() != "none"
+
     private fun unavailableMissing(title: String, missing: List<String>): SizeEstimate =
         SizeEstimate.unavailable(
             detail = "size-missing",
@@ -203,6 +373,7 @@ object SizeEstimateCalculator {
         rawDuration: Double?,
         effectiveDuration: Double?,
         title: String,
+        recalculateSelection: Boolean,
     ): SizeEstimate {
         val trimmed = isTrimmed(request)
         when (request.audioFormat) {
@@ -229,7 +400,9 @@ object SizeEstimateCalculator {
         // ever an approximation of the produced file.
         val formats = indexFormats(json)
         val requested = requestedFormats(json)
+        val local = if (recalculateSelection) selectLocalAudio(json, request) else null
         val source = when {
+            local != null -> resolveSize(local, formats, rawDuration)
             requested != null && requested.length() > 0 ->
                 requested.optJSONObject(0)?.let { resolveSize(it, formats, rawDuration) }
             else -> resolveSize(json, formats, rawDuration)

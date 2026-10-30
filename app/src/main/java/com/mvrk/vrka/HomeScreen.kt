@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +56,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -165,6 +167,48 @@ internal fun HomeScreen(
             return
         }
         requestSizeEstimate(request, forceRefresh = false)
+    }
+
+    // Warm the metadata cache as soon as the URL and options describe a valid request. The
+    // confirmation dialog then has a usable estimate immediately instead of starting the
+    // preflight only after the user taps Download.
+    LaunchedEffect(
+        url,
+        mode,
+        quality,
+        prefer60Fps,
+        audioFormat,
+        bitrate,
+        playlist,
+        playlistStart,
+        playlistEnd,
+        trimStart,
+        trimEnd,
+        referer,
+        origin,
+        customHeaders,
+    ) {
+        val normalized = url.trim()
+        if (!settings.showDownloadSizeConfirmation) return@LaunchedEffect
+        if (!CustomCommandPolicy.isHttpUrl(normalized)) return@LaunchedEffect
+        delay(PREFLIGHT_DEBOUNCE_MS)
+        val preview = DownloadRequest(
+            url = normalized,
+            mode = mode,
+            quality = quality,
+            prefer60Fps = prefer60Fps,
+            audioFormat = audioFormat,
+            mp3Bitrate = bitrate,
+            isPlaylist = playlist,
+            playlistStart = playlistStart.toIntOrNull(),
+            playlistEnd = playlistEnd.toIntOrNull(),
+            trimStart = trimStart,
+            trimEnd = trimEnd,
+            referer = referer.trim(),
+            origin = origin.trim(),
+            customHeaders = HeaderValidation.parseHeaderPairs(customHeaders),
+        )
+        runCatching { onEstimateSize(preview, false) }
     }
 
     fun confirmDownload() {
@@ -1183,8 +1227,10 @@ private fun DownloadConfirmationDialog(
         },
         confirmButton = {
             Button(
+                // A pending or failed estimate never blocks the download; the dialog keeps
+                // updating the size in place while the preflight completes.
                 onClick = onConfirm,
-                enabled = !estimatePending && estimate != null,
+                enabled = true,
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = VrkaTokens.Accent,
                     contentColor = Color.White,
@@ -1209,6 +1255,9 @@ private fun DownloadConfirmationDialog(
 }
 
 private fun digitsOnly(value: String): String = value.filter(Char::isDigit).take(5)
+
+/** Coalesce typing bursts; the metadata cache makes the later confirmation instant. */
+private const val PREFLIGHT_DEBOUNCE_MS = 700L
 
 private fun validateRequest(
     context: Context,
