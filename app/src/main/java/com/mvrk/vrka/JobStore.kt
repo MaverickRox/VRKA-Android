@@ -73,6 +73,9 @@ internal class JobStore(private val target: File) {
             .put("progress", job.progress.toDouble())
             .put("speed", job.speed)
             .put("eta", job.etaSeconds)
+            .put("downloadedBytes", job.downloadedBytes)
+            .put("totalBytes", job.totalBytes)
+            .put("totalIsExact", job.totalIsExact)
             .put("created", job.createdAt)
             .put("updated", job.updatedAt)
             .put("outputs", JSONArray(job.outputUris))
@@ -206,6 +209,9 @@ internal class JobStore(private val target: File) {
             progress = value.optDouble("progress").toFloat(),
             speed = value.optString("speed"),
             etaSeconds = value.optionalLong("eta"),
+            downloadedBytes = value.optionalLong("downloadedBytes"),
+            totalBytes = value.optionalLong("totalBytes"),
+            totalIsExact = value.optBoolean("totalIsExact", false),
             createdAt = value.optLong("created", System.currentTimeMillis()),
             updatedAt = value.optLong("updated", System.currentTimeMillis()),
             outputUris = value.optJSONArray("outputs")?.strings().orEmpty(),

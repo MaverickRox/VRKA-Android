@@ -5,6 +5,13 @@ import androidx.compose.runtime.Immutable
 internal const val INTERRUPTED_DOWNLOAD_ERROR =
     "Download was interrupted when Android stopped VRKA. Tap retry."
 
+/**
+ * Automatic native yt-dlp attempts per logical job. Automatic retries were explicitly
+ * rejected; a classified failure enters browser fallback immediately or is reported with
+ * the manual Retry action. This constant documents and pins the single-attempt contract.
+ */
+internal const val MAX_NATIVE_TRANSFER_ATTEMPTS = 1
+
 enum class JobState {
     QUEUED,
     PREPARING,
@@ -122,6 +129,11 @@ data class DownloadJob(
     val progress: Float = 0f,
     val speed: String = "",
     val etaSeconds: Long? = null,
+    // Byte counts surfaced by the transfer itself. totalIsExact is false when the engine or
+    // yt-dlp only produced an estimate (`of ~ 48.20MiB`).
+    val downloadedBytes: Long? = null,
+    val totalBytes: Long? = null,
+    val totalIsExact: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
     val outputUris: List<String> = emptyList(),
