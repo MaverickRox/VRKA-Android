@@ -1,6 +1,7 @@
 package com.mvrk.vrka
 
 import android.content.Context
+import android.graphics.BlurMaskFilter
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.AbsoluteAlignment
@@ -18,6 +19,14 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -1370,6 +1379,162 @@ private fun VrkaNavItem(
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+    }
+}
+
+internal data class GlowProgressGeometry(
+    val fillWidthPx: Float,
+    val headCenterPx: Float,
+    val glowAlpha: Float,
+    val sheenVisible: Boolean,
+)
+
+/**
+ * Pure geometry for the download glow bar. The sheen is decorative, so reduced-motion
+ * users keep the fill and bloom but never see a travelling highlight.
+ */
+internal fun glowProgressGeometry(
+    progress: Float,
+    trackWidthPx: Float,
+    reduceMotion: Boolean,
+): GlowProgressGeometry {
+    val safeProgress = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+    val safeWidth = if (trackWidthPx.isFinite()) trackWidthPx.coerceAtLeast(0f) else 0f
+    val fill = safeWidth * safeProgress
+    return GlowProgressGeometry(
+        fillWidthPx = fill,
+        headCenterPx = fill,
+        glowAlpha = if (fill > 0f) 0.55f else 0f,
+        sheenVisible = !reduceMotion && fill > 0f && safeProgress < 1f,
+    )
+}
+
+/**
+ * Purple download progress with a soft bloom, a bright transfer head, and a travelling
+ * sheen while the transfer is live. The sheen and bloom motion stop for reduced-motion
+ * users; progress itself still follows the job.
+ */
+@Composable
+internal fun VrkaGlowProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+    height: Dp = 4.dp,
+) {
+    val reduceMotion = remember { !android.animation.ValueAnimator.areAnimatorsEnabled() }
+    val density = LocalDensity.current
+    val trackColor = VrkaTokens.SurfaceInset
+    val accent = VrkaTokens.Accent
+    val accentLight = VrkaTokens.AccentLight
+    val animatedProgress = animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = if (reduceMotion) snap() else spring(),
+        label = "glow progress",
+    )
+    // Only read inside draw, so animation frames invalidate drawing instead of composition.
+    val sheenPhase = if (reduceMotion) {
+        null
+    } else {
+        rememberInfiniteTransition(label = "progress sheen").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1800, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "sheen phase",
+        )
+    }
+    val glowPaint = remember(accent, height, density) {
+        android.graphics.Paint().apply {
+            color = accent.copy(alpha = 0.55f).toArgb()
+            isAntiAlias = true
+            maskFilter = BlurMaskFilter(
+                with(density) { height.toPx() } * 1.8f,
+                BlurMaskFilter.Blur.NORMAL,
+            )
+        }
+    }
+
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height),
+    ) {
+        val trackHeight = size.height
+        if (trackHeight <= 0f || size.width <= 0f) return@Canvas
+        val radius = CornerRadius(trackHeight / 2f)
+        drawRoundRect(color = trackColor, size = size, cornerRadius = radius)
+
+        val geometry = glowProgressGeometry(animatedProgress.value, size.width, reduceMotion)
+        if (geometry.fillWidthPx <= 0f) return@Canvas
+        val fillSize = Size(geometry.fillWidthPx, trackHeight)
+
+        drawIntoCanvas { canvas ->
+            canvas.nativeCanvas.drawRoundRect(
+                0f,
+                0f,
+                geometry.fillWidthPx,
+                trackHeight,
+                trackHeight / 2f,
+                trackHeight / 2f,
+                glowPaint,
+            )
+        }
+        drawRoundRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(accent, accentLight),
+                startX = 0f,
+                endX = geometry.fillWidthPx.coerceAtLeast(1f),
+            ),
+            size = fillSize,
+            cornerRadius = radius,
+        )
+        // Bright core line keeps the fill legible on dark glass.
+        drawRoundRect(
+            color = Color.White.copy(alpha = 0.32f),
+            topLeft = Offset(trackHeight * 0.15f, trackHeight * 0.22f),
+            size = Size(
+                (geometry.fillWidthPx - trackHeight * 0.3f).coerceAtLeast(0f),
+                trackHeight * 0.18f,
+            ),
+            cornerRadius = CornerRadius(trackHeight * 0.09f),
+        )
+        val head = Offset(geometry.headCenterPx, trackHeight / 2f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(accentLight.copy(alpha = 0.8f), Color.Transparent),
+                center = head,
+                radius = trackHeight * 2.2f,
+            ),
+            radius = trackHeight * 2.2f,
+            center = head,
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.95f),
+            radius = trackHeight * 0.3f,
+            center = head,
+        )
+
+        if (geometry.sheenVisible) {
+            val phase = sheenPhase?.value ?: 0f
+            val bandHalf = trackHeight * 2.2f
+            val center = geometry.fillWidthPx * phase
+            clipRect(0f, 0f, geometry.fillWidthPx, trackHeight) {
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.55f),
+                            Color.Transparent,
+                        ),
+                        startX = center - bandHalf,
+                        endX = center + bandHalf,
+                    ),
+                    size = fillSize,
+                    cornerRadius = radius,
+                )
+            }
         }
     }
 }
