@@ -23,13 +23,14 @@ val signingPropertiesFile = providers.environmentVariable("VRKA_SIGNING_PROPERTI
 val signingProperties = signingPropertiesFile?.takeIf { it.isFile }?.inputStream()?.use { input ->
     Properties().apply { load(input) }
 }
-val geckoViewVersion = "157.0.20261005135250"
+val geckoViewVersion = "159.0.20261022150525"
 
 extensions.configure<ApplicationExtension> {
     namespace = "com.mvrk.vrka"
     compileSdk {
         version = release(37) {
-            minorApiLevel = 1
+            // GeckoView 159 publishes minCompileSdk 37.2; this only affects compilation.
+            minorApiLevel = 2
         }
     }
 
