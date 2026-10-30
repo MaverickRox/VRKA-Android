@@ -2,33 +2,44 @@ package com.mvrk.vrka
 
 import android.content.Intent
 import android.text.format.Formatter as AndroidFormatter
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,16 +50,33 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Geometry for the compact floating configuration card. It never covers the whole screen and
+ * never exceeds a comfortable reading width, so the originating app stays visible around it.
+ */
+internal const val SHARE_CARD_WIDTH_FRACTION = 0.90f
+internal const val SHARE_CARD_MAX_WIDTH_DP = 420
+internal const val SHARE_CARD_MAX_HEIGHT_FRACTION = 0.85f
+private const val SHARE_CARD_SCRIM_ALPHA = 0.55f
+
+internal fun shareCardWidth(availableWidth: Dp): Dp =
+    minOf(availableWidth * SHARE_CARD_WIDTH_FRACTION, SHARE_CARD_MAX_WIDTH_DP.dp)
+
+internal fun shareCardMaxHeight(availableHeight: Dp): Dp =
+    availableHeight * SHARE_CARD_MAX_HEIGHT_FRACTION
+
 @Composable
 internal fun ShareConfigSheet(
     link: SharedLinkRequest,
@@ -60,7 +88,6 @@ internal fun ShareConfigSheet(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val initial = settings.shareSheetPreferences ?: ShareSheetPreferences(
         mode = settings.defaultMode,
         quality = settings.defaultQuality,
@@ -187,229 +214,264 @@ internal fun ShareConfigSheet(
         onDismiss()
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = VrkaTokens.SurfaceElevated,
-        contentColor = VrkaTokens.TextPrimary,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 20.dp),
+    BackHandler { onDismiss() }
+
+    val entryState = remember { MutableTransitionState(false).apply { targetState = true } }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val cardWidth = shareCardWidth(maxWidth)
+        val cardMaxHeight = shareCardMaxHeight(maxHeight)
+        AnimatedVisibility(
+            visibleState = entryState,
+            enter = fadeIn(tween(160)) + slideInVertically(tween(220)) { height -> height / 12 },
+            modifier = Modifier.fillMaxSize(),
         ) {
-            Text(
-                stringResource(R.string.share_sheet_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = VrkaTokens.TextPrimary,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                stringResource(R.string.share_sheet_source),
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = VrkaMonoFamily,
-                    letterSpacing = 1.1.sp,
-                ),
-                color = VrkaTokens.TextTertiary,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                link.url.hostLabel(),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = VrkaTokens.TextPrimary,
-            )
-            Text(
-                link.url,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-                color = VrkaTokens.TextSecondary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            Spacer(Modifier.height(18.dp))
-            ShareSectionLabel(stringResource(R.string.share_section_type))
-            ShareChoiceRow {
-                ShareMediaType.entries.forEach { item ->
-                    if (item == ShareMediaType.COMMANDS && !settings.customCommandMode) return@forEach
-                    VrkaChip(
-                        selected = type == item,
-                        onClick = { type = item },
-                        label = when (item) {
-                            ShareMediaType.VIDEO -> stringResource(R.string.media_mode_video)
-                            ShareMediaType.AUDIO -> stringResource(R.string.media_mode_audio)
-                            ShareMediaType.COMMANDS -> stringResource(R.string.share_type_commands)
-                        },
-                        isMonospace = true,
-                    )
-                }
-            }
-
-            when (type) {
-                ShareMediaType.VIDEO -> {
-                    Spacer(Modifier.height(16.dp))
-                    ShareSectionLabel(stringResource(R.string.section_video_resolution))
-                    ShareChoiceRow {
-                        VideoQuality.entries.forEach { item ->
-                            VrkaChip(
-                                selected = quality == item,
-                                onClick = { quality = item },
-                                label = when (item) {
-                                    VideoQuality.BEST -> stringResource(R.string.video_quality_best)
-                                    VideoQuality.P2160 -> "2160p 4K"
-                                    VideoQuality.P1440 -> "1440p 2K"
-                                    VideoQuality.P1080 -> "1080p FHD"
-                                    VideoQuality.P720 -> "720p HD"
-                                    VideoQuality.P480 -> "480p"
-                                    VideoQuality.P360 -> "360p"
-                                },
-                                isMonospace = true,
+            Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = SHARE_CARD_SCRIM_ALPHA))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss,
+                        ),
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(bottom = 16.dp),
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(28.dp),
+                        color = VrkaTokens.SurfaceElevated,
+                        contentColor = VrkaTokens.TextPrimary,
+                        shadowElevation = 24.dp,
+                        modifier = Modifier
+                            .width(cardWidth)
+                            .heightIn(max = cardMaxHeight)
+                            // Surface draws its background to the shape but does not clip
+                            // children; without this the scrolling content escapes the card.
+                            .clip(RoundedCornerShape(28.dp)),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 20.dp, vertical = 20.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.share_sheet_title),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = VrkaTokens.TextPrimary,
                             )
-                        }
-                    }
-                }
-                ShareMediaType.AUDIO -> {
-                    Spacer(Modifier.height(16.dp))
-                    ShareSectionLabel(stringResource(R.string.section_audio_format))
-                    ShareChoiceRow {
-                        AudioFormat.entries.forEach { item ->
-                            VrkaChip(
-                                selected = audioFormat == item,
-                                onClick = { audioFormat = item },
-                                label = item.label.substringBefore(" ("),
-                                isMonospace = true,
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                stringResource(R.string.share_sheet_source),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = VrkaMonoFamily,
+                                    letterSpacing = 1.1.sp,
+                                ),
+                                color = VrkaTokens.TextTertiary,
                             )
-                        }
-                    }
-                    if (audioFormat == AudioFormat.MP3) {
-                        Spacer(Modifier.height(14.dp))
-                        ShareSectionLabel(stringResource(R.string.section_mp3_bitrate))
-                        ShareChoiceRow {
-                            listOf(320, 256, 224, 192, 160, 128).forEach { item ->
-                                VrkaChip(
-                                    selected = bitrate == item,
-                                    onClick = { bitrate = item },
-                                    label = "$item kbps",
-                                    isMonospace = true,
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                link.url.hostLabel(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = VrkaTokens.TextPrimary,
+                            )
+                            Text(
+                                link.url,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                                color = VrkaTokens.TextSecondary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+
+                            Spacer(Modifier.height(18.dp))
+                            ShareSectionLabel(stringResource(R.string.share_section_type))
+                            ShareChoiceRow {
+                                ShareMediaType.entries.forEach { item ->
+                                    if (item == ShareMediaType.COMMANDS && !settings.customCommandMode) return@forEach
+                                    VrkaChip(
+                                        selected = type == item,
+                                        onClick = { type = item },
+                                        label = when (item) {
+                                            ShareMediaType.VIDEO -> stringResource(R.string.media_mode_video)
+                                            ShareMediaType.AUDIO -> stringResource(R.string.media_mode_audio)
+                                            ShareMediaType.COMMANDS -> stringResource(R.string.share_type_commands)
+                                        },
+                                        isMonospace = true,
+                                    )
+                                }
+                            }
+
+                            when (type) {
+                                ShareMediaType.VIDEO -> {
+                                    Spacer(Modifier.height(16.dp))
+                                    ShareSectionLabel(stringResource(R.string.section_video_resolution))
+                                    ShareChoiceRow {
+                                        VideoQuality.entries.forEach { item ->
+                                            VrkaChip(
+                                                selected = quality == item,
+                                                onClick = { quality = item },
+                                                label = when (item) {
+                                                    VideoQuality.BEST -> stringResource(R.string.video_quality_best)
+                                                    VideoQuality.P2160 -> "2160p 4K"
+                                                    VideoQuality.P1440 -> "1440p 2K"
+                                                    VideoQuality.P1080 -> "1080p FHD"
+                                                    VideoQuality.P720 -> "720p HD"
+                                                    VideoQuality.P480 -> "480p"
+                                                    VideoQuality.P360 -> "360p"
+                                                },
+                                                isMonospace = true,
+                                            )
+                                        }
+                                    }
+                                }
+                                ShareMediaType.AUDIO -> {
+                                    Spacer(Modifier.height(16.dp))
+                                    ShareSectionLabel(stringResource(R.string.section_audio_format))
+                                    ShareChoiceRow {
+                                        AudioFormat.entries.forEach { item ->
+                                            VrkaChip(
+                                                selected = audioFormat == item,
+                                                onClick = { audioFormat = item },
+                                                label = item.label.substringBefore(" ("),
+                                                isMonospace = true,
+                                            )
+                                        }
+                                    }
+                                    if (audioFormat == AudioFormat.MP3) {
+                                        Spacer(Modifier.height(14.dp))
+                                        ShareSectionLabel(stringResource(R.string.section_mp3_bitrate))
+                                        ShareChoiceRow {
+                                            listOf(320, 256, 224, 192, 160, 128).forEach { item ->
+                                                VrkaChip(
+                                                    selected = bitrate == item,
+                                                    onClick = { bitrate = item },
+                                                    label = "$item kbps",
+                                                    isMonospace = true,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                ShareMediaType.COMMANDS -> {
+                                    Spacer(Modifier.height(12.dp))
+                                    Text(
+                                        stringResource(
+                                            R.string.share_commands_template,
+                                            template?.name ?: stringResource(R.string.share_commands_none),
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = VrkaTokens.TextSecondary,
+                                    )
+                                }
+                            }
+
+                            if (type != ShareMediaType.COMMANDS) {
+                                Spacer(Modifier.height(10.dp))
+                                ShareOptionToggle(
+                                    label = stringResource(R.string.opt_download_subtitles),
+                                    checked = subtitles,
+                                    onCheckedChange = { subtitles = it },
+                                )
+                            }
+                            if (type == ShareMediaType.AUDIO && audioFormat != AudioFormat.WAV) {
+                                ShareOptionToggle(
+                                    label = stringResource(R.string.opt_embed_thumbnail),
+                                    checked = embedThumbnail,
+                                    onCheckedChange = { embedThumbnail = it },
+                                )
+                            }
+
+                            if (settings.showDownloadSizeConfirmation) {
+                                Spacer(Modifier.height(14.dp))
+                                ShareEstimateCard(
+                                    estimate = estimate,
+                                    pending = estimating,
+                                    onRetry = { estimateRetryToken++ },
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+                            ShareOptionToggle(
+                                label = stringResource(R.string.share_remember_choices),
+                                checked = rememberChoices,
+                                onCheckedChange = { rememberChoices = it },
+                            )
+
+                            if (needsLocation) {
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    stringResource(R.string.dialog_download_location_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = VrkaTokens.TextSecondary,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = VrkaTokens.SurfaceCard,
+                                    border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                    ) {
+                                        Column {
+                                            Text(
+                                                stringResource(R.string.label_destination),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = VrkaTokens.TextTertiary,
+                                            )
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(
+                                                OutputPublisher.formatDisplayPath(locationUri),
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = VrkaTokens.TextPrimary,
+                                            )
+                                        }
+                                        VrkaOutlinedButton(
+                                            text = stringResource(R.string.btn_choose_location),
+                                            onClick = { folderPicker.launch(null) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            height = 36.dp,
+                                        )
+                                    }
+                                }
+                                ShareOptionToggle(
+                                    label = stringResource(R.string.opt_remember_location),
+                                    checked = rememberLocation,
+                                    onCheckedChange = { rememberLocation = it },
+                                )
+                            }
+
+                            Spacer(Modifier.height(20.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                VrkaOutlinedButton(
+                                    text = stringResource(R.string.btn_cancel),
+                                    onClick = onDismiss,
+                                    modifier = Modifier.weight(1f),
+                                    height = 50.dp,
+                                )
+                                VrkaPrimaryButton(
+                                    text = stringResource(R.string.btn_download),
+                                    onClick = { submit() },
+                                    modifier = Modifier.weight(1.4f),
+                                    enabled = canDownload,
+                                    height = 50.dp,
                                 )
                             }
                         }
                     }
                 }
-                ShareMediaType.COMMANDS -> {
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        stringResource(
-                            R.string.share_commands_template,
-                            template?.name ?: stringResource(R.string.share_commands_none),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = VrkaTokens.TextSecondary,
-                    )
-                }
-            }
-
-            if (type != ShareMediaType.COMMANDS) {
-                Spacer(Modifier.height(10.dp))
-                ShareOptionToggle(
-                    label = stringResource(R.string.opt_download_subtitles),
-                    checked = subtitles,
-                    onCheckedChange = { subtitles = it },
-                )
-            }
-            if (type == ShareMediaType.AUDIO && audioFormat != AudioFormat.WAV) {
-                ShareOptionToggle(
-                    label = stringResource(R.string.opt_embed_thumbnail),
-                    checked = embedThumbnail,
-                    onCheckedChange = { embedThumbnail = it },
-                )
-            }
-
-            if (settings.showDownloadSizeConfirmation) {
-                Spacer(Modifier.height(14.dp))
-                ShareEstimateCard(
-                    estimate = estimate,
-                    pending = estimating,
-                    onRetry = { estimateRetryToken++ },
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-            ShareOptionToggle(
-                label = stringResource(R.string.share_remember_choices),
-                checked = rememberChoices,
-                onCheckedChange = { rememberChoices = it },
-            )
-
-            if (needsLocation) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    stringResource(R.string.dialog_download_location_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = VrkaTokens.TextSecondary,
-                )
-                Spacer(Modifier.height(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = VrkaTokens.SurfaceCard,
-                    border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Column {
-                            Text(
-                                stringResource(R.string.label_destination),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = VrkaTokens.TextTertiary,
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                OutputPublisher.formatDisplayPath(locationUri),
-                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
-                                fontWeight = FontWeight.SemiBold,
-                                color = VrkaTokens.TextPrimary,
-                            )
-                        }
-                        VrkaOutlinedButton(
-                            text = stringResource(R.string.btn_choose_location),
-                            onClick = { folderPicker.launch(null) },
-                            modifier = Modifier.fillMaxWidth(),
-                            height = 36.dp,
-                        )
-                    }
-                }
-                ShareOptionToggle(
-                    label = stringResource(R.string.opt_remember_location),
-                    checked = rememberLocation,
-                    onCheckedChange = { rememberLocation = it },
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                VrkaOutlinedButton(
-                    text = stringResource(R.string.btn_cancel),
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                    height = 50.dp,
-                )
-                VrkaPrimaryButton(
-                    text = stringResource(R.string.btn_download),
-                    onClick = { submit() },
-                    modifier = Modifier.weight(1.4f),
-                    enabled = canDownload,
-                    height = 50.dp,
-                )
             }
         }
     }
