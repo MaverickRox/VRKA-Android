@@ -37,6 +37,7 @@
     <string name="btn_cancel">ரத்துசெய்</string>
     <string name="btn_change">மாற்று</string>
     <string name="btn_open_queue">வரிசையைத் திற</string>
+    <string name="btn_open">திற</string>
     <string name="btn_check_all_updates">அனைத்துப் புதுப்பிப்புகளையும் சரிபார்</string>
     <string name="btn_check_for_updates">புதுப்பிப்புகளைச் சரிபார்</string>
     <string name="btn_checking">சரிபார்க்கிறது...</string>
@@ -217,6 +218,10 @@
     <string name="nav_settings">அமைப்புகள்</string>
     <string name="notification_channel_active_downloads">செயலில் உள்ள பதிவிறக்கங்கள்</string>
     <string name="notification_channel_active_downloads_description">VRKA-வில் தொடங்கப்பட்ட பதிவிறக்கங்களின் முன்னேற்றம்</string>
+    <string name="notification_channel_completed_downloads">முடிந்த பதிவிறக்கங்கள்</string>
+    <string name="notification_channel_completed_downloads_description">பதிவிறக்கம் சேமிக்கப்படும்போது அறிவிப்பு</string>
+    <string name="notification_download_completed">பதிவிறக்கம் முடிந்தது · %1$s</string>
+    <string name="notification_download_completed_files">பதிவிறக்கம் முடிந்தது · %1$d கோப்புகள் · %2$s</string>
     <string name="notification_default_title">VRKA பதிவிறக்கம்</string>
     <string name="notification_downloads_interrupted_text">Android பின்னணி பதிவிறக்க அமர்வை நிறுத்தியது. உங்கள் வரிசையைப் பார்க்க VRKA-ஐத் திறக்கவும்.</string>
     <string name="notification_downloads_interrupted_title">பதிவிறக்கங்கள் இடைநிறுத்தப்பட்டன</string>

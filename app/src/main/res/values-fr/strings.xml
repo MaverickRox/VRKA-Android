@@ -37,6 +37,7 @@
     <string name="btn_cancel">Annuler</string>
     <string name="btn_change">Modifier</string>
     <string name="btn_open_queue">Ouvrir la file d\'attente</string>
+    <string name="btn_open">Ouvrir</string>
     <string name="btn_check_all_updates">Vérifier toutes les mises à jour</string>
     <string name="btn_check_for_updates">Vérifier les mises à jour</string>
     <string name="btn_checking">Vérification...</string>
@@ -217,6 +218,10 @@ Voulez-vous vraiment activer les téléchargements simultanés ?</string>
     <string name="nav_settings">Paramètres</string>
     <string name="notification_channel_active_downloads">Téléchargements actifs</string>
     <string name="notification_channel_active_downloads_description">Progression des téléchargements initiés dans VRKA</string>
+    <string name="notification_channel_completed_downloads">Téléchargements terminés</string>
+    <string name="notification_channel_completed_downloads_description">Alerte lorsqu’un téléchargement est enregistré</string>
+    <string name="notification_download_completed">Téléchargement terminé · %1$s</string>
+    <string name="notification_download_completed_files">Téléchargement terminé · %1$d fichiers · %2$s</string>
     <string name="notification_default_title">Téléchargement VRKA</string>
     <string name="notification_downloads_interrupted_text">Android a interrompu la session de téléchargement en arrière-plan. Ouvrez VRKA pour consulter votre file d\'attente.</string>
     <string name="notification_downloads_interrupted_title">Téléchargements en pause</string>

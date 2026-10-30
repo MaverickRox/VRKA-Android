@@ -76,6 +76,7 @@ internal class JobStore(private val target: File) {
             .put("downloadedBytes", job.downloadedBytes)
             .put("totalBytes", job.totalBytes)
             .put("totalIsExact", job.totalIsExact)
+            .put("actualFinalBytes", job.actualFinalFileBytes)
             .put("created", job.createdAt)
             .put("updated", job.updatedAt)
             .put("outputs", JSONArray(job.outputUris))
@@ -212,6 +213,7 @@ internal class JobStore(private val target: File) {
             downloadedBytes = value.optionalLong("downloadedBytes"),
             totalBytes = value.optionalLong("totalBytes"),
             totalIsExact = value.optBoolean("totalIsExact", false),
+            actualFinalFileBytes = value.optionalLong("actualFinalBytes"),
             createdAt = value.optLong("created", System.currentTimeMillis()),
             updatedAt = value.optLong("updated", System.currentTimeMillis()),
             outputUris = value.optJSONArray("outputs")?.strings().orEmpty(),

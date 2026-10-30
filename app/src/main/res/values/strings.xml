@@ -37,6 +37,7 @@
     <string name="btn_cancel">Cancel</string>
     <string name="btn_change">Change</string>
     <string name="btn_open_queue">Open queue</string>
+    <string name="btn_open">Open</string>
     <string name="btn_check_all_updates">Check All Updates</string>
     <string name="btn_check_for_updates">Check for Updates</string>
     <string name="btn_checking">Checking...</string>
@@ -217,6 +218,10 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="nav_settings">Settings</string>
     <string name="notification_channel_active_downloads">Active downloads</string>
     <string name="notification_channel_active_downloads_description">Progress for downloads started in VRKA</string>
+    <string name="notification_channel_completed_downloads">Completed downloads</string>
+    <string name="notification_channel_completed_downloads_description">Alerts when a download is saved</string>
+    <string name="notification_download_completed">Download completed · %1$s</string>
+    <string name="notification_download_completed_files">Download completed · %1$d files · %2$s</string>
     <string name="notification_default_title">VRKA download</string>
     <string name="notification_downloads_interrupted_text">Android stopped the background download session. Open VRKA to review your queue.</string>
     <string name="notification_downloads_interrupted_title">Downloads paused</string>

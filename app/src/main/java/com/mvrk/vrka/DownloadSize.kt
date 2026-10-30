@@ -108,7 +108,12 @@ internal fun downloadSizeDisplay(job: DownloadJob): DownloadSizeDisplay {
         job.state == JobState.DOWNLOADING ||
         job.state == JobState.POSTPROCESSING
     if (job.state == JobState.DONE) {
-        val size = total ?: downloaded ?: return DownloadSizeDisplay.Hidden
+        // The published document is authoritative; the transfer total describes staging and
+        // may still carry the pre-merge estimate.
+        val size = job.actualFinalFileBytes?.takeIf { it > 0L }
+            ?: total
+            ?: downloaded
+            ?: return DownloadSizeDisplay.Hidden
         return DownloadSizeDisplay.Completed(size)
     }
     if (!active) {

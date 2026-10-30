@@ -134,6 +134,9 @@ data class DownloadJob(
     val downloadedBytes: Long? = null,
     val totalBytes: Long? = null,
     val totalIsExact: Boolean = false,
+    // Size of the published output as reported by the content provider. Only set after the
+    // file exists in its final destination, so it never inherits an estimate.
+    val actualFinalFileBytes: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
     val outputUris: List<String> = emptyList(),

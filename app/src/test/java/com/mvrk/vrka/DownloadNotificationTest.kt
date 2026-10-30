@@ -34,6 +34,26 @@ class DownloadNotificationTest {
     }
 
     @Test
+    fun completionNotificationIdentityIsOutsideTheActiveTransferIds() {
+        val id = DownloadNotifications.COMPLETION_NOTIFICATION_ID
+
+        assertTrue(id !in NOTIFICATION_ID_BASE..(NOTIFICATION_ID_BASE + 0xFFFF))
+        assertNotEquals(PENDING_NOTIFICATION_ID, id)
+        assertNotEquals(INTERRUPTED_NOTIFICATION_ID, id)
+        assertNotEquals(DOWNLOAD_TRANSFER_JOB_ID, id)
+        assertNotEquals(DownloadNotifications.CHANNEL_ID, DownloadNotifications.COMPLETION_CHANNEL_ID)
+    }
+
+    @Test
+    fun completionTagsAreStableAndDistinctPerJob() {
+        val alpha = DownloadNotifications.completionTagFor("job-alpha")
+
+        assertEquals(alpha, DownloadNotifications.completionTagFor("job-alpha"))
+        assertNotEquals(alpha, DownloadNotifications.completionTagFor("job-beta"))
+        assertTrue(alpha.isNotBlank())
+    }
+
+    @Test
     fun progressIsDeterminateOnlyWhileTransferring() {
         assertEquals(42, determinateProgressPercent(JobState.DOWNLOADING, 42.7f))
         assertEquals(100, determinateProgressPercent(JobState.DOWNLOADING, 150f))

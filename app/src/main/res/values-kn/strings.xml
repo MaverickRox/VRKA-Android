@@ -37,6 +37,7 @@
     <string name="btn_cancel">ರದ್ದುಮಾಡಿ</string>
     <string name="btn_change">ಬದಲಾಯಿಸಿ</string>
     <string name="btn_open_queue">ಸರದಿ ತೆರೆಯಿರಿ</string>
+    <string name="btn_open">ತೆರೆಯಿರಿ</string>
     <string name="btn_check_all_updates">ಎಲ್ಲಾ ನವೀಕರಣಗಳನ್ನು ಪರಿಶೀಲಿಸಿ</string>
     <string name="btn_check_for_updates">ನವೀಕರಣಗಳಿಗಾಗಿ ಪರಿಶೀಲಿಸಿ</string>
     <string name="btn_checking">ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ...</string>
@@ -217,6 +218,10 @@
     <string name="nav_settings">ಸೆಟ್ಟಿಂಗ್‌ಗಳು</string>
     <string name="notification_channel_active_downloads">ಸಕ್ರಿಯ ಡೌನ್‌ಲೋಡ್‌ಗಳು</string>
     <string name="notification_channel_active_downloads_description">VRKA ನಲ್ಲಿ ಪ್ರಾರಂಭಿಸಲಾದ ಡೌನ್‌ಲೋಡ್‌ಗಳ ಪ್ರಗತಿ</string>
+    <string name="notification_channel_completed_downloads">ಪೂರ್ಣಗೊಂಡ ಡೌನ್‌ಲೋಡ್‌ಗಳು</string>
+    <string name="notification_channel_completed_downloads_description">ಡೌನ್‌ಲೋಡ್ ಉಳಿಸಿದಾಗ ಎಚ್ಚರಿಕೆ</string>
+    <string name="notification_download_completed">ಡೌನ್‌ಲೋಡ್ ಪೂರ್ಣಗೊಂಡಿದೆ · %1$s</string>
+    <string name="notification_download_completed_files">ಡೌನ್‌ಲೋಡ್ ಪೂರ್ಣಗೊಂಡಿದೆ · %1$d ಫೈಲ್‌ಗಳು · %2$s</string>
     <string name="notification_default_title">VRKA ಡೌನ್‌ಲೋಡ್</string>
     <string name="notification_downloads_interrupted_text">Android ಹಿನ್ನೆಲೆ ಡೌನ್‌ಲೋಡ್ ಸೆಶನ್ ಅನ್ನು ನಿಲ್ಲಿಸಿದೆ. ನಿಮ್ಮ ಸರದಿ ಪರಿಶೀಲಿಸಲು VRKA ತೆರೆಯಿರಿ.</string>
     <string name="notification_downloads_interrupted_title">ಡೌನ್‌ಲೋಡ್‌ಗಳನ್ನು ವಿರಾಮಗೊಳಿಸಲಾಗಿದೆ</string>

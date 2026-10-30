@@ -37,6 +37,7 @@
     <string name="btn_cancel">বাতিল</string>
     <string name="btn_change">পরিবর্তন</string>
     <string name="btn_open_queue">সারি খুলুন</string>
+    <string name="btn_open">খুলুন</string>
     <string name="btn_check_all_updates">সমস্ত আপডেট পরীক্ষা করুন</string>
     <string name="btn_check_for_updates">আপডেটের জন্য পরীক্ষা করুন</string>
     <string name="btn_checking">পরীক্ষা করা হচ্ছে...</string>
@@ -217,6 +218,10 @@
     <string name="nav_settings">সেটিংস</string>
     <string name="notification_channel_active_downloads">সক্রিয় ডাউনলোড</string>
     <string name="notification_channel_active_downloads_description">VRKA-তে শুরু হওয়া ডাউনলোডের অগ্রগতি</string>
+    <string name="notification_channel_completed_downloads">সম্পন্ন ডাউনলোড</string>
+    <string name="notification_channel_completed_downloads_description">ডাউনলোড সংরক্ষিত হলে সতর্কতা</string>
+    <string name="notification_download_completed">ডাউনলোড সম্পন্ন · %1$s</string>
+    <string name="notification_download_completed_files">ডাউনলোড সম্পন্ন · %1$dটি ফাইল · %2$s</string>
     <string name="notification_default_title">VRKA ডাউনলোড</string>
     <string name="notification_downloads_interrupted_text">Android ব্যাকগ্রাউন্ড ডাউনলোড সেশন বন্ধ করেছে। আপনার সারি পর্যালোচনা করতে VRKA খুলুন।</string>
     <string name="notification_downloads_interrupted_title">ডাউনলোড বিরতি নেওয়া হয়েছে</string>
