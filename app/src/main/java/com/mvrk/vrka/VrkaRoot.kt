@@ -89,7 +89,7 @@ fun VrkaRoot(
         pageCount = { destinations.size },
     )
     val destination = destinations[pagerState.currentPage]
-    var pendingRequest by remember { mutableStateOf<DownloadRequest?>(null) }
+    var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     var pendingAppUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -102,23 +102,23 @@ fun VrkaRoot(
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
-        pendingRequest?.let(manager::enqueue)
-        pendingRequest = null
+        pendingDownload?.let { manager.enqueue(it.request, it.estimate) }
+        pendingDownload = null
         pendingAppUpdate?.let(manager.appUpdateManager::downloadAndInstall)
         pendingAppUpdate = null
     }
 
-    fun enqueue(request: DownloadRequest) {
+    fun enqueue(request: DownloadRequest, estimate: SizeEstimate?) {
         val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
         if (needsPermission) {
-            pendingRequest = request
+            pendingDownload = PendingDownload(request, estimate)
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            manager.enqueue(request)
+            manager.enqueue(request, estimate)
         }
         scope.launch {
             pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
@@ -178,9 +178,9 @@ fun VrkaRoot(
                     val historyJobs = remember(jobs) { jobs.filter { it.state.isTerminal } }
 
                     val handleEnqueue = remember(scope, snackbar) {
-                        { request: DownloadRequest ->
-                            runCatching { enqueue(request) }.onFailure { error ->
-                                pendingRequest = null
+                        { request: DownloadRequest, estimate: SizeEstimate? ->
+                            runCatching { enqueue(request, estimate) }.onFailure { error ->
+                                pendingDownload = null
                                 val message = error.message ?: "Could not add download"
                                 scope.launch { snackbar.showSnackbar(message) }
                             }

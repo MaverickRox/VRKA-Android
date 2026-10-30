@@ -107,8 +107,11 @@ class JobStorePersistenceTest {
                     id = "sized",
                     request = sampleRequest("https://example.com/sized"),
                     state = JobState.DONE,
-                    totalBytes = 171L * 1024 * 1024,
-                    totalIsExact = false,
+                    estimatedTotalBytes = 171L * 1024 * 1024,
+                    estimatedSizeAccuracy = SizeEstimateKind.APPROXIMATE,
+                    downloadedBytes = 171L * 1024 * 1024,
+                    reportedTotalBytes = 171L * 1024 * 1024,
+                    reportedTotalIsExact = false,
                     actualFinalFileBytes = 80L * 1024 * 1024,
                 ),
             ),
@@ -117,7 +120,10 @@ class JobStorePersistenceTest {
         val loaded = store.load().single()
 
         assertEquals(80L * 1024 * 1024, loaded.actualFinalFileBytes)
-        assertEquals(171L * 1024 * 1024, loaded.totalBytes)
+        assertEquals(171L * 1024 * 1024, loaded.reportedTotalBytes)
+        assertEquals(171L * 1024 * 1024, loaded.estimatedTotalBytes)
+        assertEquals(SizeEstimateKind.APPROXIMATE, loaded.estimatedSizeAccuracy)
+        assertFalse(loaded.reportedTotalIsExact)
     }
 
     @Test
@@ -129,12 +135,34 @@ class JobStorePersistenceTest {
                     id = "legacy",
                     request = sampleRequest("https://example.com/legacy"),
                     state = JobState.DONE,
-                    totalBytes = 5_000_000,
+                    reportedTotalBytes = 5_000_000,
                 ),
             ),
         )
 
-        assertNull(store.load().single().actualFinalFileBytes)
+        val loaded = store.load().single()
+        assertNull(loaded.actualFinalFileBytes)
+        assertNull(loaded.estimatedTotalBytes)
+        assertEquals(5_000_000L, loaded.reportedTotalBytes)
+    }
+
+    @Test
+    fun legacyRecordCreditItsTotalToTheTransferNotTheEstimate() {
+        val file = File(tempFolder.root, "legacy_total.json")
+        file.writeText(
+            """
+            [{"id":"old","state":"DONE","title":"Legacy","detail":"Complete",
+              "totalBytes":48200000,"totalIsExact":true,
+              "request":{"url":"https://example.com/old"}}]
+            """.trimIndent(),
+            Charsets.UTF_8,
+        )
+
+        val loaded = JobStore(file).load().single()
+
+        assertEquals(48_200_000L, loaded.reportedTotalBytes)
+        assertTrue(loaded.reportedTotalIsExact)
+        assertNull("An old transfer total must never be read as a preflight estimate", loaded.estimatedTotalBytes)
     }
 
     @Test
@@ -333,23 +361,23 @@ class JobStorePersistenceTest {
                     request = sampleRequest(),
                     state = JobState.DOWNLOADING,
                     downloadedBytes = 12_400_000L,
-                    totalBytes = 48_200_000L,
-                    totalIsExact = true,
+                    reportedTotalBytes = 48_200_000L,
+                    reportedTotalIsExact = true,
                 ),
                 DownloadJob(
                     id = "done",
                     request = sampleRequest(),
                     state = JobState.DONE,
                     downloadedBytes = 48_200_000L,
-                    totalBytes = 48_200_000L,
-                    totalIsExact = true,
+                    reportedTotalBytes = 48_200_000L,
+                    reportedTotalIsExact = true,
                 ),
                 DownloadJob(
                     id = "estimate-only",
                     request = sampleRequest(),
                     state = JobState.FAILED,
-                    totalBytes = 10_000_000L,
-                    totalIsExact = false,
+                    estimatedTotalBytes = 10_000_000L,
+                    estimatedSizeAccuracy = SizeEstimateKind.APPROXIMATE,
                 ),
             ),
         )
@@ -357,11 +385,12 @@ class JobStorePersistenceTest {
         val restored = store.load().associateBy { it.id }
 
         assertEquals(12_400_000L, restored.getValue("active").downloadedBytes)
-        assertEquals(48_200_000L, restored.getValue("active").totalBytes)
-        assertTrue(restored.getValue("active").totalIsExact)
-        assertEquals(48_200_000L, restored.getValue("done").totalBytes)
-        assertEquals(10_000_000L, restored.getValue("estimate-only").totalBytes)
-        assertFalse(restored.getValue("estimate-only").totalIsExact)
+        assertEquals(48_200_000L, restored.getValue("active").reportedTotalBytes)
+        assertTrue(restored.getValue("active").reportedTotalIsExact)
+        assertEquals(48_200_000L, restored.getValue("done").reportedTotalBytes)
+        assertEquals(10_000_000L, restored.getValue("estimate-only").estimatedTotalBytes)
+        assertEquals(SizeEstimateKind.APPROXIMATE, restored.getValue("estimate-only").estimatedSizeAccuracy)
+        assertNull(restored.getValue("estimate-only").reportedTotalBytes)
     }
 
     @Test

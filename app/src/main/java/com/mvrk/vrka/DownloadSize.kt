@@ -67,6 +67,68 @@ internal object DownloadSizeParser {
     }
 }
 
+/**
+ * Folds per-stream progress samples into a merged-selection total. yt-dlp downloads the video
+ * and audio streams separately and prints a fresh `of <size>` for each; the final container is
+ * their sum, so the displayed total must never shrink back to the size of the current stream.
+ * Repeated samples of one stream replace, never add to, that stream's total, so the same bytes
+ * cannot be counted twice.
+ */
+internal class DownloadSizeTracker {
+    private var finishedStreamBytes = 0L
+    private var currentStreamBytes = 0L
+    private var currentStreamExact = true
+    private var streamCount = 0
+
+    fun reset() {
+        finishedStreamBytes = 0L
+        currentStreamBytes = 0L
+        currentStreamExact = true
+        streamCount = 0
+    }
+
+    fun update(sample: ProgressSizeUpdate): ProgressSizeUpdate {
+        val total = sample.totalBytes
+        if (total <= 0L) return sample
+        when {
+            streamCount == 0 -> {
+                currentStreamBytes = total
+                currentStreamExact = sample.totalIsExact
+                streamCount = 1
+            }
+            isSameStream(total) -> {
+                currentStreamBytes = maxOf(currentStreamBytes, total)
+                currentStreamExact = currentStreamExact && sample.totalIsExact
+            }
+            else -> {
+                finishedStreamBytes += currentStreamBytes
+                currentStreamBytes = total
+                currentStreamExact = sample.totalIsExact
+                streamCount++
+            }
+        }
+        val combinedTotal = finishedStreamBytes + currentStreamBytes
+        return ProgressSizeUpdate(
+            downloadedBytes = (finishedStreamBytes + sample.downloadedBytes)
+                .coerceIn(0L, combinedTotal),
+            totalBytes = combinedTotal,
+            // A merged container is never byte-identical to its source streams.
+            totalIsExact = currentStreamExact && streamCount == 1,
+        )
+    }
+
+    private fun isSameStream(total: Long): Boolean {
+        if (currentStreamBytes <= 0L || total == currentStreamBytes) return true
+        val change = kotlin.math.abs(total - currentStreamBytes).toDouble() / currentStreamBytes
+        return change <= SAME_STREAM_TOLERANCE
+    }
+
+    private companion object {
+        // yt-dlp may adjust a stream's reported total slightly as fragments are probed.
+        const val SAME_STREAM_TOLERANCE = 0.05
+    }
+}
+
 internal fun formatDownloadBytes(bytes: Long): String {
     if (bytes <= 0L) return "0 B"
     val mib = 1024.0 * 1024.0
@@ -86,6 +148,7 @@ internal fun formatDownloadBytes(bytes: Long): String {
  */
 internal sealed class DownloadSizeDisplay {
     data object Calculating : DownloadSizeDisplay()
+    data object Unavailable : DownloadSizeDisplay()
     data class CalculatingTotal(val downloadedBytes: Long) : DownloadSizeDisplay()
     data class Downloaded(val bytes: Long) : DownloadSizeDisplay()
     data class Total(val bytes: Long, val exact: Boolean) : DownloadSizeDisplay()
@@ -99,7 +162,9 @@ internal sealed class DownloadSizeDisplay {
 }
 
 internal fun downloadSizeDisplay(job: DownloadJob): DownloadSizeDisplay {
-    val total = job.totalBytes?.takeIf { it > 0L }
+    val reported = job.reportedTotalBytes?.takeIf { it > 0L }
+    val estimated = job.estimatedTotalBytes?.takeIf { it > 0L }
+    val estimateExact = job.estimatedSizeAccuracy == SizeEstimateKind.EXACT
     val downloaded = job.downloadedBytes?.takeIf { it > 0L }
     val active = job.state == JobState.QUEUED ||
         job.state == JobState.PREPARING ||
@@ -111,7 +176,8 @@ internal fun downloadSizeDisplay(job: DownloadJob): DownloadSizeDisplay {
         // The published document is authoritative; the transfer total describes staging and
         // may still carry the pre-merge estimate.
         val size = job.actualFinalFileBytes?.takeIf { it > 0L }
-            ?: total
+            ?: reported
+            ?: estimated
             ?: downloaded
             ?: return DownloadSizeDisplay.Hidden
         return DownloadSizeDisplay.Completed(size)
@@ -120,22 +186,31 @@ internal fun downloadSizeDisplay(job: DownloadJob): DownloadSizeDisplay {
         // Failed/cancelled jobs keep whatever was transferred so the row is still useful.
         return when {
             downloaded != null -> DownloadSizeDisplay.Downloaded(downloaded)
-            total != null -> DownloadSizeDisplay.Total(total, job.totalIsExact)
+            reported != null -> DownloadSizeDisplay.Total(reported, job.reportedTotalIsExact)
+            estimated != null -> DownloadSizeDisplay.Total(estimated, estimateExact)
             else -> DownloadSizeDisplay.Hidden
         }
     }
     return when {
-        downloaded != null && total != null ->
-            DownloadSizeDisplay.DownloadedOfTotal(downloaded, total, job.totalIsExact)
+        downloaded != null && reported != null ->
+            DownloadSizeDisplay.DownloadedOfTotal(downloaded, reported, job.reportedTotalIsExact)
+        downloaded != null && estimated != null ->
+            DownloadSizeDisplay.DownloadedOfTotal(downloaded, estimated, estimateExact)
         downloaded != null -> DownloadSizeDisplay.CalculatingTotal(downloaded)
-        total != null -> DownloadSizeDisplay.Total(total, job.totalIsExact)
-        else -> DownloadSizeDisplay.Calculating
+        reported != null -> DownloadSizeDisplay.Total(reported, job.reportedTotalIsExact)
+        estimated != null -> DownloadSizeDisplay.Total(estimated, estimateExact)
+        // Only a transfer that is actually running may claim it is calculating a size.
+        job.state == JobState.PREPARING ||
+            job.state == JobState.DOWNLOADING ||
+            job.state == JobState.POSTPROCESSING -> DownloadSizeDisplay.Calculating
+        else -> DownloadSizeDisplay.Unavailable
     }
 }
 
 internal fun downloadSizeLabel(context: Context, job: DownloadJob): String? =
     when (val display = downloadSizeDisplay(job)) {
         DownloadSizeDisplay.Calculating -> context.getString(R.string.download_size_calculating)
+        DownloadSizeDisplay.Unavailable -> context.getString(R.string.estimate_unavailable)
         is DownloadSizeDisplay.CalculatingTotal -> context.getString(
             R.string.download_size_calculating_with_bytes,
             formatDownloadBytes(display.downloadedBytes),

@@ -55,7 +55,7 @@ internal fun ShareConfigSheet(
     settings: AppSettings,
     repository: SettingsRepository,
     onEstimateSize: suspend (DownloadRequest, Boolean) -> SizeEstimate,
-    onEnqueue: (DownloadRequest) -> Unit,
+    onEnqueue: (DownloadRequest, SizeEstimate?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -182,6 +182,7 @@ internal fun ShareConfigSheet(
             ShareRequestBuilder.build(link.url, preferences, type, template).copy(
                 destinationTreeUri = destination,
             ),
+            estimate,
         )
         onDismiss()
     }
