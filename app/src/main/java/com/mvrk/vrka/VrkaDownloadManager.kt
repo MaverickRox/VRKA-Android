@@ -138,6 +138,15 @@ class VrkaDownloadManager(
         ytDlpRuntimeManager.setBusyPredicate {
             _jobs.value.any { it.state.isForegroundWork }
         }
+        // The component card resolves the installed version metadata-first and only then
+        // asks the active runtime, so a first install reports the shipped version instead
+        // of "Unavailable". The probe is bounded by YtDlpRuntimeManager.
+        componentUpdateManager.runtimeVersionProvider = {
+            ytDlpRuntimeManager.activeVersion().takeIf { it.isNotBlank() }
+        }
+        componentUpdateManager.boundedVersionProbe = {
+            ytDlpRuntimeManager.probeVersion(ytDlpRuntimeManager.activeBinary())
+        }
         ytDlpRuntimeManager.onActiveRuntimeChanged = {
             refreshRuntimeStatus()
             estimateCache.clear()

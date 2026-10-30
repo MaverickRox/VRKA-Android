@@ -35,6 +35,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -696,97 +697,11 @@ internal fun SettingsScreen(
         VrkaSectionContainer {
             componentMap.values.forEachIndexed { index, comp ->
                 if (index > 0) VrkaDivider()
-                val componentStatus = ComponentStatusPresentation.from(context, comp)
-                val statusColor = when (componentStatus.tone) {
-                    ComponentStatusTone.SUCCESS -> VrkaTokens.Success
-                    ComponentStatusTone.WARNING -> VrkaTokens.Warning
-                    ComponentStatusTone.ERROR -> VrkaTokens.Error
-                    ComponentStatusTone.ACCENT -> VrkaTokens.AccentLight
-                    ComponentStatusTone.NEUTRAL -> VrkaTokens.TextTertiary
-                }
-                val displayInstalledText = when {
-                    comp.installedVersion.isBlank() && comp.isChecking -> stringResource(R.string.status_resolving)
-                    comp.installedVersion.isBlank() || comp.installedVersion.equals("Unknown", ignoreCase = true) ->
-                        stringResource(R.string.status_unavailable)
-                    else -> stringResource(R.string.status_installed, ComponentStatusPresentation.versionLabel(comp.installedVersion))
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 12.dp),
-                        ) {
-                            Text(
-                                text = comp.name,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = VrkaTokens.TextPrimary,
-                            )
-                            Text(
-                                text = displayInstalledText,
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-                                color = VrkaTokens.TextSecondary,
-                                modifier = Modifier.padding(top = 2.dp),
-                            )
-                            componentStatus.secondaryText?.let { resultText ->
-                                Text(
-                                    text = resultText,
-                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-                                    color = if (comp.error != null) VrkaTokens.Error else VrkaTokens.TextSecondary,
-                                    modifier = Modifier.padding(top = 2.dp),
-                                )
-                            }
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(top = 2.dp),
-                        ) {
-                            VrkaStatusBadge(componentStatus.label, statusColor, isMonospace = true)
-                            when {
-                                comp.updateState == ComponentUpdateState.UPDATE_FAILED ||
-                                    comp.checkState == ComponentCheckState.CHECK_FAILED -> {
-                                    VrkaOutlinedButton(
-                                        text = stringResource(R.string.action_retry),
-                                        onClick = {
-                                            if (comp.updateState == ComponentUpdateState.UPDATE_FAILED) {
-                                                updateManager.applyUpdate(comp.id, settings.updatePreference)
-                                            } else {
-                                                updateManager.checkUpdate(comp.id, settings.updatePreference)
-                                            }
-                                        },
-                                        height = 32.dp,
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                            horizontal = 8.dp,
-                                            vertical = 0.dp,
-                                        ),
-                                    )
-                                }
-                                comp.checkState == ComponentCheckState.UPDATE_AVAILABLE -> {
-                                    VrkaOutlinedButton(
-                                        text = stringResource(R.string.btn_update_now),
-                                        onClick = { updateManager.applyUpdate(comp.id, settings.updatePreference) },
-                                        height = 32.dp,
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                            horizontal = 8.dp,
-                                            vertical = 0.dp,
-                                        ),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
+                ComponentStatusRow(
+                    comp = comp,
+                    onCheck = { updateManager.checkUpdate(comp.id, settings.updatePreference) },
+                    onUpdate = { updateManager.applyUpdate(comp.id, settings.updatePreference) },
+                )
             }
 
             VrkaDivider()
@@ -1532,6 +1447,140 @@ private fun SettingsHeading(text: String) {
         color = VrkaTokens.TextTertiary,
         modifier = Modifier.padding(top = 22.dp, bottom = 8.dp, start = 4.dp),
     )
+}
+
+/**
+ * Width at which the component card stops placing the status badge and action button beside
+ * the version text. A 360 dp phone leaves 288 dp of card content; German labels such as
+ * "Update verfügbar" plus "Jetzt aktualisieren" do not fit in that space, so below this
+ * threshold the actions move under the text instead of being clipped.
+ */
+internal const val COMPONENT_HEADER_STACK_WIDTH_DP = 320
+
+internal fun componentHeaderStacks(availableWidth: Dp): Boolean =
+    availableWidth < COMPONENT_HEADER_STACK_WIDTH_DP.dp
+
+internal enum class ComponentCardAction {
+    NONE,
+    RETRY,
+    UPDATE,
+}
+
+internal fun componentCardAction(comp: ComponentStatus): ComponentCardAction = when {
+    comp.updateState == ComponentUpdateState.UPDATE_FAILED ||
+        comp.checkState == ComponentCheckState.CHECK_FAILED -> ComponentCardAction.RETRY
+    comp.checkState == ComponentCheckState.UPDATE_AVAILABLE -> ComponentCardAction.UPDATE
+    else -> ComponentCardAction.NONE
+}
+
+@Composable
+internal fun ComponentStatusRow(
+    comp: ComponentStatus,
+    onCheck: () -> Unit,
+    onUpdate: () -> Unit,
+) {
+    val context = LocalContext.current
+    val componentStatus = ComponentStatusPresentation.from(context, comp)
+    val statusColor = when (componentStatus.tone) {
+        ComponentStatusTone.SUCCESS -> VrkaTokens.Success
+        ComponentStatusTone.WARNING -> VrkaTokens.Warning
+        ComponentStatusTone.ERROR -> VrkaTokens.Error
+        ComponentStatusTone.ACCENT -> VrkaTokens.AccentLight
+        ComponentStatusTone.NEUTRAL -> VrkaTokens.TextTertiary
+    }
+    val displayInstalledText = when {
+        comp.installedVersion.isBlank() && comp.isChecking -> stringResource(R.string.status_resolving)
+        comp.installedVersion.isBlank() || comp.installedVersion.equals("Unknown", ignoreCase = true) ->
+            stringResource(R.string.status_unavailable)
+        else -> stringResource(R.string.status_installed, ComponentStatusPresentation.versionLabel(comp.installedVersion))
+    }
+    val action = componentCardAction(comp)
+
+    val actionButton: @Composable () -> Unit = {
+        when (action) {
+            ComponentCardAction.RETRY -> VrkaOutlinedButton(
+                text = stringResource(R.string.action_retry),
+                onClick = {
+                    if (comp.updateState == ComponentUpdateState.UPDATE_FAILED) onUpdate() else onCheck()
+                },
+                height = 32.dp,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            )
+            ComponentCardAction.UPDATE -> VrkaOutlinedButton(
+                text = stringResource(R.string.btn_update_now),
+                onClick = onUpdate,
+                height = 32.dp,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            )
+            ComponentCardAction.NONE -> Unit
+        }
+    }
+    val badge: @Composable () -> Unit = {
+        VrkaStatusBadge(componentStatus.label, statusColor, isMonospace = true)
+    }
+    val details: @Composable () -> Unit = {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = comp.name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = VrkaTokens.TextPrimary,
+            )
+            Text(
+                text = displayInstalledText,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                color = VrkaTokens.TextSecondary,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            componentStatus.secondaryText?.let { resultText ->
+                Text(
+                    text = resultText,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                    color = if (comp.error != null) VrkaTokens.Error else VrkaTokens.TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+    ) {
+        if (componentHeaderStacks(maxWidth)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.fillMaxWidth()) { details() }
+                Spacer(Modifier.height(8.dp))
+                badge()
+                if (action != ComponentCardAction.NONE) {
+                    Spacer(Modifier.height(8.dp))
+                    actionButton()
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp),
+                ) {
+                    details()
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 2.dp),
+                ) {
+                    badge()
+                    actionButton()
+                }
+            }
+        }
+    }
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {

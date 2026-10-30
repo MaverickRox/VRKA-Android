@@ -124,6 +124,28 @@ data class ComponentStatus(
         lifecycleState !in setOf(ComponentLifecycleState.UP_TO_DATE, ComponentLifecycleState.UPDATED)
 }
 
+/**
+ * Installed-version resolution shared by both components. Artifact metadata is tried first,
+ * then the active runtime record, then a bounded `--version` run. A cached or unknown value
+ * must never win over a readable artifact, and "Unknown" is never a resolved version.
+ */
+internal object ComponentVersionPriority {
+    fun sanitize(raw: String?): String? {
+        val clean = raw?.removePrefix("yt-dlp ")?.trim().orEmpty()
+        return clean.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+    }
+
+    /**
+     * Returns the first sanitized candidate. Candidates are evaluated in order and lazily:
+     * reading the bundled zipapp copies a multi-megabyte resource, so it must only run when
+     * the installed artifact could not answer.
+     */
+    fun resolve(vararg candidates: () -> String?): String? =
+        candidates.firstNotNullOfOrNull { candidate ->
+            sanitize(runCatching(candidate).getOrNull())
+        }
+}
+
 class ComponentUpdateManager private constructor(private val context: Context) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -156,41 +178,55 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     @Volatile
     private var rateLimitErrorMessage: String? = null
 
+    /**
+     * The active runtime's recorded version, wired by [VrkaDownloadManager]. Null until wired,
+     * so the manager still works with metadata only in isolated tests.
+     */
+    @Volatile
+    internal var runtimeVersionProvider: (() -> String?)? = null
+
+    /** A bounded `yt-dlp --version` probe of the active binary. Wired by [VrkaDownloadManager]. */
+    @Volatile
+    internal var boundedVersionProbe: (() -> String?)? = null
+
     internal fun getInstalledYtDlpVersion(): String {
-        val installedZipAppVersion = runCatching {
-            val installedZipApp = java.io.File(SecureComponentUpdater.getYoutubeDLDir(context), "yt-dlp")
-            InstalledComponentVersionReader.readYtDlpVersion(installedZipApp)
-        }.getOrNull()?.ifBlank { null }
-        if (installedZipAppVersion != null) {
-            prefs.edit().putString(KEY_YTDLP_VER, installedZipAppVersion).apply()
-            return installedZipAppVersion
+        // Priority: artifact metadata, then the active runtime record, then a bounded
+        // `--version` run. A first install has no cached value, so metadata and the probe are
+        // what keep "Installed: Unavailable" from appearing next to an available update.
+        val resolution = ComponentVersionPriority.resolve(
+            { readInstalledZipAppVersion() },
+            { InstalledComponentVersionReader.readBundledYtDlpVersion(context) },
+            { runtimeVersionProvider?.invoke() },
+            { boundedVersionProbe?.invoke() },
+            { prefs.getString(KEY_YTDLP_VER, null) },
+            { legacyLibraryVersion() },
+        )
+        if (resolution != null) {
+            prefs.edit().putString(KEY_YTDLP_VER, resolution).apply()
+            return resolution
         }
-
-        val runtimeVer = runCatching {
-            YoutubeDL.getInstance().versionName(context)?.removePrefix("yt-dlp ")?.trim()
-        }.getOrNull()?.ifBlank { null }
-        if (runtimeVer != null) {
-            prefs.edit().putString(KEY_YTDLP_VER, runtimeVer).apply()
-            return runtimeVer
-        }
-        val prefVer = prefs.getString(KEY_YTDLP_VER, null)
-        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) return prefVer
-        val ytdlPrefs = context.getSharedPreferences("youtubedl-android", Context.MODE_PRIVATE)
-        val ytdlVer = ytdlPrefs.getString("dlpVersionName", null)
-            ?: ytdlPrefs.getString("dlpVersion", null)
-        if (!ytdlVer.isNullOrBlank()) {
-            val clean = ytdlVer.removePrefix("yt-dlp ").trim()
-            prefs.edit().putString(KEY_YTDLP_VER, clean).apply()
-            return clean
-        }
-
-        val bundledVer = InstalledComponentVersionReader.readBundledYtDlpVersion(context)
-        if (!bundledVer.isNullOrBlank()) {
-            prefs.edit().putString(KEY_YTDLP_VER, bundledVer).apply()
-            return bundledVer
-        }
-
         return "Unknown"
+    }
+
+    /**
+     * Cheap constructor-time read. The bundled zipapp copy, runtime query and `--version`
+     * probe all belong on a background thread, so they are left to
+     * [refreshInstalledVersions] and only the installed artifact plus the cache are read here.
+     */
+    private fun cachedInstalledYtDlpVersion(): String =
+        ComponentVersionPriority.sanitize(readInstalledZipAppVersion())
+            ?: ComponentVersionPriority.sanitize(prefs.getString(KEY_YTDLP_VER, null))
+            ?: ""
+
+    private fun readInstalledZipAppVersion(): String? = runCatching {
+        val installedZipApp = java.io.File(SecureComponentUpdater.getYoutubeDLDir(context), "yt-dlp")
+        InstalledComponentVersionReader.readYtDlpVersion(installedZipApp)
+    }.getOrNull()
+
+    private fun legacyLibraryVersion(): String? {
+        val ytdlPrefs = context.getSharedPreferences("youtubedl-android", Context.MODE_PRIVATE)
+        return ytdlPrefs.getString("dlpVersionName", null)
+            ?: ytdlPrefs.getString("dlpVersion", null)
     }
 
 
@@ -207,34 +243,40 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     }
 
     private suspend fun getInstalledUBlockVersion(): String {
-        val geckoManager = runCatching { GeckoRuntimeManager.getInstance(context) }.getOrNull()
-        val runtimeVer = geckoManager?.getInstalledExtensionVersion(GeckoRuntimeManager.UBLOCK_ID)
-        if (!runtimeVer.isNullOrBlank()) {
+        // The XPI manifest is the installed artifact's own metadata: it is readable on a
+        // first install without starting GeckoView, which is what previously left the card
+        // at "Installed: Unavailable".
+        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
+        val installedFile = ComponentVersionPriority.sanitize(readXpiManifestVersion(ublockXpi))
+        val bundled = if (installedFile == null) {
+            ComponentVersionPriority.sanitize(
+                runCatching {
+                    InstalledComponentVersionReader.readBundledExtensionVersion(context, "ublock.xpi")
+                }.getOrNull(),
+            )
+        } else {
+            null
+        }
+        // Seed the working copy so later extension loads and updates use the same file.
+        if ((installedFile ?: bundled) != null && (!ublockXpi.exists() || ublockXpi.length() == 0L)) {
+            runCatching { GeckoRuntimeManager.getInstance(context) }.getOrNull()
+                ?.seedBundledExtensionsIfMissing()
+        }
+        if (installedFile != null || bundled != null) {
+            val resolved = installedFile ?: bundled!!
+            prefs.edit().putString(KEY_UBLOCK_VER, resolved).apply()
+            return resolved
+        }
+        val runtimeVer = ComponentVersionPriority.sanitize(
+            runCatching { GeckoRuntimeManager.getInstance(context) }.getOrNull()
+                ?.getInstalledExtensionVersion(GeckoRuntimeManager.UBLOCK_ID),
+        )
+        if (runtimeVer != null) {
             prefs.edit().putString(KEY_UBLOCK_VER, runtimeVer).apply()
             return runtimeVer
         }
-        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
-        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
-        if (ublockXpi.exists() && ublockXpi.length() > 0L) {
-            val fileVer = readXpiManifestVersion(ublockXpi)
-            if (!fileVer.isNullOrBlank()) {
-                prefs.edit().putString(KEY_UBLOCK_VER, fileVer).apply()
-                return fileVer
-            }
-        }
-        geckoManager?.seedBundledExtensionsIfMissing()
-        if (ublockXpi.exists() && ublockXpi.length() > 0L) {
-            val fileVer = readXpiManifestVersion(ublockXpi)
-            if (!fileVer.isNullOrBlank()) {
-                prefs.edit().putString(KEY_UBLOCK_VER, fileVer).apply()
-                return fileVer
-            }
-        }
-        val prefVer = prefs.getString(KEY_UBLOCK_VER, null)
-        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) {
-            return prefVer
-        }
-        return "Unknown"
+        return ComponentVersionPriority.sanitize(prefs.getString(KEY_UBLOCK_VER, null)) ?: "Unknown"
     }
 
     private val _components = MutableStateFlow<Map<String, ComponentStatus>>(
@@ -242,15 +284,13 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             ID_YTDLP to ComponentStatus(
                 id = ID_YTDLP,
                 name = "yt-dlp",
-                installedVersion = getInstalledYtDlpVersion().takeUnless {
-                    it.isBlank() || it.equals("Unknown", ignoreCase = true)
-                }.orEmpty(),
+                installedVersion = cachedInstalledYtDlpVersion(),
             ),
             ID_UBLOCK to ComponentStatus(
                 id = ID_UBLOCK,
                 name = "uBlock Origin",
-                installedVersion = prefs.getString(KEY_UBLOCK_VER, null)
-                    ?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                installedVersion = ComponentVersionPriority
+                    .sanitize(prefs.getString(KEY_UBLOCK_VER, null))
                     .orEmpty(),
             ),
         ),
@@ -306,8 +346,40 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
     fun refreshInstalledVersions() {
         scope.launch {
-            resolveAndPublishInstalledVersion(ID_YTDLP)
-            resolveAndPublishInstalledVersion(ID_UBLOCK)
+            listOf(ID_YTDLP, ID_UBLOCK).forEach { id ->
+                // Until the artifact has been read, an empty version means "still resolving",
+                // not "unavailable". The card renders that distinction, so a first install
+                // shows a resolving state instead of a permanent-looking "Unavailable".
+                markResolvingIfUnresolved(id)
+                try {
+                    resolveAndPublishInstalledVersion(id)
+                } finally {
+                    clearResolving(id)
+                }
+            }
+        }
+    }
+
+    private fun markResolvingIfUnresolved(id: String) {
+        updateState(id) { current ->
+            if (current.installedVersion.isBlank() && current.checkState == ComponentCheckState.CHECK_IDLE) {
+                current.copy(lifecycleState = ComponentLifecycleState.CHECKING)
+            } else {
+                current
+            }
+        }
+    }
+
+    private fun clearResolving(id: String) {
+        // A user-initiated check sets checkState = CHECKING; leave its lifecycle untouched.
+        updateState(id) { current ->
+            if (current.lifecycleState == ComponentLifecycleState.CHECKING &&
+                current.checkState == ComponentCheckState.CHECK_IDLE
+            ) {
+                current.copy(lifecycleState = ComponentLifecycleState.UNKNOWN)
+            } else {
+                current
+            }
         }
     }
 
