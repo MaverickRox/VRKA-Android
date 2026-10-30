@@ -33,7 +33,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -552,11 +551,6 @@ private fun JobCard(
     onShowFallback: (() -> Unit)? = null,
     onChooseFolder: (() -> Unit)? = null,
 ) {
-    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = (job.progress.coerceIn(0f, 100f) / 100f),
-        label = "job_card_progress",
-    )
-
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = if (isSelected) VrkaTokens.SurfaceInset else VrkaTokens.SurfaceCard,
@@ -659,16 +653,12 @@ private fun JobCard(
                 }
 
                 if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
-                    LinearProgressIndicator(
-                        progress = { animatedProgress },
-                        strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
-                        color = VrkaTokens.Accent,
-                        trackColor = VrkaTokens.SurfaceInset,
+                    VrkaGlowProgressBar(
+                        progress = job.progress / 100f,
+                        height = 4.dp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 10.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
+                            .padding(top = 10.dp),
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
