@@ -4,9 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
-import android.provider.Settings
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.res.stringResource
@@ -40,8 +37,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
@@ -1520,77 +1515,9 @@ internal fun SettingsScreen(
                     height = 32.dp,
                 )
             }
-
-            if (isPromotionAvailable(context)) {
-                LiveUpdateSettingRow()
-            }
         }
         Spacer(Modifier.navigationBarsPadding().height(110.dp))
     }
-}
-
-@Composable
-private fun LiveUpdateSettingRow() {
-    val context = LocalContext.current
-    var promotionEnabled by remember { mutableStateOf(DownloadNotifications.supportsPromotion(context)) }
-    var settingsIntent by remember { mutableStateOf(liveUpdateSettingsIntent(context)) }
-    // The user can leave the app to change the permission; re-read it on every return instead
-    // of trusting the navigation that just happened.
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        promotionEnabled = DownloadNotifications.supportsPromotion(context)
-        settingsIntent = liveUpdateSettingsIntent(context)
-    }
-    VrkaSettingRow(
-        title = stringResource(R.string.pref_live_updates),
-        subtitle = when {
-            settingsIntent == null -> stringResource(R.string.desc_live_updates_unavailable)
-            promotionEnabled -> stringResource(R.string.desc_live_updates_enabled)
-            else -> stringResource(R.string.desc_live_updates_disabled)
-        },
-        isSubtitleMono = true,
-    ) {
-        VrkaOutlinedButton(
-            text = stringResource(R.string.btn_live_update_settings),
-            onClick = { settingsIntent?.let(context::startActivity) },
-            enabled = settingsIntent != null,
-            height = 32.dp,
-        )
-    }
-}
-
-/**
- * True only when this OS build actually exposes Live Update promotion. Android 16.0 images
- * shipped before the promotion permission existed, so `canPostPromotedNotifications()` can
- * never return true there; showing an "enable Live Updates" entry on such a build would send
- * the user to a page that has no such switch.
- */
-internal fun isPromotionAvailable(context: Context): Boolean {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) return false
-    val permissionDefined = try {
-        context.packageManager.getPermissionInfo(PERMISSION_POST_PROMOTED_NOTIFICATIONS, 0)
-        true
-    } catch (_: PackageManager.NameNotFoundException) {
-        false
-    }
-    return permissionDefined ||
-        liveUpdateSettingsIntent(context)?.action == Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS
-}
-
-private const val PERMISSION_POST_PROMOTED_NOTIFICATIONS =
-    "android.permission.POST_PROMOTED_NOTIFICATIONS"
-
-/** Promotion settings first, the app's own notification page as the guaranteed fallback. */
-internal fun liveUpdateSettingsIntent(context: Context): Intent? {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) return null
-    val packageName = context.packageName
-    val promotion = Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS)
-        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    if (promotion.resolveActivity(context.packageManager) != null) return promotion
-    val appNotifications = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    return appNotifications.takeIf { it.resolveActivity(context.packageManager) != null }
 }
 
 @Composable

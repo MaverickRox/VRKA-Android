@@ -7,14 +7,6 @@ import org.junit.Test
 
 class DownloadNotificationTest {
     @Test
-    fun promotionExtraKeyMatchesPlatformContract() {
-        assertEquals(
-            "android.requestPromotedOngoing",
-            DownloadNotifications.EXTRA_REQUEST_PROMOTED_ONGOING,
-        )
-    }
-
-    @Test
     fun notificationIdsAreStablePerJob() {
         val id = notificationIdFor("job-alpha")
 

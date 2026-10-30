@@ -114,11 +114,6 @@
     <string name="download_size_downloaded">%1$s heruntergeladen</string>
     <string name="download_size_downloaded_of">%1$s heruntergeladen / %2$s</string>
     <string name="download_size_total">Gesamt %1$s</string>
-    <string name="pref_live_updates">Live-Updates</string>
-    <string name="desc_live_updates_enabled">Bevorzugte Fortschrittsbenachrichtigungen sind aktiviert</string>
-    <string name="desc_live_updates_disabled">VRKA-Downloads auf Sperrbildschirm und Statusleiste hervorheben</string>
-    <string name="desc_live_updates_unavailable">Dieses Gerät stellt keine Live-Update-Einstellungen bereit</string>
-    <string name="btn_live_update_settings">Einstellungen öffnen</string>
     <string name="diagnostics_empty">Keine Diagnoseeinträge erfasst.</string>
     <string name="diagnostics_failure_plural">%1$d erfasste Fehler</string>
     <string name="diagnostics_failure_single">1 erfasster Fehler</string>
