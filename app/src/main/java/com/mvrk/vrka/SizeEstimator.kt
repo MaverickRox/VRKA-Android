@@ -22,6 +22,8 @@ data class SizePreflight(
     val runtimeLabel: String,
     val formatSelector: String,
     val stdoutChars: Int,
+    /** Raw metadata document, retained so other selections can be recalculated locally. */
+    val document: String? = null,
 )
 
 /**
@@ -36,6 +38,13 @@ class SizeEstimator(
 
     suspend fun estimate(request: DownloadRequest): SizeEstimate = probe(request).estimate
 
+    /** Recalculates a size from a cached document without launching yt-dlp again. */
+    fun estimateFromDocument(
+        document: String,
+        request: DownloadRequest,
+        recalculateSelection: Boolean,
+    ): SizeEstimate = SizeEstimateCalculator.fromMetadataJson(document, request, recalculateSelection)
+
     suspend fun probe(request: DownloadRequest, timeoutOverrideMs: Long? = null): SizePreflight {
         val started = System.currentTimeMillis()
         val formatSelector = DownloadRequestFactory.formatSelectorFor(request)
@@ -46,6 +55,7 @@ class SizeEstimator(
             timedOut: Boolean = false,
             stderr: String = "",
             stdoutChars: Int = 0,
+            document: String? = null,
         ) = SizePreflight(
             estimate = estimate,
             startedAtEpochMs = started,
@@ -57,6 +67,7 @@ class SizeEstimator(
             runtimeLabel = runtime,
             formatSelector = formatSelector,
             stdoutChars = stdoutChars,
+            document = document,
         )
 
         if (!request.commandTemplateId.isNullOrBlank()) {
@@ -137,6 +148,7 @@ class SizeEstimator(
             exitCode = exitCode,
             stderr = stderr,
             stdoutChars = stdout.length,
+            document = stdout,
         )
     }
 
