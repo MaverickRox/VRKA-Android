@@ -36,6 +36,7 @@
     <string name="btn_bulk_remove_records">Remover registos</string>
     <string name="btn_cancel">Cancelar</string>
     <string name="btn_change">Alterar</string>
+    <string name="btn_open_queue">Abrir fila</string>
     <string name="btn_check_all_updates">Verificar todas as atualizações</string>
     <string name="btn_check_for_updates">Procurar atualizações</string>
     <string name="btn_checking">A verificar...</string>
@@ -206,6 +207,8 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="notification_channel_active_downloads">Transferências ativas</string>
     <string name="notification_channel_active_downloads_description">Progresso de transferências iniciadas no VRKA</string>
     <string name="notification_default_title">Transferência do VRKA</string>
+    <string name="notification_downloads_interrupted_text">O Android interrompeu a sessão de transferência em segundo plano. Abra o VRKA para rever a sua fila.</string>
+    <string name="notification_downloads_interrupted_title">Transferências em pausa</string>
     <string name="notification_preparing_download">A preparar transferência</string>
     <string name="opt_auto_captions">Incluir legendas geradas automaticamente</string>
     <string name="opt_clear_all_delete_files">Eliminar também os ficheiros transferidos do armazenamento</string>

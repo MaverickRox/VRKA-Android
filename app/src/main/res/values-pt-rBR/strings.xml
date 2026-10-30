@@ -36,6 +36,7 @@
     <string name="btn_bulk_remove_records">Remover registros</string>
     <string name="btn_cancel">Cancelar</string>
     <string name="btn_change">Alterar</string>
+    <string name="btn_open_queue">Abrir fila</string>
     <string name="btn_check_all_updates">Verificar todas as atualizações</string>
     <string name="btn_check_for_updates">Verificar atualizações</string>
     <string name="btn_checking">Verificando...</string>
@@ -206,6 +207,8 @@ Tem certeza de que deseja ativar downloads simultâneos?</string>
     <string name="notification_channel_active_downloads">Downloads ativos</string>
     <string name="notification_channel_active_downloads_description">Progresso dos downloads iniciados no VRKA</string>
     <string name="notification_default_title">Download do VRKA</string>
+    <string name="notification_downloads_interrupted_text">O Android interrompeu a sessão de download em segundo plano. Abra o VRKA para revisar sua fila.</string>
+    <string name="notification_downloads_interrupted_title">Downloads pausados</string>
     <string name="notification_preparing_download">Preparando download</string>
     <string name="opt_auto_captions">Incluir legendas geradas automaticamente</string>
     <string name="opt_clear_all_delete_files">Excluir também os arquivos baixados do armazenamento</string>

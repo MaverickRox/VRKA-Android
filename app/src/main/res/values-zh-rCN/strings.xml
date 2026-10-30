@@ -36,6 +36,7 @@
     <string name="btn_bulk_remove_records">移除记录</string>
     <string name="btn_cancel">取消</string>
     <string name="btn_change">更改</string>
+    <string name="btn_open_queue">打开队列</string>
     <string name="btn_check_all_updates">检查所有组件更新</string>
     <string name="btn_check_for_updates">检查更新</string>
     <string name="btn_checking">正在检查...</string>
@@ -206,6 +207,8 @@
     <string name="notification_channel_active_downloads">正在进行的下载</string>
     <string name="notification_channel_active_downloads_description">在 VRKA 中启动的媒体下载实时进度</string>
     <string name="notification_default_title">VRKA 下载任务</string>
+    <string name="notification_downloads_interrupted_text">Android 已停止后台下载会话。打开 VRKA 查看队列。</string>
+    <string name="notification_downloads_interrupted_title">下载已暂停</string>
     <string name="notification_preparing_download">正在准备下载</string>
     <string name="opt_auto_captions">包含自动生成的字幕</string>
     <string name="opt_clear_all_delete_files">同时从设备存储中删除已下载的文件</string>

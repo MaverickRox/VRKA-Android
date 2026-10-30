@@ -36,6 +36,7 @@
     <string name="btn_bulk_remove_records">రికార్డులను తీసివేయి</string>
     <string name="btn_cancel">రద్దు చేయి</string>
     <string name="btn_change">మార్చు</string>
+    <string name="btn_open_queue">క్యూ తెరవండి</string>
     <string name="btn_check_all_updates">అన్ని నవీకరణలను తనిఖీ చేయి</string>
     <string name="btn_check_for_updates">నవీకరణల కోసం తనిఖీ చేయి</string>
     <string name="btn_checking">తనిఖీ చేస్తోంది...</string>
@@ -206,6 +207,8 @@
     <string name="notification_channel_active_downloads">క్రియాశీల డౌన్‌లోడ్‌లు</string>
     <string name="notification_channel_active_downloads_description">VRKAలో ప్రారంభమైన డౌన్‌లోడ్‌ల పురోగతి</string>
     <string name="notification_default_title">VRKA డౌన్‌లోడ్</string>
+    <string name="notification_downloads_interrupted_text">Android నేపథ్య డౌన్‌లోడ్ సెషన్‌ను ఆపింది. మీ క్యూను సమీక్షించడానికి VRKA తెరవండి.</string>
+    <string name="notification_downloads_interrupted_title">డౌన్‌లోడ్‌లు పాజ్ చేయబడ్డాయి</string>
     <string name="notification_preparing_download">డౌన్‌లోడ్ సిద్ధమవుతోంది</string>
     <string name="opt_auto_captions">స్వయంచాలకంగా రూపొందించబడిన శీర్షికలను చేర్చండి</string>
     <string name="opt_clear_all_delete_files">పరికర నిల్వ నుండి డౌన్‌లోడ్ చేసిన ఫైళ్ళను కూడా తొలగించండి</string>
