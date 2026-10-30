@@ -36,6 +36,7 @@
     <string name="btn_bulk_remove_records">إزالة السجلات</string>
     <string name="btn_cancel">إلغاء</string>
     <string name="btn_change">تغيير</string>
+    <string name="btn_open_queue">فتح قائمة الانتظار</string>
     <string name="btn_check_all_updates">التحقق من جميع التحديثات</string>
     <string name="btn_check_for_updates">التحقق من التحديثات</string>
     <string name="btn_checking">جارٍ الفحص...</string>
@@ -206,6 +207,8 @@
     <string name="notification_channel_active_downloads">التنزيلات النشطة</string>
     <string name="notification_channel_active_downloads_description">تقدم التنزيلات التي بدأت في VRKA</string>
     <string name="notification_default_title">تنزيل VRKA</string>
+    <string name="notification_downloads_interrupted_text">أوقف Android جلسة التنزيل في الخلفية. افتح VRKA لمراجعة قائمة الانتظار.</string>
+    <string name="notification_downloads_interrupted_title">تم إيقاف التنزيلات مؤقتًا</string>
     <string name="notification_preparing_download">جارٍ تجهيز التنزيل</string>
     <string name="opt_auto_captions">تضمين الترجمة المولدة تلقائياً</string>
     <string name="opt_clear_all_delete_files">حذف الملفات المنزلة أيضاً من وحدة التخزين</string>

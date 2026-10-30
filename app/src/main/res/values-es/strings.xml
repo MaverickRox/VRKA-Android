@@ -36,6 +36,7 @@
     <string name="btn_bulk_remove_records">Quitar registros</string>
     <string name="btn_cancel">Cancelar</string>
     <string name="btn_change">Cambiar</string>
+    <string name="btn_open_queue">Abrir cola</string>
     <string name="btn_check_all_updates">Comprobar todas las actualizaciones</string>
     <string name="btn_check_for_updates">Buscar actualizaciones</string>
     <string name="btn_checking">Comprobando...</string>
@@ -206,6 +207,8 @@
     <string name="notification_channel_active_downloads">Descargas activas</string>
     <string name="notification_channel_active_downloads_description">Progreso de descargas iniciadas en VRKA</string>
     <string name="notification_default_title">Descarga de VRKA</string>
+    <string name="notification_downloads_interrupted_text">Android detuvo la sesión de descarga en segundo plano. Abre VRKA para revisar tu cola.</string>
+    <string name="notification_downloads_interrupted_title">Descargas en pausa</string>
     <string name="notification_preparing_download">Preparando descarga</string>
     <string name="opt_auto_captions">Incluir subtítulos generados automáticamente</string>
     <string name="opt_clear_all_delete_files">Eliminar también los archivos descargados del almacenamiento</string>

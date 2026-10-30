@@ -36,6 +36,7 @@
     <string name="btn_bulk_remove_records">Einträge entfernen</string>
     <string name="btn_cancel">Abbrechen</string>
     <string name="btn_change">Ändern</string>
+    <string name="btn_open_queue">Warteschlange öffnen</string>
     <string name="btn_check_all_updates">Alle Updates prüfen</string>
     <string name="btn_check_for_updates">Nach Updates suchen</string>
     <string name="btn_checking">Prüfe...</string>
@@ -206,6 +207,8 @@ Möchten Sie parallele Downloads wirklich aktivieren?</string>
     <string name="notification_channel_active_downloads">Aktive Downloads</string>
     <string name="notification_channel_active_downloads_description">Fortschritt von in VRKA gestarteten Downloads</string>
     <string name="notification_default_title">VRKA-Download</string>
+    <string name="notification_downloads_interrupted_text">Android hat die Hintergrund-Downloadsitzung beendet. Öffne VRKA, um deine Warteschlange zu prüfen.</string>
+    <string name="notification_downloads_interrupted_title">Downloads angehalten</string>
     <string name="notification_preparing_download">Download wird vorbereitet</string>
     <string name="opt_auto_captions">Automatisch generierte Untertitel einbeziehen</string>
     <string name="opt_clear_all_delete_files">Auch heruntergeladene Dateien vom Gerätespeicher löschen</string>

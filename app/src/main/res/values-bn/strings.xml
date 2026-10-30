@@ -36,6 +36,7 @@
     <string name="btn_bulk_remove_records">রেকর্ড সরান</string>
     <string name="btn_cancel">বাতিল</string>
     <string name="btn_change">পরিবর্তন</string>
+    <string name="btn_open_queue">সারি খুলুন</string>
     <string name="btn_check_all_updates">সমস্ত আপডেট পরীক্ষা করুন</string>
     <string name="btn_check_for_updates">আপডেটের জন্য পরীক্ষা করুন</string>
     <string name="btn_checking">পরীক্ষা করা হচ্ছে...</string>
@@ -206,6 +207,8 @@
     <string name="notification_channel_active_downloads">সক্রিয় ডাউনলোড</string>
     <string name="notification_channel_active_downloads_description">VRKA-তে শুরু হওয়া ডাউনলোডের অগ্রগতি</string>
     <string name="notification_default_title">VRKA ডাউনলোড</string>
+    <string name="notification_downloads_interrupted_text">Android ব্যাকগ্রাউন্ড ডাউনলোড সেশন বন্ধ করেছে। আপনার সারি পর্যালোচনা করতে VRKA খুলুন।</string>
+    <string name="notification_downloads_interrupted_title">ডাউনলোড বিরতি নেওয়া হয়েছে</string>
     <string name="notification_preparing_download">ডাউনলোড প্রস্তুত করা হচ্ছে</string>
     <string name="opt_auto_captions">স্বয়ংক্রিয়ভাবে তৈরি ক্যাপশন অন্তর্ভুক্ত করুন</string>
     <string name="opt_clear_all_delete_files">ডিভাইস স্টোরেজ থেকে ডাউনলোড করা ফাইলগুলিও মুছুন</string>

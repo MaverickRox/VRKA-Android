@@ -36,6 +36,7 @@
     <string name="btn_bulk_remove_records">Remove Records</string>
     <string name="btn_cancel">Cancel</string>
     <string name="btn_change">Change</string>
+    <string name="btn_open_queue">Open queue</string>
     <string name="btn_check_all_updates">Check All Updates</string>
     <string name="btn_check_for_updates">Check for Updates</string>
     <string name="btn_checking">Checking...</string>
@@ -206,6 +207,8 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="notification_channel_active_downloads">Active downloads</string>
     <string name="notification_channel_active_downloads_description">Progress for downloads started in VRKA</string>
     <string name="notification_default_title">VRKA download</string>
+    <string name="notification_downloads_interrupted_text">Android stopped the background download session. Open VRKA to review your queue.</string>
+    <string name="notification_downloads_interrupted_title">Downloads paused</string>
     <string name="notification_preparing_download">Preparing download</string>
     <string name="opt_auto_captions">Include auto-generated captions</string>
     <string name="opt_clear_all_delete_files">Also delete downloaded files from device storage</string>
