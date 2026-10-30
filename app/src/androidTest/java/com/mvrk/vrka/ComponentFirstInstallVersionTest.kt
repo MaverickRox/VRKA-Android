@@ -2,6 +2,9 @@ package com.mvrk.vrka
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.mvrk.vrka.runtime.YtDlpRuntimeManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -61,6 +64,23 @@ class ComponentFirstInstallVersionTest {
         )
         assertEquals(
             InstalledComponentVersionReader.readBundledExtensionVersion(context, "ublock.xpi"),
+            resolved,
+        )
+    }
+
+    /**
+     * The runtime card reads the same version as the Components card; on a fresh install the
+     * binary cannot run yet, so the metadata fallback has to answer instead of "Unavailable".
+     */
+    @Test
+    fun runtimeCardReportsTheStockVersionWithoutExecutingTheBinary() {
+        val manager = YtDlpRuntimeManager(context, CoroutineScope(Dispatchers.Unconfined))
+        val bundled = InstalledComponentVersionReader.readBundledYtDlpVersion(context)
+        val resolved = manager.stockVersion()
+        assertTrue("Stock runtime version must never be blank", resolved.isNotBlank())
+        assertEquals(
+            "The runtime card must report the shipped version on first install",
+            bundled,
             resolved,
         )
     }
