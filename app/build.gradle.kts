@@ -23,7 +23,7 @@ val signingPropertiesFile = providers.environmentVariable("VRKA_SIGNING_PROPERTI
 val signingProperties = signingPropertiesFile?.takeIf { it.isFile }?.inputStream()?.use { input ->
     Properties().apply { load(input) }
 }
-val geckoViewVersion = "156.0.20260921121718"
+val geckoViewVersion = "157.0.20261005135250"
 
 extensions.configure<ApplicationExtension> {
     namespace = "com.mvrk.vrka"

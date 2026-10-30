@@ -48,21 +48,62 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
     val runtime: GeckoRuntime by lazy {
         val settings = GeckoRuntimeSettings.Builder()
             .javaScriptEnabled(true)
-            .aboutConfigEnabled(false)
+            .aboutConfigEnabled(GeckoPrivacyDefaults.ABOUT_CONFIG)
+            .globalPrivacyControlEnabled(GeckoPrivacyDefaults.GLOBAL_PRIVACY_CONTROL)
+            .remoteDebuggingEnabled(GeckoPrivacyDefaults.REMOTE_DEBUGGING)
+            .debugLogging(GeckoPrivacyDefaults.DEBUG_LOGGING)
+            .consoleOutput(GeckoPrivacyDefaults.CONSOLE_OUTPUT)
+            .loginAutofillEnabled(GeckoPrivacyDefaults.LOGIN_AUTOFILL)
+            .translationsOfferPopup(GeckoPrivacyDefaults.TRANSLATION_POPUP)
+            .webManifest(GeckoPrivacyDefaults.WEB_MANIFEST)
+            .crashPullNeverShowAgain(true)
+            .experimentDelegate(NoExperimentsDelegate)
             .contentBlocking(
                 ContentBlocking.Settings.Builder()
-                    .antiTracking(ContentBlocking.AntiTracking.DEFAULT)
-                    .safeBrowsing(ContentBlocking.SafeBrowsing.DEFAULT)
-                    .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_ALL)
-                    .enhancedTrackingProtectionLevel(ContentBlocking.EtpLevel.STRICT)
+                    .antiTracking(GeckoPrivacyDefaults.ANTI_TRACKING)
+                    .safeBrowsing(GeckoPrivacyDefaults.SAFE_BROWSING)
+                    .cookieBehavior(GeckoPrivacyDefaults.COOKIE_BEHAVIOR)
+                    .cookieBehaviorPrivateMode(GeckoPrivacyDefaults.COOKIE_BEHAVIOR)
+                    .enhancedTrackingProtectionLevel(GeckoPrivacyDefaults.ETP_LEVEL)
+                    .strictSocialTrackingProtection(GeckoPrivacyDefaults.STRICT_SOCIAL_TRACKING)
+                    .cookiePurging(GeckoPrivacyDefaults.COOKIE_PURGING)
+                    .bounceTrackingProtectionMode(GeckoPrivacyDefaults.BOUNCE_TRACKING_MODE)
+                    .queryParameterStrippingEnabled(GeckoPrivacyDefaults.QUERY_PARAMETER_STRIPPING)
+                    .queryParameterStrippingPrivateBrowsingEnabled(
+                        GeckoPrivacyDefaults.QUERY_PARAMETER_STRIPPING,
+                    )
+                    .emailTrackerBlockingPrivateMode(
+                        GeckoPrivacyDefaults.EMAIL_TRACKER_BLOCKING_PRIVATE_MODE,
+                    )
                     .build()
             )
             .build()
 
         val instance = GeckoRuntime.create(context.applicationContext, settings)
+        // GeckoView only collects usage telemetry after the embedder opts in. Keep the
+        // preference explicitly false so an engine-side default can never turn it on.
+        instance.notifyTelemetryPrefChanged(GeckoPrivacyDefaults.TELEMETRY)
         setupPromptDelegate(instance)
         _isReady.value = true
         instance
+    }
+
+    private object NoExperimentsDelegate : org.mozilla.geckoview.ExperimentDelegate {
+        override fun onGetExperimentFeature(feature: String): GeckoResult<org.json.JSONObject> =
+            GeckoResult.fromException(
+                org.mozilla.geckoview.ExperimentDelegate.ExperimentException(
+                    org.mozilla.geckoview.ExperimentDelegate.ExperimentException.ERROR_FEATURE_NOT_FOUND,
+                ),
+            )
+
+        override fun onRecordExposureEvent(feature: String): GeckoResult<Void> =
+            GeckoResult.fromValue(null)
+
+        override fun onRecordExperimentExposureEvent(slug: String, feature: String): GeckoResult<Void> =
+            GeckoResult.fromValue(null)
+
+        override fun onRecordMalformedConfigurationEvent(slug: String, feature: String): GeckoResult<Void> =
+            GeckoResult.fromValue(null)
     }
 
     private fun setupPromptDelegate(runtimeInstance: GeckoRuntime) {
