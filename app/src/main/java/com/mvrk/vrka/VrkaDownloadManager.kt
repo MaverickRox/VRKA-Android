@@ -600,17 +600,9 @@ class VrkaDownloadManager(
                 if (failure == null) return
                 Log.e("VRKA", "Custom yt-dlp attempt failed; checking normal recovery paths: ${safeError(failure)}")
             } else {
-                val metadata = runCatching {
-                    YoutubeDL.getInstance().getInfo(DownloadRequestFactory.info(job.request))
-                }.getOrNull()
-                if (isCancelled(jobId)) return
-                if (metadata != null) {
-                    val title = metadata.title?.take(180).orEmpty()
-                    if (title.isNotBlank()) {
-                        update(jobId, title = title, detail = "Source ready", persist = true)
-                    }
-                }
-
+                // The transfer prints the resolved title itself (`__VRKA_TITLE__`), so a
+                // separate getInfo() probe only repeated metadata extraction and delayed the
+                // real transfer. Jobs still receive their title as soon as extraction starts.
                 job = current(jobId) ?: return
                 failure = runCatching { downloadOnce(job) }.exceptionOrNull()
                 if (failure != null) {
@@ -1414,6 +1406,9 @@ class VrkaDownloadManager(
             YoutubeDL.getInstance().init(context)
             FFmpeg.getInstance().init(context)
             DownloadRequestFactory.initNativeLibraryDir(context.applicationInfo.nativeLibraryDir)
+            DownloadRequestFactory.initCacheDir(
+                File(context.cacheDir, "yt-dlp").apply { mkdirs() }.absolutePath,
+            )
             MediaAssembly.fixUsrLibSymlinks(File(context.noBackupFilesDir, "youtubedl-android/packages/ffmpeg/usr/lib"))
             MediaAssembly.fixUsrLibSymlinks(File(context.noBackupFilesDir, "youtubedl-android/packages/python/usr/lib"))
             initialized.set(true)

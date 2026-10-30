@@ -1,14 +1,68 @@
 package com.mvrk.vrka
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 
 class DownloadRequestFactoryTest {
     private val staging = File("build/request-factory-test")
+
+    @Before
+    fun configureCacheDir() {
+        DownloadRequestFactory.initCacheDir(CACHE_DIR)
+    }
+
+    @After
+    fun resetCacheDir() {
+        DownloadRequestFactory.initCacheDir(null)
+    }
+
+    @Test
+    fun pipelineRequestsReuseTheAppPrivateCacheDirectory() {
+        val requests = listOf(
+            DownloadRequestFactory.info(DownloadRequest(url = URL)),
+            DownloadRequestFactory.sizeEstimate(DownloadRequest(url = URL)),
+            built(DownloadRequest(url = URL)),
+        )
+
+        requests.forEach { request ->
+            // ytdl-android only keeps its forced --no-cache-dir when no cache path is supplied.
+            assertEquals(CACHE_DIR, request.getOption("--cache-dir"))
+            assertFalse(request.hasOption("--remote-components"))
+        }
+    }
+
+    @Test
+    fun customTemplatesKeepTheirOwnCachePolicy() {
+        val request = DownloadRequestFactory.customCommand(
+            DownloadJob(
+                id = "custom-job",
+                request = DownloadRequest(
+                    url = URL,
+                    commandTemplateId = "template-1",
+                    commandTemplateName = "Rate limit",
+                    commandTemplateArguments = listOf("--limit-rate", "2M"),
+                ),
+            ),
+            staging,
+        )
+
+        assertNull(request.getOption("--cache-dir"))
+    }
+
+    @Test
+    fun transfersKeepBoundedFragmentConcurrency() {
+        val video = built(DownloadRequest(url = URL, quality = VideoQuality.P1080))
+        val audio = built(DownloadRequest(url = URL, mode = MediaMode.AUDIO, audioFormat = AudioFormat.MP3))
+
+        assertEquals("4", video.getOption("--concurrent-fragments"))
+        assertEquals("4", audio.getOption("--concurrent-fragments"))
+    }
 
     @Test
     fun audioProfilesMapToHonestFfmpegOptions() {
@@ -362,6 +416,7 @@ class DownloadRequestFactoryTest {
         val audioCmd = audioReq.buildCommand()
         assertFalse(audioCmd.any { it.contains("impersonate", ignoreCase = true) })
         assertTrue(audioCmd.any { it == "--no-cache-dir" })
+        assertFalse(audioCmd.contains("--cache-dir"))
     }
 
     @Test
@@ -405,5 +460,6 @@ class DownloadRequestFactoryTest {
 
     private companion object {
         const val URL = "https://example.test/video"
+        const val CACHE_DIR = "/data/user/0/com.mvrk.vrka/cache/yt-dlp"
     }
 }
