@@ -19,6 +19,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -1368,13 +1369,20 @@ internal fun SettingsScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "VRKA v${BuildConfig.VERSION_NAME}",
+                        text = "VRKA v${BuildConfig.VERSION_NAME.removeSuffix("-debug")}",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontFamily = VrkaMonoFamily,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp,
                         ),
                         color = VrkaTokens.TextPrimary,
+                        maxLines = 1,
+                        softWrap = false,
+                        autoSize = TextAutoSize.StepBased(
+                            minFontSize = 12.sp,
+                            maxFontSize = 22.sp,
+                            stepSize = 0.5.sp,
+                        ),
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -1400,14 +1408,11 @@ internal fun SettingsScreen(
                 }
 
                 Spacer(Modifier.width(12.dp))
-                // Cropped artwork: the source PNG carried a wide transparent border, so a
-                // 72 dp box only showed ~50 dp of logo. 56 dp of tightly cropped artwork stays
-                // within the 48-56 dp target without touching the shared launcher asset.
                 androidx.compose.foundation.Image(
                     painter = painterResource(R.drawable.about_logo),
                     contentDescription = stringResource(R.string.about_logo_desc),
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                    modifier = Modifier.size(56.dp),
+                    modifier = Modifier.size(80.dp),
                 )
             }
 
