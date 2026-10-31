@@ -20,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -31,14 +30,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1469,21 +1465,6 @@ internal const val COMPONENT_HEADER_STACK_WIDTH_DP = 320
 internal fun componentHeaderStacks(availableWidth: Dp): Boolean =
     availableWidth < COMPONENT_HEADER_STACK_WIDTH_DP.dp
 
-/**
- * Inline layout is only chosen when the measured version line, badge and action fit beside
- * each other. Otherwise the badge moves to its own row so it can never be squeezed.
- */
-internal fun componentHeaderStacks(
-    availableWidth: Dp,
-    longestVersionWidth: Dp,
-    badgeWidth: Dp,
-    actionWidth: Dp,
-): Boolean =
-    componentHeaderStacks(availableWidth) ||
-        longestVersionWidth + DETAILS_END_SPACING_DP + badgeWidth + actionWidth > availableWidth
-
-private val DETAILS_END_SPACING_DP = 12.dp
-
 internal enum class ComponentCardAction {
     NONE,
     RETRY,
@@ -1519,30 +1500,24 @@ internal fun ComponentStatusRow(
         else -> stringResource(R.string.status_installed, ComponentStatusPresentation.versionLabel(comp.installedVersion))
     }
     val action = componentCardAction(comp)
-    val actionLabelText = when (action) {
-        ComponentCardAction.RETRY -> stringResource(R.string.action_retry)
-        ComponentCardAction.UPDATE -> stringResource(R.string.btn_update_now)
-        ComponentCardAction.NONE -> null
-    }
 
     val actionButton: @Composable () -> Unit = {
-        actionLabelText?.let { buttonLabel ->
-            VrkaOutlinedButton(
-                text = buttonLabel,
+        when (action) {
+            ComponentCardAction.RETRY -> VrkaOutlinedButton(
+                text = stringResource(R.string.action_retry),
                 onClick = {
-                    if (action == ComponentCardAction.RETRY &&
-                        comp.updateState == ComponentUpdateState.UPDATE_FAILED
-                    ) {
-                        onUpdate()
-                    } else if (action == ComponentCardAction.RETRY) {
-                        onCheck()
-                    } else {
-                        onUpdate()
-                    }
+                    if (comp.updateState == ComponentUpdateState.UPDATE_FAILED) onUpdate() else onCheck()
                 },
                 height = 32.dp,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
             )
+            ComponentCardAction.UPDATE -> VrkaOutlinedButton(
+                text = stringResource(R.string.btn_update_now),
+                onClick = onUpdate,
+                height = 32.dp,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            )
+            ComponentCardAction.NONE -> Unit
         }
     }
     val badge: @Composable () -> Unit = {
@@ -1556,27 +1531,19 @@ internal fun ComponentStatusRow(
                 fontWeight = FontWeight.SemiBold,
                 color = VrkaTokens.TextPrimary,
             )
-            ComponentVersionLine(
+            Text(
                 text = displayInstalledText,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                 color = VrkaTokens.TextSecondary,
                 modifier = Modifier.padding(top = 2.dp),
             )
             componentStatus.secondaryText?.let { resultText ->
-                val color = if (comp.error != null) VrkaTokens.Error else VrkaTokens.TextSecondary
-                if (VERSION_TEXT_PATTERN.containsMatchIn(resultText)) {
-                    ComponentVersionLine(
-                        text = resultText,
-                        color = color,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                } else {
-                    Text(
-                        text = resultText,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-                        color = color,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
+                Text(
+                    text = resultText,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                    color = if (comp.error != null) VrkaTokens.Error else VrkaTokens.TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
         }
     }
@@ -1586,30 +1553,7 @@ internal fun ComponentStatusRow(
             .fillMaxWidth()
             .padding(vertical = 12.dp),
     ) {
-        val density = LocalDensity.current
-        val textMeasurer = rememberTextMeasurer()
-        val versionStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily)
-        val badgeStyle = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily)
-        fun measuredWidth(text: String, style: androidx.compose.ui.text.TextStyle): Dp = with(density) {
-            textMeasurer.measure(
-                text = AnnotatedString(text),
-                style = style,
-                maxLines = 1,
-                softWrap = false,
-            ).size.width.toDp()
-        }
-        val longestVersionWidth = listOfNotNull(
-            displayInstalledText,
-            componentStatus.secondaryText?.takeIf { VERSION_TEXT_PATTERN.containsMatchIn(it) },
-        ).maxOfOrNull { measuredWidth(it, versionStyle) } ?: 0.dp
-        // Dot (6 dp) and the gap between it and the label.
-        val badgeWidth = measuredWidth(componentStatus.label, badgeStyle) + 12.dp
-        val actionWidth = actionLabelText?.let {
-            measuredWidth(it, MaterialTheme.typography.labelMedium) + 18.dp + 8.dp
-        } ?: 0.dp
-        val stacked = componentHeaderStacks(maxWidth, longestVersionWidth, badgeWidth, actionWidth)
-
-        if (stacked) {
+        if (componentHeaderStacks(maxWidth)) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Box(modifier = Modifier.fillMaxWidth()) { details() }
                 Spacer(Modifier.height(8.dp))
@@ -1641,73 +1585,6 @@ internal fun ComponentStatusRow(
                 }
             }
         }
-    }
-}
-
-private val VERSION_TEXT_PATTERN = Regex("v\\d")
-private val VERSION_TOKEN_PATTERN = Regex("""v\d[\w.]*""")
-
-/**
- * Splits a localized status line into its label and the version token. The label may wrap at
- * narrow widths, but the token is always rendered as one unbreakable line.
- */
-internal fun splitVersionLabel(text: String): Pair<String, String>? {
-    val match = VERSION_TOKEN_PATTERN.find(text) ?: return null
-    return text.substring(0, match.range.first).trimEnd() to text.substring(match.range.first)
-}
-
-/**
- * Version strings must never wrap or be clipped. They are kept on one line and, only if the
- * available width is still too small at the user's font scale, stepped down slightly rather
- * than truncating the last digit.
- */
-@Composable
-private fun ComponentVersionText(
-    text: String,
-    color: Color,
-    modifier: Modifier = Modifier,
-) {
-    val style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily)
-    Text(
-        text = text,
-        style = style,
-        color = color,
-        modifier = modifier,
-        maxLines = 1,
-        softWrap = false,
-        autoSize = TextAutoSize.StepBased(
-            minFontSize = style.fontSize * 0.75f,
-            maxFontSize = style.fontSize,
-            stepSize = 0.5.sp,
-        ),
-    )
-}
-
-/**
- * A label followed by a version. Both share a line while they fit; otherwise the localized
- * label wraps and the version token moves to its own line instead of being truncated.
- */
-@Composable
-private fun ComponentVersionLine(
-    text: String,
-    color: Color,
-    modifier: Modifier = Modifier,
-) {
-    val style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily)
-    val (label, version) = splitVersionLabel(text) ?: ("" to text)
-    FlowRow(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        if (label.isNotBlank()) {
-            Text(
-                text = label,
-                style = style,
-                color = color,
-            )
-        }
-        ComponentVersionText(text = version, color = color)
     }
 }
 
