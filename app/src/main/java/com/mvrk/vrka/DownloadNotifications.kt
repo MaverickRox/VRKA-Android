@@ -9,7 +9,6 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
@@ -17,7 +16,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.IconCompat
 import com.mvrk.vrka.R
 
 /**
@@ -116,7 +114,6 @@ internal object DownloadNotifications {
         val fileIntent = completionOpenIntent(context, job)
         val builder = NotificationCompat.Builder(context, COMPLETION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_download)
-            .setBrandedLargeIcon(context)
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
             .setContentTitle(title)
             .setContentText(text)
@@ -224,7 +221,6 @@ internal object DownloadNotifications {
     ): Notification {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_download)
-            .setBrandedLargeIcon(context)
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
             .setContentTitle(title)
             .setContentText(summary)
@@ -262,7 +258,6 @@ internal object DownloadNotifications {
         val text = context.getString(R.string.notification_downloads_interrupted_text)
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_download)
-            .setBrandedLargeIcon(context)
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
             .setContentTitle(context.getString(R.string.notification_downloads_interrupted_title))
             .setContentText(text)
@@ -274,18 +269,6 @@ internal object DownloadNotifications {
             .addAction(R.drawable.ic_download, context.getString(R.string.btn_open_queue), openIntent)
             .build()
     }
-
-    /**
-     * The branded square icon for the notification's leading area. The small icon stays the
-     * monochrome status-bar glyph; this is the separate, full-colour artwork. The resource is
-     * passed by reference so every progress update does not decode a 512px bitmap.
-     */
-    private fun NotificationCompat.Builder.setBrandedLargeIcon(
-        context: Context,
-    ): NotificationCompat.Builder = setLargeIcon(
-        IconCompat.createWithResource(context, R.drawable.ic_notification_large)
-            .toIcon(context),
-    )
 
     private fun cancelIntent(context: Context, job: DownloadJob): PendingIntent = PendingIntent.getService(
         context,
