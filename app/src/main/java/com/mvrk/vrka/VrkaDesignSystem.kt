@@ -17,7 +17,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.core.snap
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,6 +69,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -346,6 +346,7 @@ fun VrkaStatusBadge(
             fontWeight = FontWeight.Bold,
             color = color,
             maxLines = 1,
+            softWrap = false,
         )
     }
 }
@@ -1494,30 +1495,36 @@ private fun VrkaNavItem(
 
 internal data class GlowProgressGeometry(
     val fillWidthPx: Float,
+    /** Real progress edge; no light may cross it. */
     val headCenterPx: Float,
-    val headWidthPx: Float,
+    /** Brightest point of the comet, deliberately behind the progress edge. */
+    val coreCenterPx: Float,
     val trailLengthPx: Float,
+    val trailHalfHeightPx: Float,
     val glowHalfWidthPx: Float,
+    val glowHalfHeightPx: Float,
     val bloomRadiusPx: Float,
     val headVisible: Boolean,
 )
 
 /** The bar is three times as tall as the track so the glow has room to bleed. */
 internal const val GLOW_CANVAS_HEIGHT_RATIO = 3f
-internal const val GLOW_HEAD_WIDTH_RATIO = 0.55f
+internal const val GLOW_CORE_OFFSET_RATIO = 0.35f
 internal const val GLOW_TRAIL_LENGTH_RATIO = 5f
+internal const val GLOW_TRAIL_HALF_HEIGHT_RATIO = 0.9f
 internal const val GLOW_HALF_WIDTH_RATIO = 4f
 internal const val GLOW_HALF_HEIGHT_RATIO = 1.15f
 internal const val GLOW_BLOOM_RADIUS_RATIO = 1.25f
-internal const val GLOW_HALO_ALPHA = 0.34f
-internal const val GLOW_TRAIL_ALPHA = 0.72f
-internal const val GLOW_BLOOM_ALPHA = 0.30f
+internal const val GLOW_HALO_ALPHA = 0.26f
+internal const val GLOW_TRAIL_ALPHA = 0.88f
+internal const val GLOW_BLOOM_ALPHA = 0.28f
 
 /**
- * Pure geometry for the download progress bar. The fill and the light head are functions
- * of the real progress only: there is no pulse, no travelling icon and no idle animation.
- * Zero progress draws just the track, and small values clamp the head and trail to the
- * filled segment so no light escapes ahead of the actual progress.
+ * Pure geometry for the download progress bar. The fill and the comet are functions of the
+ * real progress only: there is no pulse, no travelling icon and no idle animation. The hot
+ * core sits [GLOW_CORE_OFFSET_RATIO] of a track height behind the progress edge so the light
+ * reads as a comet trailing backwards, and the drawing is clipped at the edge so no light can
+ * shine over the unfilled track.
  */
 internal fun glowProgressGeometry(
     progress: Float,
@@ -1528,14 +1535,18 @@ internal fun glowProgressGeometry(
     val safeWidth = if (trackWidthPx.isFinite()) trackWidthPx.coerceAtLeast(0f) else 0f
     val safeHeight = if (trackHeightPx.isFinite()) trackHeightPx.coerceAtLeast(0f) else 0f
     val fill = safeWidth * safeProgress
+    val visible = fill > 0f
+    val core = (fill - safeHeight * GLOW_CORE_OFFSET_RATIO).coerceAtLeast(0f)
     return GlowProgressGeometry(
         fillWidthPx = fill,
         headCenterPx = fill,
-        headWidthPx = (safeHeight * GLOW_HEAD_WIDTH_RATIO).coerceAtMost(fill),
+        coreCenterPx = if (visible) core else 0f,
         trailLengthPx = (safeHeight * GLOW_TRAIL_LENGTH_RATIO).coerceAtMost(fill),
-        glowHalfWidthPx = safeHeight * GLOW_HALF_WIDTH_RATIO,
-        bloomRadiusPx = safeHeight * GLOW_BLOOM_RADIUS_RATIO,
-        headVisible = fill > 0f,
+        trailHalfHeightPx = if (visible) safeHeight * GLOW_TRAIL_HALF_HEIGHT_RATIO else 0f,
+        glowHalfWidthPx = if (visible) safeHeight * GLOW_HALF_WIDTH_RATIO else 0f,
+        glowHalfHeightPx = if (visible) safeHeight * GLOW_HALF_HEIGHT_RATIO else 0f,
+        bloomRadiusPx = if (visible) safeHeight * GLOW_BLOOM_RADIUS_RATIO else 0f,
+        headVisible = visible,
     )
 }
 
@@ -1552,7 +1563,7 @@ private class GlowProgressPaints {
     val fill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         style = android.graphics.Paint.Style.FILL
     }
-    val trail = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+    val comet = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         style = android.graphics.Paint.Style.FILL
     }
     val glowHalo = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -1561,12 +1572,8 @@ private class GlowProgressPaints {
     val bloom = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         style = android.graphics.Paint.Style.FILL
     }
-    val head = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        style = android.graphics.Paint.Style.FILL
-        color = WHITE_HEAD
-    }
     private val glowMatrix = android.graphics.Matrix()
-    private val trailMatrix = android.graphics.Matrix()
+    private val cometMatrix = android.graphics.Matrix()
     private var configuredWidth = -1f
     private var configuredHeight = -1f
     private var configuredTrack = 0
@@ -1610,18 +1617,19 @@ private class GlowProgressPaints {
             floatArrayOf(0f, 1f),
             android.graphics.Shader.TileMode.CLAMP,
         )
-        // Unit gradient scaled to the live trail length each frame, so the fade always
-        // starts exactly at the trail's tail instead of being clipped mid-ramp.
-        trail.shader = android.graphics.LinearGradient(
+        // The comet is a radial gradient stretched horizontally each frame. Its near-white
+        // core fades in every direction, so the trail tapers backwards and the edges feather
+        // instead of ending in a hard band. The purple fill stays visible underneath.
+        comet.shader = android.graphics.RadialGradient(
             0f,
             0f,
             1f,
-            0f,
             intArrayOf(
-                Color.White.copy(alpha = 0f).toArgb(),
                 Color.White.copy(alpha = GLOW_TRAIL_ALPHA).toArgb(),
+                Color.White.copy(alpha = GLOW_TRAIL_ALPHA * 0.35f).toArgb(),
+                Color.Transparent.toArgb(),
             ),
-            floatArrayOf(0f, 1f),
+            floatArrayOf(0f, 0.42f, 1f),
             android.graphics.Shader.TileMode.CLAMP,
         )
     }
@@ -1638,15 +1646,13 @@ private class GlowProgressPaints {
         bloom.shader.setLocalMatrix(glowMatrix)
     }
 
-    fun prepareTrail(headX: Float, trailLength: Float) {
-        val safeLength = trailLength.coerceAtLeast(1f)
-        trailMatrix.setScale(safeLength, 1f)
-        trailMatrix.postTranslate(headX - safeLength, 0f)
-        trail.shader.setLocalMatrix(trailMatrix)
-    }
-
-    private companion object {
-        val WHITE_HEAD = Color.White.copy(alpha = 0.93f).toArgb()
+    fun prepareComet(centerX: Float, centerY: Float, halfWidth: Float, halfHeight: Float) {
+        cometMatrix.setScale(
+            halfWidth.coerceAtLeast(1f),
+            halfHeight.coerceAtLeast(1f),
+        )
+        cometMatrix.postTranslate(centerX, centerY)
+        comet.shader.setLocalMatrix(cometMatrix)
     }
 }
 
@@ -1681,62 +1687,73 @@ internal fun VrkaGlowProgressBar(
         label = "glow progress",
     )
     val paints = remember { GlowProgressPaints() }
-    val fillPath = remember { android.graphics.Path() }
 
-    Canvas(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(trackHeight * GLOW_CANVAS_HEIGHT_RATIO)
-            // Correct clipping: the track stays a capsule, while the glow is allowed to
-            // bleed vertically inside this component's own bounds and nowhere else.
-            .clipToBounds(),
-    ) {
-        val trackWidth = size.width
-        val track = size.height / GLOW_CANVAS_HEIGHT_RATIO
-        if (trackWidth <= 0f || track <= 0f) return@Canvas
-        val centerY = size.height / 2f
-        val top = centerY - track / 2f
-        val bottom = centerY + track / 2f
-        val radius = track / 2f
+            // The glow may bleed vertically inside this component's own bounds, but the
+            // drawing below additionally stops at the real progress edge.
+            .clipToBounds()
+            .drawWithCache {
+                val track = size.height / GLOW_CANVAS_HEIGHT_RATIO
+                if (size.width > 0f && track > 0f) {
+                    paints.configure(size.width, track, trackColor, accent)
+                }
+                onDrawBehind {
+                    if (size.width <= 0f || track <= 0f) return@onDrawBehind
+                    val centerY = size.height / 2f
+                    val top = centerY - track / 2f
+                    val bottom = centerY + track / 2f
+                    val radius = track / 2f
+                    val geometry = glowProgressGeometry(animatedProgress, size.width, track)
 
-        paints.configure(trackWidth, track, trackColor, accent)
-        val geometry = glowProgressGeometry(animatedProgress, trackWidth, track)
+                    drawIntoCanvas { canvas ->
+                        val native = canvas.nativeCanvas
+                        native.drawRoundRect(0f, top, size.width, bottom, radius, radius, paints.track)
+                        if (!geometry.headVisible) return@drawIntoCanvas
 
-        drawIntoCanvas { canvas ->
-            val native = canvas.nativeCanvas
-            native.drawRoundRect(0f, top, trackWidth, bottom, radius, radius, paints.track)
-            if (!geometry.headVisible) return@drawIntoCanvas
+                        val headX = geometry.headCenterPx
+                        native.drawRoundRect(0f, top, headX, bottom, radius, radius, paints.fill)
 
-            val headX = geometry.headCenterPx
-            native.drawRoundRect(0f, top, headX, bottom, radius, radius, paints.fill)
+                        // Everything luminous is clipped at the real progress edge: bloom
+                        // may rise above and below the purple fill, never ahead of it.
+                        native.save()
+                        native.clipRect(0f, 0f, headX, size.height)
 
-            // Trail: clipped to the filled capsule so it can never spill onto the track.
-            fillPath.rewind()
-            fillPath.addRoundRect(0f, top, headX, bottom, radius, radius, android.graphics.Path.Direction.CW)
-            native.save()
-            native.clipPath(fillPath)
-            paints.prepareTrail(headX, geometry.trailLengthPx)
-            native.drawRect(headX - geometry.trailLengthPx, top, headX, bottom, paints.trail)
-            native.restore()
+                        val core = geometry.coreCenterPx
+                        val haloHalf = geometry.glowHalfWidthPx
+                        paints.prepareHalo(core, centerY, haloHalf, geometry.glowHalfHeightPx)
+                        native.drawRect(
+                            core - haloHalf,
+                            centerY - geometry.glowHalfHeightPx,
+                            core + haloHalf,
+                            centerY + geometry.glowHalfHeightPx,
+                            paints.glowHalo,
+                        )
 
-            // Soft horizontal halo stretched around the head, then a smaller round bloom.
-            // Both are gradient shaders with a reused matrix, not blur filters, so they
-            // cost one draw call each and blur nothing.
-            val haloHalf = geometry.glowHalfWidthPx
-            val haloHeight = track * GLOW_HALF_HEIGHT_RATIO
-            paints.prepareHalo(headX, centerY, haloHalf, haloHeight)
-            native.drawRect(headX - haloHalf, centerY - haloHeight, headX + haloHalf, centerY + haloHeight, paints.glowHalo)
-            paints.prepareBloom(headX, centerY, geometry.bloomRadiusPx)
-            native.drawRect(
-                headX - geometry.bloomRadiusPx,
-                centerY - geometry.bloomRadiusPx,
-                headX + geometry.bloomRadiusPx,
-                centerY + geometry.bloomRadiusPx,
-                paints.bloom,
-            )
+                        val cometHalf = geometry.trailLengthPx
+                        paints.prepareComet(core, centerY, cometHalf, geometry.trailHalfHeightPx)
+                        native.drawRect(
+                            core - cometHalf,
+                            centerY - geometry.trailHalfHeightPx,
+                            core + cometHalf,
+                            centerY + geometry.trailHalfHeightPx,
+                            paints.comet,
+                        )
 
-            val headLeft = (headX - geometry.headWidthPx).coerceAtLeast(0f)
-            native.drawRoundRect(headLeft, top, headX, bottom, radius, radius, paints.head)
-        }
-    }
+                        val bloom = geometry.bloomRadiusPx
+                        paints.prepareBloom(core, centerY, bloom)
+                        native.drawRect(
+                            core - bloom,
+                            centerY - bloom,
+                            core + bloom,
+                            centerY + bloom,
+                            paints.bloom,
+                        )
+                        native.restore()
+                    }
+                }
+            },
+    )
 }

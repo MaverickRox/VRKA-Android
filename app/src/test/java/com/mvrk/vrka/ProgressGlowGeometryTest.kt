@@ -12,20 +12,29 @@ class ProgressGlowGeometryTest {
 
         assertEquals(0f, geometry.fillWidthPx, 0.001f)
         assertEquals(0f, geometry.headCenterPx, 0.001f)
-        assertEquals(0f, geometry.headWidthPx, 0.001f)
+        assertEquals(0f, geometry.coreCenterPx, 0.001f)
         assertEquals(0f, geometry.trailLengthPx, 0.001f)
+        assertEquals(0f, geometry.trailHalfHeightPx, 0.001f)
         assertFalse(geometry.headVisible)
     }
 
     @Test
-    fun midProgressFillsHalfAndPutsTheHeadAtTheLeadingEdge() {
+    fun midProgressPutsTheBrightestPointBehindTheLeadingEdge() {
         val geometry = glowProgressGeometry(0.5f, TRACK_WIDTH, TRACK_HEIGHT)
 
         assertEquals(TRACK_WIDTH / 2f, geometry.fillWidthPx, 0.001f)
         assertEquals(geometry.fillWidthPx, geometry.headCenterPx, 0.001f)
-        assertEquals(TRACK_HEIGHT * GLOW_HEAD_WIDTH_RATIO, geometry.headWidthPx, 0.001f)
+        // The comet core trails behind the progress edge; nothing is drawn in front of it.
+        assertEquals(
+            geometry.fillWidthPx - TRACK_HEIGHT * GLOW_CORE_OFFSET_RATIO,
+            geometry.coreCenterPx,
+            0.001f,
+        )
+        assertTrue(geometry.coreCenterPx < geometry.headCenterPx)
         assertEquals(TRACK_HEIGHT * GLOW_TRAIL_LENGTH_RATIO, geometry.trailLengthPx, 0.001f)
+        assertEquals(TRACK_HEIGHT * GLOW_TRAIL_HALF_HEIGHT_RATIO, geometry.trailHalfHeightPx, 0.001f)
         assertEquals(TRACK_HEIGHT * GLOW_HALF_WIDTH_RATIO, geometry.glowHalfWidthPx, 0.001f)
+        assertEquals(TRACK_HEIGHT * GLOW_HALF_HEIGHT_RATIO, geometry.glowHalfHeightPx, 0.001f)
         assertEquals(TRACK_HEIGHT * GLOW_BLOOM_RADIUS_RATIO, geometry.bloomRadiusPx, 0.001f)
         assertTrue(geometry.headVisible)
     }
@@ -45,21 +54,22 @@ class ProgressGlowGeometryTest {
 
         val fill = TRACK_WIDTH * 0.01f
         assertEquals(fill, geometry.fillWidthPx, 0.001f)
-        assertTrue(geometry.headWidthPx <= fill)
         assertTrue(geometry.trailLengthPx <= fill)
-        // The bright head still ends exactly at the real progress position.
+        assertTrue(geometry.coreCenterPx <= fill)
+        // The luminous area still ends exactly at the real progress position.
         assertEquals(geometry.fillWidthPx, geometry.headCenterPx, 0.001f)
     }
 
     @Test
-    fun lightAndBloomScaleWithTheTrackHeight() {
+    fun lightEmittersScaleWithTheTrackHeight() {
         val thin = glowProgressGeometry(0.5f, TRACK_WIDTH, 4f)
         val thick = glowProgressGeometry(0.5f, TRACK_WIDTH, 8f)
 
         assertEquals(thin.glowHalfWidthPx * 2f, thick.glowHalfWidthPx, 0.001f)
+        assertEquals(thin.glowHalfHeightPx * 2f, thick.glowHalfHeightPx, 0.001f)
         assertEquals(thin.bloomRadiusPx * 2f, thick.bloomRadiusPx, 0.001f)
-        assertEquals(thin.headWidthPx * 2f, thick.headWidthPx, 0.001f)
         assertEquals(thin.trailLengthPx * 2f, thick.trailLengthPx, 0.001f)
+        assertEquals(thin.trailHalfHeightPx * 2f, thick.trailHalfHeightPx, 0.001f)
     }
 
     @Test
@@ -75,8 +85,9 @@ class ProgressGlowGeometryTest {
         )
         val noTrack = glowProgressGeometry(0.5f, TRACK_WIDTH, Float.NaN)
         assertEquals(TRACK_WIDTH / 2f, noTrack.fillWidthPx, 0.001f)
-        assertEquals(0f, noTrack.headWidthPx, 0.001f)
+        assertEquals(0f, noTrack.trailHalfHeightPx, 0.001f)
         assertEquals(0f, noTrack.glowHalfWidthPx, 0.001f)
+        assertEquals(0f, noTrack.glowHalfHeightPx, 0.001f)
     }
 
     private companion object {
