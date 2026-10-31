@@ -27,11 +27,45 @@ class ComponentCardLayoutTest {
     }
 
     @Test
+    fun measuredContentDecidesWhetherTheBadgeSharesTheRow() {
+        // 393 dp screen leaves 321 dp of card content. A long version plus a badge and the
+        // localized "Update Now" label no longer fit, so the badge moves to its own row.
+        assertTrue(componentHeaderStacks(321.dp, 180.dp, 110.dp, 158.dp))
+        // The same card without an action still fits the version and badge inline.
+        assertFalse(componentHeaderStacks(321.dp, 180.dp, 110.dp, 0.dp))
+        // A badge alone can force stacking when the version line is unusually long.
+        assertTrue(componentHeaderStacks(321.dp, 260.dp, 110.dp, 0.dp))
+        // Tablets keep the inline layout when everything fits.
+        assertFalse(componentHeaderStacks(600.dp, 240.dp, 120.dp, 170.dp))
+    }
+
+    @Test
     fun updateAvailableShowsTheUpdateAction() {
         assertEquals(
             ComponentCardAction.UPDATE,
             componentCardAction(status(checkState = ComponentCheckState.UPDATE_AVAILABLE)),
         )
+    }
+
+    @Test
+    fun versionTokenIsSplitFromItsLocalizedLabel() {
+        assertEquals(
+            "Update available:" to "v2026.10.26",
+            splitVersionLabel("Update available: v2026.10.26"),
+        )
+        assertEquals(
+            "Mise à jour disponible :" to "v2026.10.26",
+            splitVersionLabel("Mise à jour disponible : v2026.10.26"),
+        )
+        assertEquals(
+            "有可用更新：" to "v2026.10.26",
+            splitVersionLabel("有可用更新：v2026.10.26"),
+        )
+        assertEquals(
+            "تحديث متوفر:" to "v2026.10.26",
+            splitVersionLabel("تحديث متوفر: v2026.10.26"),
+        )
+        assertEquals(null, splitVersionLabel("Not checked"))
     }
 
     @Test

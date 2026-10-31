@@ -8,9 +8,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -69,11 +72,16 @@ class ComponentCardNarrowScreenTest {
     fun germanUpdateActionWrapsBelowTheVersionTextOnANarrowCard() {
         show(availableWidthDp = 288)
 
-        composeRule.onNodeWithText("Installiert: v2026.08.19").assertIsDisplayed()
-        composeRule.onNodeWithText("v2026.09.01").assertIsDisplayed()
+        // The localized label and the version token are separate nodes so the token can stay
+        // unbroken while only the label wraps.
+        composeRule.onNodeWithText("Installiert:").assertIsDisplayed()
+        composeRule.onNodeWithText("v2026.08.19").assertIsDisplayed()
+        // The available version appears in both the version line and the badge.
+        composeRule.onAllNodesWithText("v2026.09.01").assertCountEquals(2)
+        composeRule.onAllNodesWithText("v2026.09.01").onFirst().assertIsDisplayed()
         composeRule.onNodeWithText("Jetzt aktualisieren").assertIsDisplayed()
 
-        val installed = composeRule.onNodeWithText("Installiert: v2026.08.19")
+        val installed = composeRule.onNodeWithText("v2026.08.19")
             .getUnclippedBoundsInRoot()
         val action = composeRule.onNodeWithText("Jetzt aktualisieren")
             .getUnclippedBoundsInRoot()
