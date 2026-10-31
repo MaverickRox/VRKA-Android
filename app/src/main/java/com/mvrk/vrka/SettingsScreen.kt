@@ -61,6 +61,9 @@ internal fun SettingsScreen(
     val geckoReady by geckoManager.isReady.collectAsStateWithLifecycle()
     val uBlockActive by geckoManager.uBlockActive.collectAsStateWithLifecycle()
     val mediaDetectorActive by geckoManager.mediaDetectorActive.collectAsStateWithLifecycle()
+    val browserSessionActive by geckoManager.browserSessionActive.collectAsStateWithLifecycle()
+    val uBlockInstalledVersion = componentMap[ComponentUpdateManager.ID_UBLOCK]?.installedVersion
+    val mediaDetectorBundled = remember(geckoManager) { geckoManager.hasBundledMediaDetector() }
     val appUpdateManager = remember { com.mvrk.vrka.update.AppUpdateManager.getInstance(context, repository) }
     val appUpdateState by appUpdateManager.checkState.collectAsStateWithLifecycle()
     var manualCheckRequested by remember { mutableStateOf(false) }
@@ -1074,11 +1077,7 @@ internal fun SettingsScreen(
                 title = stringResource(R.string.pref_browser_engine),
                 subtitle = "GeckoView ${BuildConfig.GECKOVIEW_VERSION} • arm64-v8a",
             ) {
-                VrkaStatusBadge(
-                    if (geckoReady) stringResource(R.string.status_initialized) else stringResource(R.string.status_bundled),
-                    if (geckoReady) VrkaTokens.Success else VrkaTokens.AccentLight,
-                    isMonospace = true,
-                )
+                BrowserStatusBadge(BrowserSubsystemStatus.engine(geckoReady))
             }
 
             VrkaDivider()
@@ -1087,10 +1086,8 @@ internal fun SettingsScreen(
                 title = stringResource(R.string.pref_ad_blocking),
                 subtitle = stringResource(R.string.desc_ad_blocking),
             ) {
-                VrkaStatusBadge(
-                    if (uBlockActive) stringResource(R.string.status_active) else stringResource(R.string.status_not_started),
-                    if (uBlockActive) VrkaTokens.Success else VrkaTokens.TextTertiary,
-                    isMonospace = true,
+                BrowserStatusBadge(
+                    BrowserSubsystemStatus.adBlocker(uBlockActive, uBlockInstalledVersion),
                 )
             }
 
@@ -1100,10 +1097,8 @@ internal fun SettingsScreen(
                 title = stringResource(R.string.pref_media_detection),
                 subtitle = stringResource(R.string.desc_media_detection),
             ) {
-                VrkaStatusBadge(
-                    if (mediaDetectorActive) stringResource(R.string.status_active) else stringResource(R.string.status_not_started),
-                    if (mediaDetectorActive) VrkaTokens.Success else VrkaTokens.TextTertiary,
-                    isMonospace = true,
+                BrowserStatusBadge(
+                    BrowserSubsystemStatus.mediaDetection(mediaDetectorActive, mediaDetectorBundled),
                 )
             }
 
@@ -1117,12 +1112,18 @@ internal fun SettingsScreen(
                 title = stringResource(R.string.pref_browser_session),
                 subtitle = clearSessionMessage ?: stringResource(R.string.desc_browser_session_default),
             ) {
-                VrkaOutlinedButton(
-                    text = if (isClearingSession) stringResource(R.string.btn_clearing) else stringResource(R.string.btn_clear_session),
-                    onClick = { showClearDialog = true },
-                    enabled = !isClearingSession,
-                    height = 32.dp,
-                )
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    BrowserStatusBadge(BrowserSubsystemStatus.session(browserSessionActive))
+                    VrkaOutlinedButton(
+                        text = if (isClearingSession) stringResource(R.string.btn_clearing) else stringResource(R.string.btn_clear_session),
+                        onClick = { showClearDialog = true },
+                        enabled = !isClearingSession,
+                        height = 32.dp,
+                    )
+                }
             }
 
             if (showClearDialog) {
@@ -1452,6 +1453,27 @@ private fun SettingsHeading(text: String) {
         color = VrkaTokens.TextTertiary,
         modifier = Modifier.padding(top = 22.dp, bottom = 8.dp, start = 4.dp),
     )
+}
+
+@Composable
+private fun BrowserStatusBadge(state: BrowserSubsystemState) {
+    val label = when (state) {
+        BrowserSubsystemState.BUNDLED -> stringResource(R.string.status_bundled)
+        BrowserSubsystemState.ACTIVE -> stringResource(R.string.status_active)
+        BrowserSubsystemState.INSTALLED_IDLE -> stringResource(R.string.status_installed_idle)
+        BrowserSubsystemState.READY -> stringResource(R.string.comp_status_ready)
+        BrowserSubsystemState.IDLE -> stringResource(R.string.status_idle)
+        BrowserSubsystemState.UNAVAILABLE -> stringResource(R.string.status_not_started)
+    }
+    val color = when (state) {
+        BrowserSubsystemState.ACTIVE -> VrkaTokens.Success
+        BrowserSubsystemState.BUNDLED,
+        BrowserSubsystemState.READY -> VrkaTokens.AccentLight
+        BrowserSubsystemState.INSTALLED_IDLE,
+        BrowserSubsystemState.IDLE -> VrkaTokens.TextTertiary
+        BrowserSubsystemState.UNAVAILABLE -> VrkaTokens.Error
+    }
+    VrkaStatusBadge(label, color, isMonospace = true)
 }
 
 /**

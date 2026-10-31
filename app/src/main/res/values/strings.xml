@@ -336,7 +336,9 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="status_failed">Failed</string>
     <string name="status_finishing">Finishing</string>
     <string name="status_initialized">Initialized</string>
+    <string name="status_idle">Idle</string>
     <string name="status_installed">Installed: %1$s</string>
+    <string name="status_installed_idle">Installed · Idle</string>
     <string name="status_merging">Merging</string>
     <string name="status_not_started">Not started</string>
     <string name="status_preparing">Preparing</string>

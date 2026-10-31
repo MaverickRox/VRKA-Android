@@ -336,7 +336,9 @@
     <string name="status_failed">فشل</string>
     <string name="status_finishing">قيد الإنهاء</string>
     <string name="status_initialized">تمت التهيئة</string>
+    <string name="status_idle">خامل</string>
     <string name="status_installed">مثبت: %1$s</string>
+    <string name="status_installed_idle">مثبت · خامل</string>
     <string name="status_merging">جارٍ الدمج</string>
     <string name="status_not_started">لم يبدأ</string>
     <string name="status_preparing">قيد التحضير</string>

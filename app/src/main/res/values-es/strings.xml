@@ -336,7 +336,9 @@
     <string name="status_failed">Fallido</string>
     <string name="status_finishing">Finalizando</string>
     <string name="status_initialized">Inicializado</string>
+    <string name="status_idle">Inactivo</string>
     <string name="status_installed">Instalado: %1$s</string>
+    <string name="status_installed_idle">Instalado · Inactivo</string>
     <string name="status_merging">Combinando</string>
     <string name="status_not_started">No iniciado</string>
     <string name="status_preparing">Preparando</string>

@@ -70,6 +70,7 @@ class FallbackEngine(
     private val ranker = EngineCandidateRanker()
     private val stateMachine = EngineStateMachine(taskId, state = EngineDownloadState.DIRECT_FAILED_ELIGIBLE_FOR_FALLBACK)
     private val cancelled = AtomicBoolean(false)
+    private val sessionRegistered = AtomicBoolean(false)
 
     private val _engineState = MutableStateFlow(EngineDownloadState.DIRECT_FAILED_ELIGIBLE_FOR_FALLBACK)
     val engineState: StateFlow<EngineDownloadState> = _engineState.asStateFlow()
@@ -143,6 +144,8 @@ class FallbackEngine(
             newSession.open(runtimeManager.runtime)
             session = newSession
             _activeSession.value = newSession
+            runtimeManager.browserSessionOpened(taskId)
+            sessionRegistered.set(true)
             newSession
         }
         Log.i(TAG, "Fallback GeckoSession opened in ${SystemClock.elapsedRealtime() - sessionOpenStartMs}ms")
@@ -580,6 +583,11 @@ class FallbackEngine(
 
     fun cleanup() {
         try {
+            if (sessionRegistered.compareAndSet(true, false)) {
+                runCatching {
+                    GeckoRuntimeManager.getInstance(context).browserSessionClosed(taskId)
+                }
+            }
             _activeSession.value = null
             val s = session
             session = null

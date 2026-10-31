@@ -336,7 +336,9 @@
     <string name="status_failed">ব্যর্থ হয়েছে</string>
     <string name="status_finishing">সমাপ্ত হচ্ছে</string>
     <string name="status_initialized">আরম্ভ হয়েছে</string>
+    <string name="status_idle">নিষ্ক্রিয়</string>
     <string name="status_installed">ইনস্টল করা হয়েছে: %1$s</string>
+    <string name="status_installed_idle">ইনস্টল করা হয়েছে · নিষ্ক্রিয়</string>
     <string name="status_merging">একত্রিত করছে</string>
     <string name="status_not_started">শুরু হয়নি</string>
     <string name="status_preparing">প্রস্তুত হচ্ছে</string>

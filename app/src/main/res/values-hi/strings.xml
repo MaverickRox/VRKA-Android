@@ -336,7 +336,9 @@
     <string name="status_failed">विफल</string>
     <string name="status_finishing">समाप्त हो रहा है</string>
     <string name="status_initialized">आरंभीकृत</string>
+    <string name="status_idle">निष्क्रिय</string>
     <string name="status_installed">स्थापित: %1$s</string>
+    <string name="status_installed_idle">स्थापित · निष्क्रिय</string>
     <string name="status_merging">विलय कर रहा है</string>
     <string name="status_not_started">शुरू नहीं हुआ</string>
     <string name="status_preparing">तैयार हो रहा है</string>

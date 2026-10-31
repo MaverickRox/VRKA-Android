@@ -336,7 +336,9 @@ Tem certeza de que deseja ativar downloads simultâneos?</string>
     <string name="status_failed">Falhou</string>
     <string name="status_finishing">Finalizando</string>
     <string name="status_initialized">Inicializado</string>
+    <string name="status_idle">Inativo</string>
     <string name="status_installed">Instalado: %1$s</string>
+    <string name="status_installed_idle">Instalado · Inativo</string>
     <string name="status_merging">Mesclando</string>
     <string name="status_not_started">Não iniciado</string>
     <string name="status_preparing">Preparando</string>
