@@ -8,6 +8,10 @@ release/
 *.keystore
 *.p12
 signing.properties
+keystore.properties
+*.pfx
+*.sec
+.env*
 .artifacts/
 .kotlin/
 .source-stage/
