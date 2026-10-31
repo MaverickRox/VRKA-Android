@@ -33,6 +33,7 @@ All notable changes to VRKA Android are documented here. Release entries describ
 - Browser Fallback transfers currently do not extract subtitles; subtitle options apply to direct yt-dlp downloads.
 - H.264 Compatibility Mode is optional, disabled by default, and requires local FFmpeg conversion.
 - Live stream detection depends on site player implementations and yt-dlp extractor support.
+- Due to a client-side verification check on temporary download files in the v5.0.2 binary, upgrading from v5.0.2 requires a one-time manual installation of the v5.1.0 APK. Application data and settings are preserved.
 
 ## [5.0.2] - 2026-10-05
 
