@@ -20,7 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * WP5 regression: the About card must show the enlarged (48-56 dp) VRKA artwork, and the
+ * WP4 regression: the About card must show the enlarged (72-84 dp) VRKA artwork, and the
  * artwork must stay on screen after the header text wraps on a narrow layout.
  */
 @RunWith(AndroidJUnit4::class)
@@ -55,9 +55,9 @@ class AboutLogoTest {
         val bounds = logo.getUnclippedBoundsInRoot()
         val height = (bounds.bottom - bounds.top).value
         val width = (bounds.right - bounds.left).value
-        assertTrue("About logo must be at least 48dp, was ${height}dp", height >= 47.9f)
-        assertTrue("About logo must stay within 56dp, was ${height}dp", height <= 56.1f)
-        assertTrue("About logo must keep a square box, was ${width}x${height}dp", width <= 56.1f)
+        assertTrue("About logo must be at least 72dp, was ${height}dp", height >= 71.9f)
+        assertTrue("About logo must stay within 84dp, was ${height}dp", height <= 84.1f)
+        assertTrue("About logo must keep a square box, was ${width}x${height}dp", width <= 84.1f)
     }
 
     private fun dismissComponentUpdateDialog() {

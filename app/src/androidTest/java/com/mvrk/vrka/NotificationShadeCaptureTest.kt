@@ -13,7 +13,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.io.FileOutputStream
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -92,7 +92,10 @@ class NotificationShadeCaptureTest {
                     R.drawable.ic_download,
                     notification.smallIcon.resId,
                 )
-                assertNotNull("$label: the wolf large icon must be present", notification.extras.get(Notification.EXTRA_LARGE_ICON))
+                assertNull(
+                    "$label: no second right-side large logo",
+                    notification.extras.get(Notification.EXTRA_LARGE_ICON),
+                )
                 manager.notify(id, notification)
             }
             shell("cmd statusbar expand-notifications")
