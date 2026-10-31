@@ -1,5 +1,13 @@
 # Known Limitations — VRKA Android 5.1.0
 
+> [!IMPORTANT]
+> **USERS UPGRADING FROM VRKA v5.0.2 MUST DOWNLOAD AND INSTALL v5.1.0 DIRECTLY FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON.**
+> 
+> **OFFICIAL DOWNLOAD PAGE:**
+> https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.0
+> 
+> **INSTALLATION:** Download `VRKA-Android-v5.1.0.apk` from the Assets section and install it over your existing VRKA installation. DO NOT UNINSTALL v5.0.2 FIRST.
+
 - The app and packaged native media libraries target `arm64-v8a`; other ABIs are not shipped.
 - VRKA does not bypass DRM, login, payment, CAPTCHA, consent, or other access controls. Site changes may require a yt-dlp or app update.
 - Preflight download size estimates are approximate calculations based on available metadata streams and format plans; actual bytes transferred may vary based on server encoding or post-processing.
@@ -15,4 +23,4 @@
 
 ## Validation Scope
 
-Automated test and build verification results are recorded in `RELEASE_EVIDENCE.md`. Verification includes 601 unit tests, release lint, production release build compilation, signature verification, and emulator execution.
+Automated test and build verification results are recorded in `RELEASE_EVIDENCE.md`. Verification includes 635 unit tests across 60 suites, release lint, production release build compilation, signature verification, and emulator execution.

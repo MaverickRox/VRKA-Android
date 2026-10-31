@@ -6,3 +6,5 @@ VRKA Android 5.1.0
 - Updated Mozilla GeckoView engine to 159.0.20261022150525.
 - Added custom yt-dlp runtime validation and selection.
 - Refined notifications, share card presentation, and component update state handling.
+- Secure in-app updater redesign with OpenPGP release manifest verification.
+- Upgrading from v5.0.2 requires installing v5.1.0 directly from GitHub.

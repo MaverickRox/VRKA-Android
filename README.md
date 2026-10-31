@@ -21,6 +21,14 @@
 
 <br />
 
+> [!IMPORTANT]
+> **USERS UPGRADING FROM VRKA v5.0.2 MUST DOWNLOAD AND INSTALL v5.1.0 DIRECTLY FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON.**
+> 
+> **OFFICIAL DOWNLOAD PAGE:**
+> https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.0
+> 
+> **INSTALLATION:** Download `VRKA-Android-v5.1.0.apk` from the Assets section and install it over your existing VRKA installation. DO NOT UNINSTALL v5.0.2 FIRST.
+
 <div align="center">
   <img src="docs/assets/social-preview.png" alt="VRKA Android Social Preview" width="900" />
 </div>
@@ -100,18 +108,19 @@ Designed for local, on-device processing without an application analytics servic
 
 ### In-App Application Self-Update
 
-VRKA Android includes an in-app update checker for updates from official GitHub releases:
+VRKA Android includes a hardened, cryptographically verified in-app update engine querying official GitHub releases:
 
-- **GitHub Releases Integration**: Periodically checks the official repository (`/repos/MaverickRox/VRKA-Android/releases/latest`) for new releases.
+- **OpenPGP Authenticated Release Manifests**: Every release publishes a machine-readable manifest (`VRKA-Android-vX.Y.Z.manifest.json`) authenticated by a detached OpenPGP signature (`VRKA-Android-vX.Y.Z.manifest.json.asc`).
+- **Pinned OpenPGP Trust Anchor**: Updates are cryptographically verified against the pinned official 4096-bit RSA release signing key (`0xD519380BEBA1B9F7`, fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`) embedded within the application.
+- **Anti-Rollback & Anti-Freeze Protections**: Monotonically non-decreasing metadata revision numbers prevent replay attacks, while mandatory expiration timestamps prevent freeze attacks.
 - **24-Hour Automatic Gate**: Automatic startup checks run at most once every 24 hours to reduce network traffic.
 - **Manual Check Bypass**: The `[Check for Updates]` button in Settings bypasses the 24-hour interval to check immediately.
-- **Non-Blocking Startup**: Checks run in the background without slowing down app startup.
+- **Non-Blocking Startup**: Checks run asynchronously without slowing down app startup.
 - **Canonical Stable Releases**: Accepts stable three-part tags such as `v5.1.0`, compares numeric version segments, and requires the exact matching asset `VRKA-Android-v5.1.0.apk`.
 - **HTTPS-Only Networking & Host Validation**: Streams metadata and APK files over HTTPS from approved GitHub release hosts, rejecting user-info, nonstandard ports, and unapproved hosts.
 - **Redirect Validation**: Validates every redirect target and limits redirect hops to at most 5.
-- **Install Verification**: Requires the APK to remain in the private update cache and verifies package identity, filename/version agreement, non-downgrade version code, and the installed signing certificate before launching Android's installer.
-- **FileProvider Installation**: APKs are saved to private app cache and handed off to Android's `PackageInstaller` via `FileProvider`.
-- **Persistent Downloads**: Downloads run through WorkManager so they continue even if the app is backgrounded.
+- **Two-Stage Install Verification**: Verifies archive integrity, package identity, version code, and signer certificate on temporary downloads, followed by canonical filename verification on staged files before launching Android's `PackageInstaller`.
+- **Persistent Downloads**: Downloads run through WorkManager so they survive process death or backgrounding.
 
 ### In-App Component Updates
 

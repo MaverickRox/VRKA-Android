@@ -120,6 +120,9 @@ internal object AppUpdateDownloadPolicy {
                     AppUpdateDownloadWorker.KEY_EXPECTED_SIZE to release.apkSizeBytes,
                     AppUpdateDownloadWorker.KEY_EXPECTED_SHA256 to release.apkSha256,
                     AppUpdateDownloadWorker.KEY_TARGET_VERSION to release.version.toString(),
+                    AppUpdateDownloadWorker.KEY_EXPECTED_CERT_SHA256 to release.certificateSha256,
+                    AppUpdateDownloadWorker.KEY_METADATA_REVISION to release.metadataRevision,
+                    AppUpdateDownloadWorker.KEY_TARGET_VERSION_CODE to (release.manifest?.versionCode ?: 0L),
                 ),
             )
             .setConstraints(constraints)
