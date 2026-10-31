@@ -4,6 +4,8 @@ Built with Jetpack Compose, Kotlin Coroutines, yt-dlp and FFmpeg, VRKA performs 
 
 Key Features:
 - Direct media extraction and downloads using yt-dlp, with optional local FFmpeg processing.
+- Full interface localization supporting 14 languages (Arabic, Bengali, Simplified Chinese, English, French, German, Gujarati, Hindi, Kannada, Portuguese Brazil, Portuguese Portugal, Spanish, Tamil, Telugu) and System Default.
+- Preflight download size estimation for direct downloads and Android Share Sheet.
 - Quality selection, actual-resolution tracking, video/audio formats, subtitle download and embedding on the normal yt-dlp path, and optional H.264 conversion.
 - Persistent job queue and history with optional 2–4 job concurrency; sequential mode remains the default.
 - Android share-sheet URL intake and sharing of published output files.
@@ -14,4 +16,4 @@ Key Features:
 - Browser Fallback transfers use yt-dlp. FFmpeg handles local processing; VRKA does not use an app-owned native HLS/DASH transfer engine.
 - Application updates require canonical stable release tags and exact APK names, validate each HTTPS redirect, and verify package, version, version code, and signing certificate before installation.
 - Local on-device processing with no application telemetry or cloud tracking.
-- Component updates for yt-dlp and uBlock Origin are verified before installation.
+- Component updates for yt-dlp and uBlock Origin are verified before installation, with support for custom yt-dlp runtimes.

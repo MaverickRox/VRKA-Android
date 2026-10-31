@@ -1,6 +1,6 @@
-# VRKA Android 5.0.2 — Current Production Architecture
+# VRKA Android 5.1.0 — Current Production Architecture
 
-This documents the current 5.0.2 production source. Its download and media-processing architecture is the final shipped 5.0 design; 5.0.1 restored canonical release validation, and 5.0.2 hardens persistent background update downloads, retry semantics, and installation flow. Release-specific build and test evidence is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+This documents the current 5.1.0 production source. Its core architecture builds upon the hardened 5.0.2 baseline, adding full 14-language localization, preflight download size estimation, custom yt-dlp runtime validation, an updated GeckoView 159 engine, and an AMOLED-optimized luminous wake progress renderer. Release-specific build and test evidence is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
 
 ## Normal downloads
 

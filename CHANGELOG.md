@@ -2,6 +2,38 @@
 
 All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
 
+## [5.1.0] - 2026-10-31
+
+### What's New in 5.1.0
+- Added full interface localization for 14 languages: Arabic, Bengali, Simplified Chinese, English, French, German, Gujarati, Hindi, Kannada, Portuguese (Brazil), Portuguese (Portugal), Spanish, Tamil, and Telugu, alongside System Default language selection.
+- Added preflight download size estimation to the download screen and Android Share Sheet, displaying approximate transfer size before starting downloads.
+- Redesigned download progress indicator with an AMOLED-optimized directional luminous wake.
+- Updated Mozilla GeckoView engine to 159.0.20261022150525.
+
+### Improvements
+- Added support for validating and selecting custom yt-dlp runtimes in Settings.
+- Improved component update state transitions for yt-dlp and uBlock Origin, separating background version resolution from active update checks.
+- Unified format and quality selection across direct downloads and the Android Share Sheet.
+- Refined notification layout to show a clean single application icon without duplicate branding.
+- Clarified browser subsystem status presentation across active, idle, and uninitialized states.
+- Enhanced navigation bar and tab switching performance with draw-phase optimizations.
+
+### Fixes
+- Fixed an issue where declining a startup component update could leave Settings displaying a persistent checking state.
+- Fixed component version badge wrapping and layout clipping on compact displays.
+- Fixed an issue where long translated labels could overlap or push controls off-screen.
+- Corrected notification channel setup and download completion dispatch.
+- Fixed recovery and cleanup logic for interrupted long-running background transfers.
+
+### Compatibility
+- Requires Android 8.0 (API level 26) or higher.
+- Built for 64-bit ARM devices (arm64-v8a).
+
+### Known Limitations
+- Browser Fallback transfers currently do not extract subtitles; subtitle options apply to direct yt-dlp downloads.
+- H.264 Compatibility Mode is optional, disabled by default, and requires local FFmpeg conversion.
+- Live stream detection depends on site player implementations and yt-dlp extractor support.
+
 ## [5.0.2] - 2026-10-05
 
 ### Improved
