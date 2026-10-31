@@ -18,9 +18,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -101,28 +103,25 @@ data class ComponentStatus(
     val lifecycleState: ComponentLifecycleState = ComponentLifecycleState.UNKNOWN,
     val checkState: ComponentCheckState = ComponentCheckState.CHECK_IDLE,
     val updateState: ComponentUpdateState = ComponentUpdateState.UPDATE_IDLE,
+    val isResolvingInstalledVersion: Boolean = false,
     val message: String = "",
     val error: String? = null,
     val lastChecked: Long = 0L,
 ) {
-    val isChecking: Boolean get() = checkState == ComponentCheckState.CHECKING ||
-        lifecycleState == ComponentLifecycleState.CHECKING
-    val isUpdating: Boolean get() = (
-        updateState in setOf(
-            ComponentUpdateState.DOWNLOADING,
-            ComponentUpdateState.VERIFYING,
-            ComponentUpdateState.INSTALLING,
-        ) || lifecycleState in setOf(
-            ComponentLifecycleState.DOWNLOADING,
-            ComponentLifecycleState.VERIFYING,
-            ComponentLifecycleState.STAGING,
-            ComponentLifecycleState.INSTALLING,
-            ComponentLifecycleState.VERIFYING_INSTALL,
-            ComponentLifecycleState.ROLLING_BACK,
-        )
-    ) && updateState != ComponentUpdateState.UPDATE_SUCCESS &&
-        lifecycleState !in setOf(ComponentLifecycleState.UP_TO_DATE, ComponentLifecycleState.UPDATED)
+    /**
+     * Only a real discovery request counts as checking. Resolving the installed version is a
+     * local read that runs alongside discovery, so it must never disable the Check All button
+     * or present "Checking" after discovery already finished.
+     */
+    val isChecking: Boolean get() = checkState == ComponentCheckState.CHECKING
+    val isUpdating: Boolean get() = updateState in ACTIVE_UPDATE_STATES
 }
+
+private val ACTIVE_UPDATE_STATES = setOf(
+    ComponentUpdateState.DOWNLOADING,
+    ComponentUpdateState.VERIFYING,
+    ComponentUpdateState.INSTALLING,
+)
 
 /**
  * Installed-version resolution shared by both components. Artifact metadata is tried first,
@@ -156,6 +155,12 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     private val globalCheckGeneration = AtomicLong(0L)
     private val activeCheckJobs = ConcurrentHashMap<String, Job>()
     private val activeUpdateJobs = ConcurrentHashMap<String, Job>()
+
+    /**
+     * Generation that last set CHECKING for a component. Only the owner may clear the
+     * checking state, so a superseded request can never wipe a newer one's UI state.
+     */
+    private val checkOwners = ConcurrentHashMap<String, Long>()
 
     // Local check-request gate and caching
     private data class ReleaseCacheEntry(val tag: String, val timestamp: Long)
@@ -348,37 +353,14 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         scope.launch {
             listOf(ID_YTDLP, ID_UBLOCK).forEach { id ->
                 // Until the artifact has been read, an empty version means "still resolving",
-                // not "unavailable". The card renders that distinction, so a first install
-                // shows a resolving state instead of a permanent-looking "Unavailable".
-                markResolvingIfUnresolved(id)
+                // not "unavailable". This flag is display-only and never marks the component
+                // as checking: discovery may already have completed while this read runs.
+                updateState(id, ComponentStatusTransitions::resolutionStarted)
                 try {
                     resolveAndPublishInstalledVersion(id)
                 } finally {
-                    clearResolving(id)
+                    updateState(id, ComponentStatusTransitions::resolutionFinished)
                 }
-            }
-        }
-    }
-
-    private fun markResolvingIfUnresolved(id: String) {
-        updateState(id) { current ->
-            if (current.installedVersion.isBlank() && current.checkState == ComponentCheckState.CHECK_IDLE) {
-                current.copy(lifecycleState = ComponentLifecycleState.CHECKING)
-            } else {
-                current
-            }
-        }
-    }
-
-    private fun clearResolving(id: String) {
-        // A user-initiated check sets checkState = CHECKING; leave its lifecycle untouched.
-        updateState(id) { current ->
-            if (current.lifecycleState == ComponentLifecycleState.CHECKING &&
-                current.checkState == ComponentCheckState.CHECK_IDLE
-            ) {
-                current.copy(lifecycleState = ComponentLifecycleState.UNKNOWN)
-            } else {
-                current
             }
         }
     }
@@ -520,6 +502,9 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         channel: UpdatePreference = UpdatePreference.STABLE,
         generation: Long = checkGenerations.compute(id) { _, v -> (v ?: 0L) + 1L }!!,
     ) {
+        if (checkGenerations[id] != generation) return
+        currentCoroutineContext().ensureActive()
+        checkOwners[id] = generation
         updateState(id, ComponentStatusTransitions::beginCheck)
 
         try {
@@ -591,8 +576,10 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 updateState(id) { ComponentStatusTransitions.checkFailed(it, errMsg) }
             }
         } finally {
-            if (checkGenerations[id] == generation) {
-                activeCheckJobs.remove(id)
+            // Only the request that set CHECKING may clear it. A channel switch or a newer
+            // request already owns the current state in every other case.
+            if (checkOwners[id] == generation) {
+                checkOwners.remove(id, generation)
                 updateState(id) { current ->
                     if (current.checkState == ComponentCheckState.CHECKING) {
                         current.copy(checkState = ComponentCheckState.CHECK_IDLE, message = "Ready to check", error = null)
@@ -600,9 +587,8 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                         current
                     }
                 }
-            } else {
-                activeCheckJobs.computeIfPresent(id) { _, j -> if (j.isCompleted) null else j }
             }
+            activeCheckJobs.computeIfPresent(id) { _, job -> if (job.isCompleted) null else job }
         }
     }
 
@@ -890,10 +876,12 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     }
 
     private fun updateState(id: String, transform: (ComponentStatus) -> ComponentStatus) {
-        val map = _components.value.toMutableMap()
-        val existing = map[id] ?: return
-        map[id] = transform(existing)
-        _components.value = map
+        // Atomic compare-and-set: discovery, version resolution and worker observation all
+        // publish from different dispatchers, so a read-copy-write would lose updates.
+        _components.update { map ->
+            val existing = map[id] ?: return@update map
+            map + (id to transform(existing))
+        }
     }
 
     companion object {

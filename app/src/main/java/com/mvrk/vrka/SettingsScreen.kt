@@ -1494,7 +1494,7 @@ internal fun ComponentStatusRow(
         ComponentStatusTone.NEUTRAL -> VrkaTokens.TextTertiary
     }
     val displayInstalledText = when {
-        comp.installedVersion.isBlank() && comp.isChecking -> stringResource(R.string.status_resolving)
+        comp.installedVersion.isBlank() && comp.isResolvingInstalledVersion -> stringResource(R.string.status_resolving)
         comp.installedVersion.isBlank() || comp.installedVersion.equals("Unknown", ignoreCase = true) ->
             stringResource(R.string.status_unavailable)
         else -> stringResource(R.string.status_installed, ComponentStatusPresentation.versionLabel(comp.installedVersion))
