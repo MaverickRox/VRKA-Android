@@ -450,6 +450,32 @@ class DownloadRequestFactoryTest {
         assertTrue(opusRequest.hasOption("--embed-thumbnail"))
     }
 
+    @Test
+    fun diagnosticCommandRecordsTheRealFlagsAndRedactsHeaderValues() {
+        val request = DownloadRequestFactory.sizeEstimate(
+            DownloadRequest(
+                url = URL,
+                customHeaders = mapOf(
+                    "Cookie" to "session=super-secret-token",
+                    "Accept-Language" to "en-US",
+                ),
+            ),
+        )
+
+        val command = DownloadRequestFactory.diagnosticCommand(request)
+
+        assertTrue(command.startsWith("yt-dlp "))
+        assertTrue(command.contains("--simulate"))
+        assertTrue(command.contains("--dump-single-json"))
+        assertTrue(command.contains("--socket-timeout 10"))
+        assertTrue(command.contains("--retries 2"))
+        assertTrue(command.contains("Cookie:<redacted>"))
+        assertTrue(command.contains("Accept-Language:<redacted>"))
+        assertFalse(command.contains("super-secret-token"))
+        assertFalse(command.contains("en-US"))
+        assertTrue(command.contains(URL))
+    }
+
     private fun built(request: DownloadRequest) =
         DownloadRequestFactory.download(
             DownloadJob(id = "test-job", request = request),

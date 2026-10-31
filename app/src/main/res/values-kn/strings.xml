@@ -237,6 +237,7 @@
     <string name="opt_sponsorblock_categories_hint">ಅಲ್ಪವಿರಾಮದಿಂದ ಬೇರ್ಪಡಿಸಲಾದ ವರ್ಗ ಹೆಸರುಗಳು</string>
     <string name="opt_subtitle_pattern">ಉಪಶೀರ್ಷಿಕೆ ಭಾಷಾ ಮಾದರಿ</string>
     <string name="opt_subtitles_helper">ಉಪಶೀರ್ಷಿಕೆ ಡೌನ್‌ಲೋಡ್‌ಗಳು ಸಾಮಾನ್ಯ yt-dlp ಮಾರ್ಗವನ್ನು ಬಳಸುತ್ತವೆ. ಬ್ರೌಸರ್ ಫಾಲ್‌ಬ್ಯಾಕ್ ಪ್ರಸ್ತುತ ಉಪಶೀರ್ಷಿಕೆಗಳನ್ನು ಪಡೆಯುವುದಿಲ್ಲ.</string>
+    <string name="metadata_subtitles_available">ಉಪಶೀರ್ಷಿಕೆಗಳು: %1$s</string>
     <string name="opt_trim_end">ಅಂತ್ಯ</string>
     <string name="opt_trim_start">ಪ್ರಾರಂಭ</string>
     <string name="opt_trim_title">ಐಚ್ಛಿಕ ಟ್ರಿಮ್ (HH:MM:SS ಅಥವಾ ಸೆಕೆಂಡುಗಳು)</string>

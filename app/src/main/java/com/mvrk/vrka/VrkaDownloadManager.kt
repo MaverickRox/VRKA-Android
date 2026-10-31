@@ -11,7 +11,6 @@ import com.mvrk.vrka.update.AppUpdateManager
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -111,10 +110,18 @@ class VrkaDownloadManager(
             if (version.isBlank()) name else "$name • yt-dlp $version"
         },
     )
-    private val estimateCache = MetadataEstimateCache()
-    private val documentCache = MetadataDocumentCache()
-    private val documentInFlight =
-        HashMap<String, CompletableDeferred<MetadataDocumentCache.Document?>>()
+    private val metadataRepository = MetadataRepository(
+        probe = { request -> sizeEstimator.probe(request) },
+        ensureReady = { ensureInitialized() },
+        onFailure = { request, preflight ->
+            if (preflight.estimate.detail != "custom-command") {
+                val runtimeVersion = normalizedVersion(ytDlpRuntimeManager.activeVersion())
+                if (rememberEstimateDiagnostic(MetadataEstimateCache.keyFor(request, runtimeVersion))) {
+                    recordSizeDiagnostic(request, preflight)
+                }
+            }
+        },
+    )
     private val recordedEstimateDiagnostics = ConcurrentHashMap.newKeySet<String>()
 
     fun clearDiagnostics() {
@@ -149,7 +156,7 @@ class VrkaDownloadManager(
         }
         ytDlpRuntimeManager.onActiveRuntimeChanged = {
             refreshRuntimeStatus()
-            estimateCache.clear()
+            metadataRepository.clear()
         }
         scope.launch(Dispatchers.IO) {
             val initial = runCatching {
@@ -487,92 +494,31 @@ class VrkaDownloadManager(
     }
 
     /**
-     * Metadata-only preflight for the confirmation and share UIs. Runs on the active runtime
-     * after runtime initialization; failures degrade to an "unavailable" estimate.
+     * Metadata-only preflight for the confirmation, share and format UIs. One yt-dlp process
+     * per source returns the complete document; every selection is then calculated locally.
+     * Concurrent callers (the download screen and the share card, for example) join the same
+     * in-flight extraction, and [forceRefresh] bypasses both caches for the retry action.
      *
-     * The raw metadata document is cached separately from the per-selection estimate. Changing
-     * quality or format therefore recalculates locally instead of launching another yt-dlp
-     * extraction, and concurrent callers for the same source share one process. [forceRefresh]
-     * bypasses both caches for the user-visible retry action.
+     * Nothing here runs until an extraction is actually required, so a warm cache hit never
+     * pays the Python/FFmpeg initialisation cost.
      */
-    suspend fun estimateSize(request: DownloadRequest, forceRefresh: Boolean = false): SizeEstimate =
-        kotlinx.coroutines.withContext(Dispatchers.IO) {
-            val startedAt = System.currentTimeMillis()
-            ensureInitialized()
-            val runtimeVersion = normalizedVersion(ytDlpRuntimeManager.activeVersion())
-            val formatKey = MetadataEstimateCache.formatKeyFor(request)
-            val estimateKey = MetadataEstimateCache.keyFor(request, runtimeVersion)
-            if (!forceRefresh) {
-                estimateCache.get(estimateKey)?.let {
-                    logEstimateLatency("estimate-cache", startedAt)
-                    return@withContext it
-                }
-            }
-
-            val documentKey = MetadataDocumentCache.keyFor(request, runtimeVersion)
-            if (!forceRefresh) {
-                documentCache.get(documentKey)?.let { document ->
-                    val estimate = estimateFromDocument(document, request, formatKey)
-                    estimateCache.put(estimateKey, estimate)
-                    logEstimateLatency("document-cache", startedAt)
-                    return@withContext estimate
-                }
-            }
-
-            val (deferred, owner) = synchronized(documentInFlight) {
-                val existing = documentInFlight[documentKey]
-                if (existing != null) {
-                    existing to false
-                } else {
-                    CompletableDeferred<MetadataDocumentCache.Document?>()
-                        .also { documentInFlight[documentKey] = it } to true
-                }
-            }
-            if (!owner) {
-                val document = deferred.await()
-                    ?: return@withContext SizeEstimate.unavailable("process")
-                val estimate = estimateFromDocument(document, request, formatKey)
-                estimateCache.put(estimateKey, estimate)
-                logEstimateLatency("shared-in-flight", startedAt)
-                return@withContext estimate
-            }
-            try {
-                val preflight = sizeEstimator.probe(request)
-                val document = preflight.document?.let {
-                    MetadataDocumentCache.Document(it, formatKey, System.currentTimeMillis())
-                }
-                if (document != null) documentCache.put(documentKey, document)
-                estimateCache.put(estimateKey, preflight.estimate)
-                if (!preflight.estimate.isAvailable &&
-                    preflight.estimate.detail != "custom-command" &&
-                    rememberEstimateDiagnostic(estimateKey)
-                ) {
-                    recordSizeDiagnostic(request, preflight)
-                }
-                deferred.complete(document)
-                logEstimateLatency(
-                    if (preflight.document != null) "extraction" else "extraction-failed",
-                    startedAt,
-                    preflight.durationMs,
-                )
-                preflight.estimate
-            } catch (error: Throwable) {
-                deferred.complete(null)
-                throw error
-            } finally {
-                synchronized(documentInFlight) { documentInFlight.remove(documentKey) }
-            }
+    suspend fun estimateSize(request: DownloadRequest, forceRefresh: Boolean = false): SizeEstimate {
+        val startedAt = System.currentTimeMillis()
+        val runtimeVersion = normalizedVersion(ytDlpRuntimeManager.activeVersion())
+        return metadataRepository.estimate(request, runtimeVersion, forceRefresh) { load ->
+            logEstimateLatency(load.source, startedAt, load.probeDurationMs)
         }
+    }
 
-    private fun estimateFromDocument(
-        document: MetadataDocumentCache.Document,
-        request: DownloadRequest,
-        formatKey: String,
-    ): SizeEstimate = sizeEstimator.estimateFromDocument(
-        document = document.json,
-        request = request,
-        recalculateSelection = document.sourceFormatKey != formatKey,
-    )
+    /**
+     * The shared metadata view used by the download screen (resolution sizes and subtitle
+     * languages). It goes through the same repository as [estimateSize], so it never starts a
+     * second extraction for a source that was already fetched.
+     */
+    suspend fun metadata(request: DownloadRequest, forceRefresh: Boolean = false): MetadataSnapshot? {
+        val runtimeVersion = normalizedVersion(ytDlpRuntimeManager.activeVersion())
+        return metadataRepository.snapshot(request, runtimeVersion, forceRefresh)
+    }
 
     /** Stage timing for latency measurement; never includes URLs or request headers. */
     private fun logEstimateLatency(source: String, startedAt: Long, preflightMs: Long? = null) {
@@ -610,10 +556,16 @@ class VrkaDownloadManager(
                     appendLine("selector=${preflight.formatSelector}")
                     appendLine("runtime=${preflight.runtimeLabel}")
                     appendLine(
-                        "startedAt=${preflight.startedAtEpochMs} durationMs=${preflight.durationMs} " +
-                            "exit=${preflight.exitCode ?: "unknown"} timedOut=${preflight.timedOut} " +
-                            "stdoutChars=${preflight.stdoutChars}",
+                        "startedAt=${preflight.startedAtEpochMs} finishedAt=${preflight.finishedAtEpochMs} " +
+                            "durationMs=${preflight.durationMs} exit=${preflight.exitCode ?: "unknown"} " +
+                            "timedOut=${preflight.timedOut} stdoutChars=${preflight.stdoutChars}",
                     )
+                    if (preflight.command.isNotBlank()) {
+                        appendLine("command: ${preflight.command}")
+                    }
+                    if (preflight.documentSummary.isNotBlank()) {
+                        appendLine("response: ${preflight.documentSummary}")
+                    }
                     if (estimate.diagnostic.isNotBlank()) appendLine(estimate.diagnostic)
                     if (preflight.stderrTail.isNotBlank()) {
                         appendLine("stderr:")

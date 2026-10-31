@@ -237,6 +237,7 @@
     <string name="opt_sponsorblock_categories_hint">以逗号分隔的类别名称</string>
     <string name="opt_subtitle_pattern">字幕语言代码匹配模式</string>
     <string name="opt_subtitles_helper">字幕下载使用常规 yt-dlp 路径。浏览器后备模式当前不抓取字幕。</string>
+    <string name="metadata_subtitles_available">字幕：%1$s</string>
     <string name="opt_trim_end">结束</string>
     <string name="opt_trim_start">起始</string>
     <string name="opt_trim_title">可选剪辑 (HH:MM:SS 或秒数)</string>

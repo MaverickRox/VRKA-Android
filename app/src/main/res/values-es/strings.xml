@@ -237,6 +237,7 @@
     <string name="opt_sponsorblock_categories_hint">Nombres de categorías separados por comas</string>
     <string name="opt_subtitle_pattern">Patrón de idioma de subtítulos</string>
     <string name="opt_subtitles_helper">Las descargas de subtítulos usan la ruta normal de yt-dlp. El navegador de respaldo actualmente no obtiene subtítulos.</string>
+    <string name="metadata_subtitles_available">Subtítulos: %1$s</string>
     <string name="opt_trim_end">Fin</string>
     <string name="opt_trim_start">Inicio</string>
     <string name="opt_trim_title">Recorte opcional (HH:MM:SS o segundos)</string>

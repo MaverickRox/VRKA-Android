@@ -2,6 +2,7 @@ package com.mvrk.vrka
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -366,7 +367,7 @@ class SizeEstimateTest {
     }
 
     @Test
-    fun preflightUsesTheSameFormatSelectorAsTheTransfer() {
+    fun preflightFetchesEveryFormatInOnePassWithoutASelector() {
         val requests = listOf(
             DownloadRequest(url = URL, quality = VideoQuality.P1080, prefer60Fps = true),
             DownloadRequest(url = URL, mode = MediaMode.AUDIO, audioFormat = AudioFormat.MP3, mp3Bitrate = 192),
@@ -375,18 +376,19 @@ class SizeEstimateTest {
         )
 
         requests.forEach { request ->
-            val transfer = DownloadRequestFactory.download(
-                DownloadJob(id = "test-job", request = request),
-                staging,
-            )
             val preflight = DownloadRequestFactory.sizeEstimate(request)
 
-            assertEquals(transfer.getOption("-f"), preflight.getOption("-f"))
+            // No `-f`: the document must describe every resolution, codec and subtitle so one
+            // extraction can answer all later selections locally.
+            assertNull(preflight.getOption("-f"))
             assertTrue(preflight.hasOption("--dump-single-json"))
             assertTrue(preflight.hasOption("--simulate"))
             assertTrue(preflight.hasOption("--no-playlist"))
             assertFalse(preflight.hasOption("--write-subs"))
             assertFalse(preflight.hasOption("--extract-audio"))
+            assertEquals("10", preflight.getOption("--socket-timeout"))
+            assertEquals("2", preflight.getOption("--retries"))
+            assertFalse(preflight.hasOption("--legacy-server-connect"))
         }
     }
 

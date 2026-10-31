@@ -237,6 +237,7 @@
     <string name="opt_sponsorblock_categories_hint">কমা দিয়ে পৃথক করা বিভাগের নাম</string>
     <string name="opt_subtitle_pattern">সাবটাইটেল ভাষার প্যাটার্ন</string>
     <string name="opt_subtitles_helper">সাবটাইটেল ডাউনলোড সাধারণ yt-dlp পথ ব্যবহার করে। ব্রাউজার ফলব্যাক বর্তমানে সাবটাইটেল আনে না।</string>
+    <string name="metadata_subtitles_available">সাবটাইটেল: %1$s</string>
     <string name="opt_trim_end">শেষ</string>
     <string name="opt_trim_start">শুরু</string>
     <string name="opt_trim_title">ঐচ্ছিক ট্রিম (HH:MM:SS বা সেকেন্ড)</string>

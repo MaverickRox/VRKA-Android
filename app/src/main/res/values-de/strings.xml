@@ -237,6 +237,7 @@ Möchten Sie parallele Downloads wirklich aktivieren?</string>
     <string name="opt_sponsorblock_categories_hint">Kommagetrennte Kategorienamen</string>
     <string name="opt_subtitle_pattern">Untertitelsprachen-Muster</string>
     <string name="opt_subtitles_helper">Untertitel-Downloads verwenden den normalen yt-dlp-Pfad. Der Browser-Fallback ruft derzeit keine Untertitel ab.</string>
+    <string name="metadata_subtitles_available">Untertitel: %1$s</string>
     <string name="opt_trim_end">Ende</string>
     <string name="opt_trim_start">Start</string>
     <string name="opt_trim_title">Optionales Zuschneiden (HH:MM:SS oder Sekunden)</string>

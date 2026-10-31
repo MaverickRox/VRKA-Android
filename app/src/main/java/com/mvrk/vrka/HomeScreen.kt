@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
 internal fun HomeScreen(
@@ -67,6 +68,7 @@ internal fun HomeScreen(
     modifier: Modifier = Modifier,
     onEnqueue: (DownloadRequest, SizeEstimate?) -> Unit,
     onEstimateSize: suspend (DownloadRequest, Boolean) -> SizeEstimate,
+    onLoadMetadata: suspend (DownloadRequest) -> MetadataSnapshot? = { null },
     onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val context = LocalContext.current
@@ -101,6 +103,7 @@ internal fun HomeScreen(
     var confirmationNeedsLocation by remember { mutableStateOf(false) }
     var showConfirmationDialog by remember { mutableStateOf(false) }
     var sizeEstimate by remember { mutableStateOf<SizeEstimate?>(null) }
+    var metadata by remember { mutableStateOf<MetadataSnapshot?>(null) }
     var estimatePending by remember { mutableStateOf(false) }
     var skipFutureEstimates by remember { mutableStateOf(false) }
     val estimateGate = remember { SizeEstimateGate() }
@@ -190,8 +193,10 @@ internal fun HomeScreen(
         customHeaders,
     ) {
         val normalized = url.trim()
-        if (!settings.showDownloadSizeConfirmation) return@LaunchedEffect
-        if (!CustomCommandPolicy.isHttpUrl(normalized)) return@LaunchedEffect
+        if (!settings.showDownloadSizeConfirmation || !CustomCommandPolicy.isHttpUrl(normalized)) {
+            metadata = null
+            return@LaunchedEffect
+        }
         delay(PREFLIGHT_DEBOUNCE_MS)
         val preview = DownloadRequest(
             url = normalized,
@@ -209,6 +214,9 @@ internal fun HomeScreen(
             origin = origin.trim(),
             customHeaders = HeaderValidation.parseHeaderPairs(customHeaders),
         )
+        // The metadata view and the size estimate share one cached document, so this is not
+        // a second extraction; whichever call arrives first owns the process.
+        metadata = runCatching { onLoadMetadata(preview) }.getOrNull()
         runCatching { onEstimateSize(preview, false) }
     }
 
@@ -408,7 +416,7 @@ internal fun HomeScreen(
                 )
                 ChoiceRow {
                     VideoQuality.entries.forEach { item ->
-                        val chipLabel = when (item) {
+                        val baseLabel = when (item) {
                             VideoQuality.BEST -> stringResource(R.string.video_quality_best)
                             VideoQuality.P2160 -> "2160p 4K"
                             VideoQuality.P1440 -> "1440p 2K"
@@ -416,6 +424,20 @@ internal fun HomeScreen(
                             VideoQuality.P720 -> "720p HD"
                             VideoQuality.P480 -> "480p"
                             VideoQuality.P360 -> "360p"
+                        }
+                        // Sizes come from the shared document, so every resolution is known
+                        // without another extraction. Options are local re-selections and are
+                        // therefore always shown with the approximate marker.
+                        val chipLabel = when (item) {
+                            VideoQuality.BEST -> {
+                                val bytes = sizeEstimate?.bytes?.takeIf { it > 0 }
+                                val approximate = sizeEstimate?.kind != SizeEstimateKind.EXACT
+                                baseLabel + formatSizeSuffix(context, bytes, approximate)
+                            }
+                            else -> {
+                                val option = metadata?.sizeFor(item.height)
+                                baseLabel + formatSizeSuffix(context, option?.bytes, approximate = true)
+                            }
                         }
                         VrkaChip(
                             selected = quality == item,
@@ -620,6 +642,20 @@ internal fun HomeScreen(
                             color = VrkaTokens.TextTertiary,
                             modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 6.dp),
                         )
+                        metadata?.takeIf { it.hasSubtitles }?.let { snapshot ->
+                            Text(
+                                stringResource(
+                                    R.string.metadata_subtitles_available,
+                                    subtitleSummary(snapshot),
+                                ),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = VrkaMonoFamily,
+                                    fontWeight = FontWeight.Bold,
+                                ),
+                                color = VrkaTokens.Accent,
+                                modifier = Modifier.padding(start = 8.dp, bottom = 8.dp),
+                            )
+                        }
                         OptionToggle(stringResource(R.string.opt_auto_captions), automaticCaptions) {
                             automaticCaptions = it
                         }
@@ -936,6 +972,34 @@ private fun SectionTitle(value: String) {
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier.padding(top = 18.dp, bottom = 7.dp),
     )
+}
+
+/** Language names for the subtitle summary; manual and automatic tracks are combined. */
+internal fun subtitleSummary(
+    snapshot: MetadataSnapshot,
+    locale: Locale = Locale.getDefault(),
+): String {
+    val codes = (snapshot.subtitleLanguages + snapshot.automaticCaptionLanguages).distinct()
+    val names = codes.map { code ->
+        Locale.forLanguageTag(code.substringBefore('-'))
+            .getDisplayLanguage(locale)
+            .takeIf { it.isNotBlank() && !it.equals(code, ignoreCase = true) }
+            ?.replaceFirstChar { if (it.isLowerCase()) it.titlecase(locale) else it.toString() }
+            ?: code
+    }.distinct()
+    if (names.isEmpty()) return ""
+    val visible = names.take(MAX_SUMMARY_LANGUAGES)
+    val remaining = names.size - visible.size
+    return visible.joinToString(", ") + if (remaining > 0) " +$remaining" else ""
+}
+
+private const val MAX_SUMMARY_LANGUAGES = 3
+
+/** Appends a locally calculated size to a chip label; approximate values are never bare. */
+private fun formatSizeSuffix(context: Context, bytes: Long?, approximate: Boolean): String {
+    if (bytes == null || bytes <= 0L) return ""
+    val marker = if (approximate) "~" else ""
+    return " · $marker" + AndroidFormatter.formatFileSize(context, bytes)
 }
 
 @Composable

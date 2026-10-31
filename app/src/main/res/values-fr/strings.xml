@@ -237,6 +237,7 @@ Voulez-vous vraiment activer les téléchargements simultanés ?</string>
     <string name="opt_sponsorblock_categories_hint">Noms de catégories séparés par des virgules</string>
     <string name="opt_subtitle_pattern">Motif de langue des sous-titres</string>
     <string name="opt_subtitles_helper">Les téléchargements de sous-titres utilisent le chemin standard yt-dlp. Le navigateur de secours ne récupère pas les sous-titres.</string>
+    <string name="metadata_subtitles_available">Sous-titres : %1$s</string>
     <string name="opt_trim_end">Fin</string>
     <string name="opt_trim_start">Début</string>
     <string name="opt_trim_title">Découpage optionnel (HH:MM:SS ou secondes)</string>

@@ -237,6 +237,7 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="opt_sponsorblock_categories_hint">Comma-separated category names</string>
     <string name="opt_subtitle_pattern">Subtitle language pattern</string>
     <string name="opt_subtitles_helper">Subtitle downloads use the normal yt-dlp path. Browser Fallback does not currently fetch subtitles.</string>
+    <string name="metadata_subtitles_available">Subtitles: %1$s</string>
     <string name="opt_trim_end">End</string>
     <string name="opt_trim_start">Start</string>
     <string name="opt_trim_title">Optional trim (HH:MM:SS or seconds)</string>

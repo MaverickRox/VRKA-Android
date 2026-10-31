@@ -237,6 +237,7 @@
     <string name="opt_sponsorblock_categories_hint">अल्पविराम से अलग किए गए श्रेणी नाम</string>
     <string name="opt_subtitle_pattern">उपशीर्षक भाषा पैटर्न</string>
     <string name="opt_subtitles_helper">उपशीर्षक डाउनलोड सामान्य yt-dlp पथ का उपयोग करते हैं। ब्राउज़र फ़ॉलबैक वर्तमान में उपशीर्षक प्राप्त नहीं करता है।</string>
+    <string name="metadata_subtitles_available">सबटाइटल: %1$s</string>
     <string name="opt_trim_end">अंत</string>
     <string name="opt_trim_start">प्रारंभ</string>
     <string name="opt_trim_title">वैकल्पिक ट्रिम (HH:MM:SS या सेकंड)</string>

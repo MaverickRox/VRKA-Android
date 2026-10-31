@@ -78,10 +78,12 @@ class YtDlpRuntimeManager(
     }
 
     /**
-     * Executing the binary is authoritative, but a fresh install (or a device that cannot run
-     * it, such as an x86_64 emulator translating ARM64 code) has to fall back to the artifact
-     * metadata, the same order the Components card uses. The result is cached against the
-     * binary's identity so a component update re-reads it and recomposition stays off disk.
+     * Reads the version from the artifact before executing it. Both paths report the same
+     * value, but executing the binary starts a full CPython process; doing that before the
+     * first metadata preflight delayed the estimate by several seconds on device and failed
+     * outright on x86_64 emulators. Execution remains the fallback for exotic artifacts whose
+     * version file cannot be read. The result is cached against the binary's identity so a
+     * component update re-reads it and recomposition stays off disk.
      */
     fun stockVersion(): String {
         val binary = stockBinary()
@@ -89,10 +91,10 @@ class YtDlpRuntimeManager(
         if (cachedStockVersionStamp == stamp && cachedStockVersion.isNotEmpty()) {
             return cachedStockVersion
         }
-        val version = runCatching { YoutubeDL.getInstance().versionName(context) }
-            .getOrNull()
-            ?.takeIf(String::isNotBlank)
-            ?: InstalledComponentVersionReader.readYtDlpVersion(binary)
+        val version = InstalledComponentVersionReader.readYtDlpVersion(binary)
+            ?: runCatching { YoutubeDL.getInstance().versionName(context) }
+                .getOrNull()
+                ?.takeIf(String::isNotBlank)
             ?: InstalledComponentVersionReader.readBundledYtDlpVersion(context)
             ?: return ""
         cachedStockVersion = version
