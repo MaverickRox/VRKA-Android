@@ -115,7 +115,7 @@ internal object DownloadNotifications {
         val text = completionText(context, job)
         val fileIntent = completionOpenIntent(context, job)
         val builder = NotificationCompat.Builder(context, COMPLETION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_download)
             .setBrandedLargeIcon(context)
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
             .setContentTitle(title)
@@ -223,7 +223,7 @@ internal object DownloadNotifications {
         openIntent: PendingIntent,
     ): Notification {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_download)
             .setBrandedLargeIcon(context)
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
             .setContentTitle(title)
@@ -261,7 +261,7 @@ internal object DownloadNotifications {
         val openIntent = openQueueIntent(context)
         val text = context.getString(R.string.notification_downloads_interrupted_text)
         return NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_download)
             .setBrandedLargeIcon(context)
             .setColor(ContextCompat.getColor(context, R.color.vrka_purple))
             .setContentTitle(context.getString(R.string.notification_downloads_interrupted_title))

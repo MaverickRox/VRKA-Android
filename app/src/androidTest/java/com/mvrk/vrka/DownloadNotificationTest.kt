@@ -198,8 +198,8 @@ class DownloadNotificationTest {
                 assertNull("$label: no custom RemoteViews", notification.contentView)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     assertEquals(
-                        "$label: the small icon must remain the monochrome glyph",
-                        R.drawable.ic_notification,
+                        "$label: the small icon must be the static download arrow",
+                        R.drawable.ic_download,
                         notification.smallIcon.resId,
                     )
                 }
