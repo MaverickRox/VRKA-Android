@@ -1367,6 +1367,7 @@ internal fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(
+                    modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
@@ -1401,11 +1402,15 @@ internal fun SettingsScreen(
                     )
                 }
 
+                Spacer(Modifier.width(12.dp))
+                // Cropped artwork: the source PNG carried a wide transparent border, so a
+                // 72 dp box only showed ~50 dp of logo. 56 dp of tightly cropped artwork stays
+                // within the 48-56 dp target without touching the shared launcher asset.
                 androidx.compose.foundation.Image(
-                    painter = painterResource(R.drawable.vrka_logo_512),
+                    painter = painterResource(R.drawable.about_logo),
                     contentDescription = stringResource(R.string.about_logo_desc),
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                    modifier = Modifier.size(72.dp),
+                    modifier = Modifier.size(56.dp),
                 )
             }
 
