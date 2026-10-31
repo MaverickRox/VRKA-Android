@@ -124,7 +124,22 @@ extensions.configure<ApplicationExtension> {
         create("devRelease") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")
+            isDebuggable = false
+            // Development builds are signed locally with the debug keystore; production
+            // signing stays confined to the release build type.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        if (variant.name == "devRelease") {
+            variant.outputs.forEach { output ->
+                output.outputFileName.set(
+                    output.versionName.map { "VRKA-v$it-dev.apk" },
+                )
+            }
         }
     }
 }
