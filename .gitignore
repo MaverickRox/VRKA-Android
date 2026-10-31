@@ -18,3 +18,5 @@ dump.xml
 scratch/
 scratch_gv/
 *.apk
+
+qa/
