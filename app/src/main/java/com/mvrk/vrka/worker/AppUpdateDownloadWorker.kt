@@ -37,6 +37,9 @@ class AppUpdateDownloadWorker(
         val expectedSha256 = AppUpdateDownloadPolicy.normalizeGitHubSha256(
             inputData.getString(KEY_EXPECTED_SHA256),
         ) ?: return@withContext failure("Missing or invalid APK checksum")
+        val expectedCertSha256 = inputData.getString(KEY_EXPECTED_CERT_SHA256).orEmpty()
+        val targetVersionCode = inputData.getLong(KEY_TARGET_VERSION_CODE, 0L)
+        val metadataRevision = inputData.getLong(KEY_METADATA_REVISION, 0L)
 
         if (!AppUpdateManager.isValidDownloadTarget(targetVersion, apkFileName)) {
             return@withContext failure("Invalid update version or non-canonical APK filename")
@@ -65,15 +68,17 @@ class AppUpdateDownloadWorker(
             }
 
             // A completed, verified file survives worker/process recreation and is reused without downloading again.
-            val existingError = AppUpdateManager.verifyDownloadedApk(
+            val existingError = AppUpdateManager.verifyStagedApk(
                 context = applicationContext,
                 file = targetFile,
                 targetVersion = targetVersion,
+                targetVersionCode = targetVersionCode,
                 expectedSizeBytes = expectedSizeBytes,
                 expectedSha256 = expectedSha256,
+                expectedCertSha256 = expectedCertSha256,
             )
             if (targetFile.exists() && existingError == null) {
-                markReady(prefs, targetFile, targetVersion, expectedSizeBytes, expectedSha256)
+                markReady(prefs, targetFile, targetVersion, expectedSizeBytes, expectedSha256, metadataRevision)
                 AppUpdateNotificationFactory.notifyReady(applicationContext, targetVersion)
                 return@withContext success(targetFile, targetVersion)
             }
@@ -85,6 +90,8 @@ class AppUpdateDownloadWorker(
                 .putString(KEY_APK_NAME, apkFileName)
                 .putLong(KEY_EXPECTED_SIZE, expectedSizeBytes)
                 .putString(KEY_EXPECTED_SHA256, expectedSha256)
+                .putString(KEY_EXPECTED_CERT_SHA256, expectedCertSha256)
+                .putLong(KEY_METADATA_REVISION, metadataRevision)
                 .commit()
 
             var currentUrl = downloadUrl
@@ -114,8 +121,14 @@ class AppUpdateDownloadWorker(
                                         if (isStopped) throw CancellationException("Application update work stopped")
                                         val count = input.read(buffer)
                                         if (count < 0) break
-                                        output.write(buffer, 0, count)
                                         downloadedBytes += count
+
+                                        // Reject streams that exceed the signed byte count
+                                        if (downloadedBytes > expectedSizeBytes) {
+                                            throw PermanentAppUpdateException("Downloaded bytes exceeded signed release manifest size ($expectedSizeBytes bytes)")
+                                        }
+
+                                        output.write(buffer, 0, count)
 
                                         val percent = ((downloadedBytes * 100L) / expectedSizeBytes)
                                             .toInt()
@@ -174,12 +187,15 @@ class AppUpdateDownloadWorker(
                                 )
                             }
 
-                            val archiveError = AppUpdateManager.verifyDownloadedApk(
+                            // Step 1: Verify downloaded archive bytes and security properties on temporary file (WITHOUT filename check)
+                            val archiveError = AppUpdateManager.verifyDownloadedArchive(
                                 context = applicationContext,
                                 file = tempFile,
                                 targetVersion = targetVersion,
+                                targetVersionCode = targetVersionCode,
                                 expectedSizeBytes = expectedSizeBytes,
                                 expectedSha256 = expectedSha256,
+                                expectedCertSha256 = expectedCertSha256,
                             )
                             if (archiveError != null) throw PermanentAppUpdateException(archiveError)
                             downloadedAndVerified = true
@@ -210,29 +226,31 @@ class AppUpdateDownloadWorker(
                 }
             }
 
-            // Replace only after the temporary APK is complete, checksum-valid, package-valid and signer-valid.
+            // Step 2: Atomically move verified temporary file into final staging target
             if (targetFile.exists() && !targetFile.delete()) {
                 throw IOException("Unable to replace an invalid staged APK")
             }
             moveVerifiedFile(tempFile, targetFile, fallbackStageFile)
 
-            val stagedError = AppUpdateManager.verifyDownloadedApk(
+            // Step 3: Re-verify final staged APK asserting canonical filename and archive integrity
+            val stagedError = AppUpdateManager.verifyStagedApk(
                 context = applicationContext,
                 file = targetFile,
                 targetVersion = targetVersion,
+                targetVersionCode = targetVersionCode,
                 expectedSizeBytes = expectedSizeBytes,
                 expectedSha256 = expectedSha256,
+                expectedCertSha256 = expectedCertSha256,
             )
             if (stagedError != null) {
                 targetFile.delete()
                 throw PermanentAppUpdateException(stagedError)
             }
 
-            markReady(prefs, targetFile, targetVersion, expectedSizeBytes, expectedSha256)
+            markReady(prefs, targetFile, targetVersion, expectedSizeBytes, expectedSha256, metadataRevision)
             AppUpdateNotificationFactory.notifyReady(applicationContext, targetVersion)
             success(targetFile, targetVersion)
         } catch (cancelled: CancellationException) {
-            // The final verified target is never removed on cancellation or worker recreation.
             throw cancelled
         } catch (failure: Exception) {
             val retry = AppUpdateDownloadPolicy.shouldRetry(runAttemptCount, failure)
@@ -261,6 +279,7 @@ class AppUpdateDownloadWorker(
         version: String,
         expectedSizeBytes: Long,
         expectedSha256: String,
+        metadataRevision: Long,
     ) {
         val committed = prefs.edit()
             .putString(KEY_STATE, STATE_READY_TO_INSTALL)
@@ -268,6 +287,7 @@ class AppUpdateDownloadWorker(
             .putString(KEY_VERSION, version)
             .putLong(KEY_EXPECTED_SIZE, expectedSizeBytes)
             .putString(KEY_EXPECTED_SHA256, expectedSha256)
+            .putLong(KEY_METADATA_REVISION, metadataRevision)
             .commit()
         if (!committed) throw IOException("Unable to persist the verified update state")
     }
@@ -313,6 +333,9 @@ class AppUpdateDownloadWorker(
         const val KEY_EXPECTED_SIZE = "expected_size"
         const val KEY_EXPECTED_SHA256 = "expected_sha256"
         const val KEY_TARGET_VERSION = "target_version"
+        const val KEY_EXPECTED_CERT_SHA256 = "expected_cert_sha256"
+        const val KEY_TARGET_VERSION_CODE = "target_version_code"
+        const val KEY_METADATA_REVISION = "metadata_revision"
         const val KEY_PROGRESS = "progress"
         const val KEY_DOWNLOADED_BYTES = "downloaded_bytes"
         const val KEY_TOTAL_BYTES = "total_bytes"

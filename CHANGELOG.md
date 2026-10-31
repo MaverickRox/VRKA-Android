@@ -4,11 +4,27 @@ All notable changes to VRKA Android are documented here. Release entries describ
 
 ## [5.1.0] - 2026-10-31
 
+> [!IMPORTANT]
+> **USERS UPGRADING FROM VRKA v5.0.2 MUST DOWNLOAD AND INSTALL v5.1.0 DIRECTLY FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON.**
+> 
+> **OFFICIAL DOWNLOAD PAGE:**
+> https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.0
+> 
+> **INSTALLATION:** Download `VRKA-Android-v5.1.0.apk` from the Assets section and install it over your existing VRKA installation. DO NOT UNINSTALL v5.0.2 FIRST.
+
 ### What's New in 5.1.0
 - Added full interface localization for 14 languages: Arabic, Bengali, Simplified Chinese, English, French, German, Gujarati, Hindi, Kannada, Portuguese (Brazil), Portuguese (Portugal), Spanish, Tamil, and Telugu, alongside System Default language selection.
 - Added preflight download size estimation to the download screen and Android Share Sheet, displaying approximate transfer size before starting downloads.
 - Redesigned download progress indicator with an AMOLED-optimized directional luminous wake.
 - Updated Mozilla GeckoView engine to 159.0.20261022150525.
+
+### In-App Updater Security and Reliability
+- Upgraded the in-app update mechanism with cryptographically authenticated release manifests signed with an OpenPGP detached signature (`VRKA-Android-v5.1.0.manifest.json.asc`).
+- Pinned trust anchor using 4096-bit RSA OpenPGP release signing key (`0xD519380BEBA1B9F7`, fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`).
+- Implemented anti-freeze (cryptographic expiration timestamp enforcement) and anti-rollback (strictly monotonic metadata revision numbers).
+- Enforced strict cryptographic policy rejecting insecure algorithms (MD5, SHA-1, RIPEMD160, DSA).
+- Fixed client-side temporary file staging verification defect (`.download.tmp` filename check) by separating archive structure verification on temporary downloads from final staged APK validation.
+- All future in-app updates starting from v5.1.0 will seamlessly update via the in-app updater without manual intervention.
 
 ### Improvements
 - Added support for validating and selecting custom yt-dlp runtimes in Settings.

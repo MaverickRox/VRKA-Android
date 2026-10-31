@@ -1,7 +1,16 @@
 # VRKA Android 5.1.0 — Release Security Review
 
 **Date:** 2026-10-31
-**Scope:** Source changes for v5.1.0 localization, preflight download size estimation, custom runtime management, and the resulting production-signed APK.
+**Scope:** Source changes for v5.1.0 localization, preflight download size estimation, custom runtime management, secure in-app updater redesign with OpenPGP release manifest verification, and the resulting production-signed APK.
+
+## In-App Updater Redesign and Cryptographic Verification
+
+- **Authenticated Release Manifests:** Switched application update metadata verification from unauthenticated GitHub API fields to a versioned machine-readable manifest (`VRKA-Android-v5.1.0.manifest.json`) cryptographically authenticated by a detached OpenPGP signature (`VRKA-Android-v5.1.0.manifest.json.asc`).
+- **Pinned OpenPGP Trust Anchor:** Pinned the 4096-bit RSA OpenPGP release signing key (`0xD519380BEBA1B9F7`, fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`) in the application binary (`app/src/main/res/raw/vrka_release_pubkey.asc`).
+- **Cryptographic Policy Enforcement:** The updater strictly rejects weak hash algorithms (MD5, SHA-1, RIPEMD160) and insecure key algorithms (DSA). Detached signatures must enforce issuer fingerprint subpackets matching the pinned key.
+- **Freeze Attack Prevention:** Release manifests declare an expiration timestamp (`expires_at`), preventing freeze attacks where an attacker serves validly signed but outdated metadata.
+- **Rollback and Downgrade Defense:** Monotonically increasing `metadata_revision` numbers prevent replay attacks, while `versionCode` checks ensure updates never downgrade an existing installation.
+- **Staging Verification Defect Resolution:** Fixed the defect in `AppUpdateManager` and `AppUpdateDownloadWorker` where `.download.tmp` was checked against the final canonical filename. Archive structure, package identity, and certificate checks are now performed on the temporary download, while canonical filename checks run on the final staged APK.
 
 ## Custom runtimes and component updates
 
@@ -23,11 +32,17 @@
   - Certificate SHA-256: `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
   - Certificate SHA-1: `7758980F74A503684BF1A187994E447823D19D7C`
   - Exact match with established production signing identity.
+- Artifact properties:
+  - File: `VRKA-Android-v5.1.0.apk`
+  - Size: `157,202,797` bytes
+  - SHA-256: `5051ECFD6319CA2CAFED4287904006FBC54B06FAAC5444D3A3C73DF5CDC848AA`
+  - Manifest SHA-256: `F35CDB2127402ED7ABB2B634E505DD31D448D106C7F3DD01F00FBD76315476FD`
+  - Manifest Signature SHA-256: `E5DA0D66C4A23BB32354A774348673F1C9A35E2D9025239AACDA71E03023699C`
 - No keystores, private keys, or passwords exist in the repository or public documentation.
 
 ## Verification boundary
 
-- Unit tests: 601 passing tests across 58 suites, 0 failures.
+- Unit tests: 635 passing tests across 60 suites, 0 failures.
 - Release lint: 275 warnings, 0 hints, 0 errors.
 - Production APK build: non-debuggable, minified with R8, shrunk resources.
 - Physical OnePlus 11 hardware was unavailable; emulator validation and automated suites passed.

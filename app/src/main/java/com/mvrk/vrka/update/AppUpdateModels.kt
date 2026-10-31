@@ -1,5 +1,6 @@
 package com.mvrk.vrka.update
 
+import com.mvrk.vrka.update.security.ReleaseManifest
 import java.io.File
 
 data class SemanticVersion(
@@ -44,6 +45,11 @@ data class AppReleaseInfo(
     val apkFileName: String,
     val apkSizeBytes: Long,
     val apkSha256: String = "",
+    val certificateSha256: String = "",
+    val metadataRevision: Long = 0L,
+    val manifestDownloadUrl: String? = null,
+    val signatureDownloadUrl: String? = null,
+    val manifest: ReleaseManifest? = null,
 )
 
 sealed interface AppUpdateCheckState {

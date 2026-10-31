@@ -1,6 +1,6 @@
 # VRKA Android 5.1.0 — Current Production Architecture
 
-This documents the current 5.1.0 production source. Its core architecture builds upon the hardened 5.0.2 baseline, adding full 14-language localization, preflight download size estimation, custom yt-dlp runtime validation, an updated GeckoView 159 engine, and an AMOLED-optimized luminous wake progress renderer. Release-specific build and test evidence is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+This documents the current 5.1.0 production source. Its core architecture builds upon the hardened 5.0.2 baseline, adding full 14-language localization, preflight download size estimation, custom yt-dlp runtime validation, an updated GeckoView 159 engine, an AMOLED-optimized luminous wake progress renderer, and a cryptographically authenticated in-app updater architecture. Release-specific build and test evidence is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
 
 ## Normal downloads
 
@@ -25,7 +25,18 @@ No dormant transfer route was reconnected by the UI or component cleanup changes
 
 ## Application updater
 
-The updater accepts stable three-part tags and requires the exact `VRKA-Android-vX.Y.Z.apk` asset for the parsed version. It validates HTTPS, approved hosts, standard port, and every redirect hop for release metadata and APK transfers. Invalid release metadata is an error; automatic checks keep it quiet while a manual check exposes it. WorkManager executes persistent background downloads into the private update directory with bounded exponential retry for transient network failures. Before the Android installer opens, VRKA verifies the cache location, package ID, filename/version agreement, increasing version code, and a matching signing-certificate fingerprint.
+The updater accepts stable three-part tags and requires cryptographically authenticated release manifests signed with an OpenPGP detached signature (`VRKA-Android-vX.Y.Z.manifest.json.asc`).
+
+### Architecture and Security Controls:
+1. **Pinned OpenPGP Trust Anchor:** The official VRKA release signing key is pinned in the application binary (`vrka_release_pubkey.asc`, RSA 4096-bit, key ID `0xD519380BEBA1B9F7`, fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`).
+2. **Strict Manifest Schema:** Manifests declare schema `https://vrka.org/schema/release-manifest/v1.json`, repository owner/name, release tag, version code, application ID, target APK filename, byte size, SHA-256 digest, and expected signing certificate SHA-256.
+3. **Cryptographic Algorithm Policy:** Only SHA-256 or stronger digest algorithms are accepted; weak algorithms (MD5, SHA-1, RIPEMD-160, DSA) are strictly rejected.
+4. **Anti-Freeze & Anti-Rollback Protections:** Manifests enforce expiration timestamps (`expires_at`) to defeat freeze attacks. Monotonically non-decreasing `metadata_revision` integers prevent replay attacks.
+5. **Two-Stage Verification Pipeline:**
+   - **Archive Integrity Stage:** Performed directly on the temporary download file (`app-update-<versionCode>.download.tmp`). Validates ZIP/APK archive parsing, package name, version code, and signer certificate fingerprints against the manifest without enforcing filename.
+   - **Staging Stage:** Performed after an atomic file move to the destination cache path (`VRKA-Android-vX.Y.Z.apk`). Enforces canonical naming, private update directory confinement, non-debuggability, and FileProvider URI exposure.
+
+WorkManager executes persistent background downloads into the private update directory with bounded exponential retry for transient network failures.
 
 ## Custom yt-dlp templates and headers
 
