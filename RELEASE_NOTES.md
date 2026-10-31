@@ -31,8 +31,10 @@ VRKA Android 5.1.0 introduces comprehensive interface localization across 14 lan
 - **Signing Scheme:** APK Signature Scheme v2 (RSA 4096-bit)
 - **Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
 - **Certificate SHA-1:** `7758980F74A503684BF1A187994E447823D19D7C`
-- **Release Manifest:** `VRKA-Android-v5.1.0.manifest.json`
+- **Release Manifest:** `VRKA-Android-v5.1.0.manifest.json` (metadata revision 2)
+  - SHA-256: `EC1BFA6566563DE46ED6471B3D2104F820264BC05CF086EEB7007F0334025C9F`
 - **Detached OpenPGP Signature:** `VRKA-Android-v5.1.0.manifest.json.asc`
+  - SHA-256: `0EC9D9922DFF3FCF8D38391F1C30D188F996122DDA6D0B50D4893E255A3BC058`
 - **Exported Public Key:** `VRKA-Release-Public-Key.asc` (pinned fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`)
 
 ---
