@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -581,12 +582,13 @@ fun ComponentStartupUpdateDialog(
                             border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Row(
+                            FlowRow(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                itemVerticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column {
                                     Text(
@@ -620,7 +622,9 @@ fun ComponentStartupUpdateDialog(
                                             fontWeight = FontWeight.Bold,
                                         ),
                                         color = VrkaTokens.Accent,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                     )
                                 }
                             }
