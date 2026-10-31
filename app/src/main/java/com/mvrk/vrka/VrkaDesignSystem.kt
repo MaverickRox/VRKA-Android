@@ -87,6 +87,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -1497,48 +1498,39 @@ private fun VrkaNavItem(
 internal val GlowProgressPurple = Color(0xFF8140DC)
 
 /**
- * Geometry of the trailing light wake. Every luminous layer is anchored at [headCenterPx],
- * the real progress edge, and extends only backwards; [edgeHalfWidthPx] is the tiny hot lens
- * that terminates the wake without reading as a separate dot.
+ * Geometry of the trailing light. The streak is a long horizontal fade over the completed
+ * fill; the bloom is a tapered teardrop, built from nested curves, that is widest at the
+ * head and comes to a point at its trailing end. Its centre row also covers the head, so
+ * the endpoint stays rounded rather than being cut by a vertical clip.
  */
 internal data class GlowProgressGeometry(
     val fillWidthPx: Float,
-    /** Real progress edge; no light may cross it. */
+    /** Real progress edge. */
     val headCenterPx: Float,
-    /** Bright streak riding the completed segment, strongest at the edge. */
+    /** Full fade length of the in-fill streak, measured back from the edge. */
     val streakLengthPx: Float,
-    val streakHalfHeightPx: Float,
-    /** Shallow teardrop dispersion behind the streak. */
-    val coneLengthPx: Float,
-    val coneHalfHeightPx: Float,
-    /** Widest, faintest haze, still tied to the edge. */
-    val bloomLengthPx: Float,
-    val bloomHalfHeightPx: Float,
-    /** Small near-white lens at the edge, integrated with the streak. */
-    val edgeHalfWidthPx: Float,
-    val edgeHalfHeightPx: Float,
+    /** Half-height of the bright teardrop immediately around the head. */
+    val nearBloomHalfHeightPx: Float,
+    /** Half-height of the wide, faint optical haze. */
+    val farBloomHalfHeightPx: Float,
     val headVisible: Boolean,
 )
 
-/** The bar is three times as tall as the track so the wake has room to disperse. */
-internal const val GLOW_CANVAS_HEIGHT_RATIO = 3f
-internal const val GLOW_STREAK_LENGTH_RATIO = 5.5f
-internal const val GLOW_STREAK_HALF_HEIGHT_RATIO = 0.8f
-internal const val GLOW_CONE_LENGTH_RATIO = 9f
-internal const val GLOW_CONE_HALF_HEIGHT_RATIO = 1.15f
-internal const val GLOW_BLOOM_LENGTH_RATIO = 14f
-internal const val GLOW_BLOOM_HALF_HEIGHT_RATIO = 1.45f
-internal const val GLOW_EDGE_HALF_WIDTH_RATIO = 1.1f
-internal const val GLOW_EDGE_HALF_HEIGHT_RATIO = 0.85f
-internal const val GLOW_STREAK_ALPHA = 0.85f
-internal const val GLOW_CONE_ALPHA = 0.28f
-internal const val GLOW_BLOOM_ALPHA = 0.16f
-internal const val GLOW_EDGE_ALPHA = 0.92f
+/**
+ * Five track heights leave room for the optical throw to fade out instead of being cut by
+ * the component bounds. The streak spans eighteen track heights (about a quarter of the
+ * reference bar).
+ */
+internal const val GLOW_CANVAS_HEIGHT_RATIO = 5f
+internal const val GLOW_STREAK_LENGTH_RATIO = 18f
+internal const val GLOW_BLOOM_NEAR_HALF_HEIGHT_RATIO = 2f
+internal const val GLOW_BLOOM_FAR_HALF_HEIGHT_RATIO = 2.45f
+internal const val GLOW_STREAK_ALPHA = 0.97f
 
 /**
  * Pure geometry for the download progress bar. All light is a function of the real progress
- * only: there is no pulse, no travelling icon and no idle animation. The wake grows backwards
- * from the edge, never ahead of it, so an incomplete bar is never lit over the unfilled track.
+ * only: there is no pulse, no travelling icon and no idle animation. Lengths are clamped to
+ * the fill so a short bar cannot emit light over the unfilled track.
  */
 internal fun glowProgressGeometry(
     progress: Float,
@@ -1558,23 +1550,88 @@ internal fun glowProgressGeometry(
         fillWidthPx = fill,
         headCenterPx = fill,
         streakLengthPx = length(GLOW_STREAK_LENGTH_RATIO),
-        streakHalfHeightPx = halfHeight(GLOW_STREAK_HALF_HEIGHT_RATIO),
-        coneLengthPx = length(GLOW_CONE_LENGTH_RATIO),
-        coneHalfHeightPx = halfHeight(GLOW_CONE_HALF_HEIGHT_RATIO),
-        bloomLengthPx = length(GLOW_BLOOM_LENGTH_RATIO),
-        bloomHalfHeightPx = halfHeight(GLOW_BLOOM_HALF_HEIGHT_RATIO),
-        edgeHalfWidthPx = length(GLOW_EDGE_HALF_WIDTH_RATIO),
-        edgeHalfHeightPx = halfHeight(GLOW_EDGE_HALF_HEIGHT_RATIO),
+        nearBloomHalfHeightPx = halfHeight(GLOW_BLOOM_NEAR_HALF_HEIGHT_RATIO),
+        farBloomHalfHeightPx = halfHeight(GLOW_BLOOM_FAR_HALF_HEIGHT_RATIO),
         headVisible = visible,
     )
 }
 
 /**
- * Paints and shaders are allocated once per progress bar and only re-configured when the
- * colours change. Each frame is six draw calls with a matrix update per layer: no blur,
- * no offscreen layer, no allocation. The radial shaders are unit circles that the matrix
- * stretches into wide ellipses, which feathers both axes and keeps every layer anchored to
- * the edge instead of forming a circular halo or a symmetric wing.
+ * One teardrop profile for the optical throw. Measurements are track-height ratios; the
+ * horizontal ramp fades in from the tail, peaks just behind the head and returns to zero at
+ * the forward tip, so no edge of the path is ever visible as a hard contour.
+ */
+private data class GlowBloomProfile(
+    val halfHeight: Float,
+    val spill: Float,
+    val tail: Float,
+    val alpha: Float,
+)
+
+private val NEAR_BLOOM = GlowBloomProfile(2f, 1f, 16f, 0.52f)
+private val FAR_BLOOM = GlowBloomProfile(2.45f, 1.4f, 20f, 0.16f)
+
+/**
+ * Analytic alpha mask for the optical teardrop. The silhouette falls to zero at the tail
+ * and at the rounded forward tip, and the vertical falloff reaches zero before the mask
+ * edge, so scaling the mask never exposes a contour. It is generated once, never per frame,
+ * and drawn through a cached [android.graphics.BitmapShader] with additive light blending.
+ */
+private const val BLOOM_MASK_WIDTH = 512
+private const val BLOOM_MASK_HEIGHT = 128
+private const val BLOOM_MASK_HALF_HEIGHT = 58f
+private const val BLOOM_MASK_CENTER_Y = 64f
+
+private fun buildBloomMask(): android.graphics.Bitmap {
+    val pixels = IntArray(BLOOM_MASK_WIDTH * BLOOM_MASK_HEIGHT)
+    for (x in 0 until BLOOM_MASK_WIDTH) {
+        val u = x / (BLOOM_MASK_WIDTH - 1f)
+        val horizontal = when {
+            u < 0.85f -> smoothStep(u / 0.85f)
+            u < 0.94f -> 1f
+            else -> 1f - smoothStep((u - 0.94f) / 0.06f)
+        }
+        val bell = kotlin.math.sin(kotlin.math.PI * u.toDouble().pow(2.4))
+            .toFloat()
+            .coerceAtLeast(0f)
+        val halfHeight = BLOOM_MASK_HALF_HEIGHT * bell.pow(0.7f)
+        if (halfHeight <= 0f || horizontal <= 0f) continue
+        for (y in 0 until BLOOM_MASK_HEIGHT) {
+            val v = (y - BLOOM_MASK_CENTER_Y) / halfHeight
+            if (kotlin.math.abs(v) >= 1f) continue
+            val vertical = (1f - v * v).pow(1.35f)
+            val alpha = (horizontal * vertical * 255f).toInt().coerceIn(0, 255)
+            pixels[y * BLOOM_MASK_WIDTH + x] = (alpha shl 24) or 0x00FFFFFF
+        }
+    }
+    return android.graphics.Bitmap.createBitmap(
+        pixels,
+        BLOOM_MASK_WIDTH,
+        BLOOM_MASK_HEIGHT,
+        android.graphics.Bitmap.Config.ARGB_8888,
+    )
+}
+
+private fun smoothStep(t: Float): Float {
+    val clamped = t.coerceIn(0f, 1f)
+    return clamped * clamped * (3f - 2f * clamped)
+}
+
+private object GlowBloomMask {
+    val bitmap: android.graphics.Bitmap by lazy { buildBloomMask() }
+    val shader: android.graphics.BitmapShader by lazy {
+        android.graphics.BitmapShader(
+            bitmap,
+            android.graphics.Shader.TileMode.CLAMP,
+            android.graphics.Shader.TileMode.CLAMP,
+        )
+    }
+}
+
+/**
+ * Paints, matrices and the bloom mask are allocated once per bar. A frame is the track, the
+ * fill, two additive teardrop draws and one rounded streak. There is no clip, blur,
+ * offscreen layer or per-frame bitmap; only the cached shader matrices follow the edge.
  */
 private class GlowProgressPaints {
     val track = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -1586,14 +1643,12 @@ private class GlowProgressPaints {
     val streak = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         style = android.graphics.Paint.Style.FILL
     }
-    val cone = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        style = android.graphics.Paint.Style.FILL
-    }
     val bloom = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         style = android.graphics.Paint.Style.FILL
-    }
-    val edge = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        style = android.graphics.Paint.Style.FILL
+        shader = GlowBloomMask.shader
+        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.ADD)
+        isFilterBitmap = true
+        isDither = true
     }
     private val matrix = android.graphics.Matrix()
     private var configuredTrack = 0
@@ -1607,68 +1662,78 @@ private class GlowProgressPaints {
         configuredAccent = accentArgb
         track.color = trackArgb
         fill.color = accentArgb
-        bloom.shader = radialShader(
-            GLOW_BLOOM_ALPHA to 0f,
-            GLOW_BLOOM_ALPHA * 0.47f to 0.5f,
-            GLOW_BLOOM_ALPHA * 0.12f to 0.85f,
-            0f to 1f,
-        )
-        cone.shader = radialShader(
-            GLOW_CONE_ALPHA to 0f,
-            GLOW_CONE_ALPHA * 0.54f to 0.45f,
-            GLOW_CONE_ALPHA * 0.14f to 0.8f,
-            0f to 1f,
-        )
-        streak.shader = radialShader(
-            GLOW_STREAK_ALPHA to 0f,
-            GLOW_STREAK_ALPHA * 0.74f to 0.35f,
-            GLOW_STREAK_ALPHA * 0.35f to 0.62f,
-            GLOW_STREAK_ALPHA * 0.09f to 0.86f,
-            0f to 1f,
-        )
-        edge.shader = radialShader(
-            GLOW_EDGE_ALPHA to 0f,
-            GLOW_EDGE_ALPHA * 0.55f to 0.55f,
-            0f to 1f,
-        )
-    }
-
-    fun drawLayer(
-        canvas: android.graphics.Canvas,
-        paint: android.graphics.Paint,
-        centerX: Float,
-        centerY: Float,
-        halfWidth: Float,
-        halfHeight: Float,
-    ) {
-        if (halfWidth <= 0f || halfHeight <= 0f) return
-        matrix.setScale(halfWidth, halfHeight)
-        matrix.postTranslate(centerX, centerY)
-        paint.shader.setLocalMatrix(matrix)
-        canvas.drawRect(
-            centerX - halfWidth,
-            centerY - halfHeight,
-            centerX + halfWidth,
-            centerY + halfHeight,
-            paint,
-        )
-    }
-
-    private fun radialShader(vararg stops: Pair<Float, Float>): android.graphics.RadialGradient =
-        android.graphics.RadialGradient(
-            0f,
-            0f,
-            1f,
-            IntArray(stops.size) { Color.White.copy(alpha = stops[it].first).toArgb() },
-            FloatArray(stops.size) { stops[it].second },
+        // A long, smooth white ramp over the purple: transparent at the tail, near-white at
+        // the head. The rounded rect supplies the same cap as the fill, so no clip is needed.
+        streak.shader = android.graphics.LinearGradient(
+            0f, 0f, 1f, 0f,
+            intArrayOf(
+                Color.White.copy(alpha = 0f).toArgb(),
+                Color.White.copy(alpha = GLOW_STREAK_ALPHA * 0.04f).toArgb(),
+                Color.White.copy(alpha = GLOW_STREAK_ALPHA * 0.14f).toArgb(),
+                Color.White.copy(alpha = GLOW_STREAK_ALPHA * 0.36f).toArgb(),
+                Color.White.copy(alpha = GLOW_STREAK_ALPHA * 0.62f).toArgb(),
+                Color.White.copy(alpha = GLOW_STREAK_ALPHA * 0.85f).toArgb(),
+                Color.White.copy(alpha = GLOW_STREAK_ALPHA).toArgb(),
+            ),
+            floatArrayOf(0f, 0.30f, 0.55f, 0.72f, 0.84f, 0.93f, 1f),
             android.graphics.Shader.TileMode.CLAMP,
         )
+    }
+
+    fun drawBloom(
+        canvas: android.graphics.Canvas,
+        headX: Float,
+        centerY: Float,
+        width: Float,
+        trackHeight: Float,
+        profile: GlowBloomProfile,
+    ) {
+        val halfHeight = trackHeight * profile.halfHeight
+        val tailLength = (trackHeight * profile.tail).coerceAtMost(headX)
+        if (halfHeight <= 0f || tailLength <= 0f) return
+        val spill = (trackHeight * profile.spill)
+            .coerceAtMost((width - headX).coerceAtLeast(0f))
+        val tailX = headX - tailLength
+        val destWidth = tailLength + spill
+        if (destWidth <= 0f) return
+        matrix.setScale(
+            destWidth / BLOOM_MASK_WIDTH,
+            (halfHeight * 2f) / BLOOM_MASK_HEIGHT,
+        )
+        matrix.postTranslate(tailX, centerY - halfHeight)
+        GlowBloomMask.shader.setLocalMatrix(matrix)
+        bloom.alpha = (profile.alpha * 255f).toInt().coerceIn(0, 255)
+        canvas.drawRect(
+            tailX,
+            centerY - halfHeight,
+            tailX + destWidth,
+            centerY + halfHeight,
+            bloom,
+        )
+    }
+
+    fun drawStreak(
+        canvas: android.graphics.Canvas,
+        left: Float,
+        right: Float,
+        top: Float,
+        bottom: Float,
+        radius: Float,
+    ) {
+        val length = right - left
+        if (length <= 0f) return
+        matrix.setScale(length, 1f)
+        matrix.postTranslate(left, 0f)
+        streak.shader.setLocalMatrix(matrix)
+        canvas.drawRoundRect(left, top, right, bottom, radius, radius, streak)
+    }
 }
 
 /**
- * Draws the track, fill and trailing wake into any canvas. The Compose composable and the
- * preview capture harness share this renderer, so the preview images exercise exactly the
- * same geometry and shaders as the app.
+ * Draws the track, fill, streak and optical teardrop into any canvas. The Compose composable
+ * and the preview harness share this renderer, so the previews exercise exactly the same
+ * geometry and shaders as the app. [showStreak] and [showDispersion] expose the independent
+ * layers for QA.
  */
 internal class GlowProgressRenderer {
     private val paints = GlowProgressPaints()
@@ -1681,8 +1746,8 @@ internal class GlowProgressRenderer {
         progress: Float,
         trackColor: Color,
         accent: Color,
-        wakeVisible: Boolean = true,
-        hazeVisible: Boolean = true,
+        showStreak: Boolean = true,
+        showDispersion: Boolean = true,
     ) {
         if (width <= 0f || height <= 0f || trackHeight <= 0f) return
         paints.configure(trackColor, accent)
@@ -1696,41 +1761,32 @@ internal class GlowProgressRenderer {
 
         val headX = geometry.headCenterPx
         canvas.drawRoundRect(0f, top, headX, bottom, radius, radius, paints.fill)
-        if (!wakeVisible) return
 
-        // Every luminous layer is pinned to the real progress edge and clipped there:
-        // the wake may bleed backwards and vertically, never forward.
-        canvas.save()
-        canvas.clipRect(0f, 0f, headX, height)
-        if (hazeVisible) {
-            paints.drawLayer(
-                canvas, paints.bloom, headX, centerY,
-                geometry.bloomLengthPx, geometry.bloomHalfHeightPx,
-            )
+        if (showDispersion) {
+            paints.drawBloom(canvas, headX, centerY, width, trackHeight, FAR_BLOOM)
+            paints.drawBloom(canvas, headX, centerY, width, trackHeight, NEAR_BLOOM)
         }
-        paints.drawLayer(
-            canvas, paints.cone, headX, centerY,
-            geometry.coneLengthPx, geometry.coneHalfHeightPx,
+
+        if (!showStreak) return
+        paints.drawStreak(
+            canvas = canvas,
+            left = (headX - geometry.streakLengthPx).coerceAtLeast(0f),
+            right = headX,
+            top = top,
+            bottom = bottom,
+            radius = radius,
         )
-        paints.drawLayer(
-            canvas, paints.streak, headX, centerY,
-            geometry.streakLengthPx, geometry.streakHalfHeightPx,
-        )
-        paints.drawLayer(
-            canvas, paints.edge, headX, centerY,
-            geometry.edgeHalfWidthPx, geometry.edgeHalfHeightPx,
-        )
-        canvas.restore()
     }
 }
 
 /**
  * The single in-app download progress bar: a continuous rounded track, a solid VRKA-purple
- * fill, and a near-white wake anchored to the real progress edge. The wake is layered from a
- * bright streak, through a shallow teardrop dispersion, to a faint haze; all of it trails
- * backwards and stops exactly at the edge. Both the active-download strip and the queue card
- * use this composable, so the position, percentage and byte counters always come from the
- * same job state. Updates are smoothed toward the reported progress; when the job stops
+ * fill, a long near-white streak that fades back from the real progress edge, and a tapered
+ * optical teardrop around the head. The teardrop comes to a point at its trailing end, so it
+ * follows the streak instead of forming a halo; the streak's rounded cap is the brightest
+ * point and is never cut by a vertical clip. The active-download strip and the queue card
+ * both use this composable, so the position, percentage and byte counters always come from
+ * the same job state. Updates are smoothed toward the reported progress; when the job stops
  * reporting, the bar is static.
  */
 @Composable
@@ -1762,8 +1818,8 @@ internal fun VrkaGlowProgressBar(
         modifier = modifier
             .fillMaxWidth()
             .height(trackHeight * GLOW_CANVAS_HEIGHT_RATIO)
-            // The glow may bleed vertically inside this component's own bounds, but the
-            // drawing below additionally stops at the real progress edge.
+            // The optical throw fades inside this component; no clip is applied inside the
+            // renderer, so the glow has no rectangular compositing boundary.
             .clipToBounds()
             .drawWithCache {
                 val track = size.height / GLOW_CANVAS_HEIGHT_RATIO
