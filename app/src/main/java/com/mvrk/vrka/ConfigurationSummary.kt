@@ -1,16 +1,15 @@
 package com.mvrk.vrka
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,13 +30,19 @@ internal fun ConfigurationSummary(
     trimEnd: String,
     sponsorBlock: Boolean,
 ) {
+    val fpsStatus = if (prefer60Fps) stringResource(R.string.readout_fps_on) else stringResource(R.string.readout_fps_off)
+    val qualityLabel = if (quality == VideoQuality.BEST) {
+        stringResource(R.string.video_quality_best)
+    } else {
+        quality.label
+    }
     val primary = when (mode) {
         MediaMode.VIDEO ->
-            "Video · ${quality.label} · 60 FPS ${if (prefer60Fps) "on" else "off"}"
+            stringResource(R.string.readout_video, qualityLabel, fpsStatus)
         MediaMode.AUDIO -> when (audioFormat) {
-            AudioFormat.MP3 -> "MP3 · $bitrate kbps"
-            AudioFormat.OPUS -> "Opus · Best Native Opus"
-            AudioFormat.WAV -> "WAV · Uncompressed PCM"
+            AudioFormat.MP3 -> stringResource(R.string.readout_mp3, bitrate)
+            AudioFormat.OPUS -> stringResource(R.string.readout_opus)
+            AudioFormat.WAV -> stringResource(R.string.readout_wav)
         }
     }
     val extras = buildList {
@@ -45,11 +50,11 @@ internal fun ConfigurationSummary(
             val range = listOf(playlistStart, playlistEnd)
                 .filter(String::isNotBlank)
                 .joinToString("–")
-            add(if (range.isBlank()) "Playlist" else "Playlist $range")
+            add(if (range.isBlank()) stringResource(R.string.readout_playlist) else stringResource(R.string.readout_playlist_range, range))
         }
-        if (subtitles) add("Subtitles")
-        if (trimStart.isNotBlank() || trimEnd.isNotBlank()) add("Trim enabled")
-        if (sponsorBlock) add("SponsorBlock")
+        if (subtitles) add(stringResource(R.string.readout_subtitles))
+        if (trimStart.isNotBlank() || trimEnd.isNotBlank()) add(stringResource(R.string.readout_trim))
+        if (sponsorBlock) add(stringResource(R.string.readout_sponsorblock))
     }
     Column(
         modifier = Modifier
@@ -57,7 +62,7 @@ internal fun ConfigurationSummary(
             .padding(horizontal = 4.dp, vertical = 2.dp),
     ) {
         Text(
-            "DOWNLOAD READOUT",
+            stringResource(R.string.readout_title),
             style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = VrkaMonoFamily,
                 fontWeight = FontWeight.Bold,

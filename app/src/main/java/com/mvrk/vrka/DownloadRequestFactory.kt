@@ -6,17 +6,23 @@ import java.io.File
 internal object DownloadRequestFactory {
     private const val outputMarker = "__VRKA_OUTPUT__"
     private var nativeLibraryDir: String? = null
-    @Volatile
-    private var impersonationSupported: Boolean = false
+    private var cacheDir: String? = null
 
     fun initNativeLibraryDir(dir: String?) {
         nativeLibraryDir = dir
     }
 
-    fun isImpersonationSupported(): Boolean = impersonationSupported
+    /**
+     * ytdl-android forces `--no-cache-dir` unless a request supplies its own cache path. That
+     * disabled yt-dlp's player/extractor cache, so every preflight and transfer re-fetched the
+     * same player data. An app-private cache directory restores reuse without touching cookies.
+     */
+    fun initCacheDir(dir: String?) {
+        cacheDir = dir
+    }
 
-    fun setImpersonationSupported(supported: Boolean) {
-        impersonationSupported = supported
+    fun applyCacheDir(request: YoutubeDLRequest) {
+        cacheDir?.let { request.addOption("--cache-dir", it) }
     }
 
     internal fun shouldAttemptBrowserFallback(
@@ -52,27 +58,98 @@ internal object DownloadRequestFactory {
         return if (f != null && f.exists()) f.absolutePath else null
     }
 
-    private fun addJsRuntime(request: YoutubeDLRequest) {
-        val qjsPath = getQuickJsPath()
-        if (qjsPath != null) {
-            request.addOption("--js-runtimes", "quickjs:$qjsPath")
+    // ytdl-android always appends `--js-runtimes quickjs:<nativeLibraryDir>/libqjs.so`
+    // itself; repeating it here only made the command longer. The bundled yt-dlp also ships
+    // yt_dlp_ejs, so no `ejs:github` round-trip is needed.
+
+    fun formatSelectorFor(request: DownloadRequest): String =
+        if (request.mode == MediaMode.AUDIO) {
+            audioFormatSelector(request.audioFormat)
+        } else {
+            buildVideoFormat(request.quality.height, request.prefer60Fps)
         }
-        request.addOption("--remote-components", "ejs:github")
-    }
 
     fun info(request: DownloadRequest): YoutubeDLRequest =
         YoutubeDLRequest(request.resolvedMediaUrl ?: request.url).apply {
             addOption("--no-warnings")
             addOption("--legacy-server-connect")
             if (!request.isPlaylist) addOption("--no-playlist")
-            addJsRuntime(this)
+            applyCacheDir(this)
             addSessionContext(request)
         }
+
+    /**
+     * Metadata-only preflight. Deliberately omits `-f`: yt-dlp then dumps every available
+     * video, audio and subtitle stream in one pass, which is exactly what the shared metadata
+     * repository needs. The format-specific size is calculated locally from that table, so a
+     * quality or audio change never launches another extraction.
+     *
+     * Network waits are bounded here rather than by raising the caller's timeout: a stalled
+     * socket or a broken extractor retry loop must fail with a useful state instead of
+     * occupying the single preflight slot until the outer deadline.
+     */
+    fun sizeEstimate(request: DownloadRequest): YoutubeDLRequest =
+        YoutubeDLRequest(request.resolvedMediaUrl ?: request.url).apply {
+            addOption("--no-warnings")
+            addOption("--simulate")
+            addOption("--dump-single-json")
+            addOption("--socket-timeout", METADATA_SOCKET_TIMEOUT_SECONDS)
+            addOption("--retries", METADATA_RETRIES)
+            addOption("--extractor-retries", METADATA_EXTRACTOR_RETRIES)
+            if (request.isPlaylist) {
+                request.playlistStart?.let { addOption("--playlist-start", it) }
+                request.playlistEnd?.let { addOption("--playlist-end", it) }
+            } else {
+                addOption("--no-playlist")
+            }
+            applyCacheDir(this)
+            addSessionContext(request)
+        }
+
+    /**
+     * The metadata command as ytdl-android will execute it, with header values removed.
+     * Cookies and authorization tokens must never reach diagnostics, so only header names and
+     * the fact that a value was supplied are recorded. ytdl-android itself appends the QuickJS
+     * runtime flag, which is included here so the recorded command matches the real process.
+     */
+    internal fun diagnosticCommand(request: YoutubeDLRequest): String {
+        val args = redactHeaderValues(request.buildCommand())
+        val runtime = getQuickJsPath()?.let { " --js-runtimes quickjs:$it" }.orEmpty()
+        return ("yt-dlp " + args.joinToString(" ") + runtime).take(MAX_DIAGNOSTIC_COMMAND_CHARS)
+    }
+
+    private fun redactHeaderValues(args: List<String>): List<String> {
+        val result = ArrayList<String>(args.size)
+        var index = 0
+        while (index < args.size) {
+            val argument = args[index]
+            if (argument == "--add-header" && index + 1 < args.size) {
+                result += argument
+                result += redactHeader(args[index + 1])
+                index += 2
+                continue
+            }
+            if (argument.startsWith("--add-header=")) {
+                result += "--add-header=" + redactHeader(argument.removePrefix("--add-header="))
+            } else {
+                result += argument
+            }
+            index++
+        }
+        return result
+    }
+
+    private fun redactHeader(value: String): String =
+        value.substringBefore(':').ifBlank { "header" } + ":<redacted>"
+
+    internal fun audioFormatSelector(format: AudioFormat): String = when (format) {
+        AudioFormat.OPUS -> "bestaudio[acodec^=opus]/bestaudio/best"
+        else -> "bestaudio/best"
+    }
 
     fun download(
         job: DownloadJob,
         stagingDirectory: File,
-        recoveryAttempt: Boolean = false,
         includeSubtitles: Boolean = true,
     ): YoutubeDLRequest {
         val options = job.request
@@ -104,11 +181,7 @@ internal object DownloadRequestFactory {
             }
 
             if (options.mode == MediaMode.AUDIO) {
-                val format = when (options.audioFormat) {
-                    AudioFormat.OPUS -> "bestaudio[acodec^=opus]/bestaudio/best"
-                    else -> "bestaudio/best"
-                }
-                addOption("-f", format)
+                addOption("-f", formatSelectorFor(options))
                 addOption("--extract-audio")
                 addOption("--audio-format", options.audioFormat.codec)
                 if (options.audioFormat == AudioFormat.MP3) {
@@ -117,8 +190,7 @@ internal object DownloadRequestFactory {
                 }
                 if (options.embedThumbnail && options.audioFormat != AudioFormat.WAV) addOption("--embed-thumbnail")
             } else {
-                val format = buildVideoFormat(options.quality.height, options.prefer60Fps)
-                addOption("-f", format)
+                addOption("-f", formatSelectorFor(options))
                 if (options.prefer60Fps) {
                     addOption("-S", "res,fps")
                 }
@@ -164,18 +236,15 @@ internal object DownloadRequestFactory {
                 addOption("--force-keyframes-at-cuts")
             }
 
-            addJsRuntime(this)
+            if (options.customArguments.none { it == "--no-cache-dir" }) applyCacheDir(this)
             val effectiveHeaders = HeaderValidation.resolveEffectiveHeaders(options)
-            if (recoveryAttempt || options.resolvedMediaUrl != null) {
+            if (options.resolvedMediaUrl != null) {
                 if (effectiveHeaders.keys.none { it.equals("User-Agent", true) }) {
                     addOption("--user-agent", DESKTOP_USER_AGENT)
                 }
                 if (effectiveHeaders.keys.none { it.equals("Referer", true) }) {
                     addOption("--referer", options.url)
                 }
-            }
-            if (recoveryAttempt && isImpersonationSupported()) {
-                addOption("--extractor-args", "generic:impersonate")
             }
             addSessionContext(options)
             if (options.customArguments.isNotEmpty()) {
@@ -290,4 +359,9 @@ internal object DownloadRequestFactory {
     internal const val DESKTOP_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/138.0 Mobile Safari/537.36"
+
+    private const val METADATA_SOCKET_TIMEOUT_SECONDS = "10"
+    private const val METADATA_RETRIES = "2"
+    private const val METADATA_EXTRACTOR_RETRIES = "1"
+    private const val MAX_DIAGNOSTIC_COMMAND_CHARS = 1_200
 }

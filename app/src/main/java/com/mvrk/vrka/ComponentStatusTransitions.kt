@@ -3,9 +3,29 @@ package com.mvrk.vrka
 internal object ComponentStatusTransitions {
     const val INSTALLED_VERSION_UNAVAILABLE = "Installed version unavailable; cannot compare update"
 
+    /**
+     * Installed-version resolution is a local read with its own flag. It never touches
+     * [ComponentCheckState], so a discovery request that finishes while the version read is
+     * still running keeps its UPDATE_AVAILABLE/UP_TO_DATE result.
+     */
+    fun resolutionStarted(status: ComponentStatus): ComponentStatus =
+        status.copy(isResolvingInstalledVersion = true)
+
+    fun resolutionFinished(status: ComponentStatus): ComponentStatus =
+        status.copy(isResolvingInstalledVersion = false)
+
     fun beginCheck(status: ComponentStatus): ComponentStatus = status.copy(
         latestVersion = null,
         checkState = ComponentCheckState.CHECKING,
+        // A new discovery supersedes a previous terminal install result; otherwise the card
+        // would keep showing "Failed"/"Updated" after a successful recheck.
+        updateState = if (status.updateState == ComponentUpdateState.UPDATE_SUCCESS ||
+            status.updateState == ComponentUpdateState.UPDATE_FAILED
+        ) {
+            ComponentUpdateState.UPDATE_IDLE
+        } else {
+            status.updateState
+        },
         message = "Checking for updates...",
         error = null,
     )

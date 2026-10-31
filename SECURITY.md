@@ -4,6 +4,7 @@
 
 | Version | Supported |
 | :--- | :--- |
+| 5.1.0 | :white_check_mark: |
 | 5.0.2 | :white_check_mark: |
 | 5.0.1 and older | :x: |
 
@@ -13,7 +14,7 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 
 ## Release Integrity
 
-The official v5.0.2 release APK is production-signed. Verify its signature and SHA-256 against `RELEASE_EVIDENCE.md` or official GitHub release checksums before installation.
+The official v5.1.0 release APK is production-signed. Verify its signature and SHA-256 against `RELEASE_EVIDENCE.md` or official GitHub release checksums before installation.
 
 The `release` build type requires explicit signing properties; it has no debug-key fallback. Never publish signing properties, keystores, passwords, or private signing keys in this repository or artifact package.
 

@@ -2,6 +2,16 @@ package com.mvrk.vrka
 
 import androidx.compose.runtime.Immutable
 
+internal const val INTERRUPTED_DOWNLOAD_ERROR =
+    "Download was interrupted when Android stopped VRKA. Tap retry."
+
+/**
+ * Automatic native yt-dlp attempts per logical job. Automatic retries were explicitly
+ * rejected; a classified failure enters browser fallback immediately or is reported with
+ * the manual Retry action. This constant documents and pins the single-attempt contract.
+ */
+internal const val MAX_NATIVE_TRANSFER_ATTEMPTS = 1
+
 enum class JobState {
     QUEUED,
     PREPARING,
@@ -109,6 +119,16 @@ data class DownloadRequest(
     val resolvedHeadersOrigin: String = "",
 )
 
+/**
+ * A confirmed request paired with the preflight estimate that was visible when the user
+ * submitted it. The estimate is informational only: it never blocks the download and is
+ * replaced by the transfer's own reported size once bytes move.
+ */
+internal data class PendingDownload(
+    val request: DownloadRequest,
+    val estimate: SizeEstimate?,
+)
+
 @Immutable
 data class DownloadJob(
     val id: String,
@@ -119,13 +139,32 @@ data class DownloadJob(
     val progress: Float = 0f,
     val speed: String = "",
     val etaSeconds: Long? = null,
+    // Sizes have three distinct sources and are never mixed:
+    // - estimatedTotalBytes: metadata preflight, before any bytes move;
+    // - reportedTotalBytes: the total printed by the active transfer stream(s);
+    // - actualFinalFileBytes: the published document's size after completion.
+    val estimatedTotalBytes: Long? = null,
+    val estimatedSizeAccuracy: SizeEstimateKind = SizeEstimateKind.UNAVAILABLE,
+    val downloadedBytes: Long? = null,
+    val reportedTotalBytes: Long? = null,
+    val reportedTotalIsExact: Boolean = false,
+    // Size of the published output as reported by the content provider. Only set after the
+    // file exists in its final destination, so it never inherits an estimate.
+    val actualFinalFileBytes: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
     val outputUris: List<String> = emptyList(),
     val error: String = "",
     val attempt: Int = 1,
     val actualResolution: String? = null,
+    // Runtime that executed this job's transfer. Captured when the yt-dlp process starts so
+    // the record survives history reloads and runtime switches that happen afterwards.
+    val runtimeName: String = "",
+    val runtimeVersion: String = "",
     val subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus = com.mvrk.vrka.subtitle.SubtitleStatus.NONE,
+    // Persisted before the first file is handed to MediaStore/DocumentsProvider. A job that
+    // died after this point is not auto-resumed because its outputs may already be published.
+    val publishStarted: Boolean = false,
 )
 
 enum class StreamSelectionState {

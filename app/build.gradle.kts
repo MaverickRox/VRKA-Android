@@ -23,13 +23,14 @@ val signingPropertiesFile = providers.environmentVariable("VRKA_SIGNING_PROPERTI
 val signingProperties = signingPropertiesFile?.takeIf { it.isFile }?.inputStream()?.use { input ->
     Properties().apply { load(input) }
 }
-val geckoViewVersion = "156.0.20260921121718"
+val geckoViewVersion = "159.0.20261022150525"
 
 extensions.configure<ApplicationExtension> {
     namespace = "com.mvrk.vrka"
     compileSdk {
         version = release(37) {
-            minorApiLevel = 1
+            // GeckoView 159 publishes minCompileSdk 37.2; this only affects compilation.
+            minorApiLevel = 2
         }
     }
 
@@ -41,8 +42,8 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 50002
-        versionName = "5.0.2"
+        versionCode = 50100
+        versionName = "5.1.0"
         buildConfigField("String", "GECKOVIEW_VERSION", "\"$geckoViewVersion\"")
 
         ndk {
@@ -123,7 +124,22 @@ extensions.configure<ApplicationExtension> {
         create("devRelease") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")
+            isDebuggable = false
+            // Development builds are signed locally with the debug keystore; production
+            // signing stays confined to the release build type.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        if (variant.name == "devRelease") {
+            variant.outputs.forEach { output ->
+                output.outputFileName.set(
+                    output.versionName.map { "VRKA-v$it-dev.apk" },
+                )
+            }
         }
     }
 }
@@ -191,5 +207,8 @@ dependencies {
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 

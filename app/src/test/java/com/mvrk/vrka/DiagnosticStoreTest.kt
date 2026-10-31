@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
+import com.mvrk.vrka.engine.FailureCategory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -91,8 +92,116 @@ class DiagnosticStoreTest {
     }
 
     @Test
-    fun storePersistenceBoundedRetentionAndClear() = runBlocking {
+    fun browserFallbackDiagnosticsKeepTheExactOriginalUrlWithItsQueryString() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val dir = tempFolder.root
+        val store = DiagnosticStore(dir, scope)
+        val exactUrl = "https://www.example.test/watch?v=aqz-KE-bpKQ&t=42&list=PL9f8&index=7"
+
+        store.record(
+            DiagnosticEntry(
+                id = "fallback-entry",
+                jobId = "job-fallback",
+                title = "Fallback clip",
+                stage = "Browser Fallback",
+                failureCategory = FailureCategory.BROWSER_RECOVERABLE.name,
+                summary = "Browser fallback could not find a media stream",
+                detail = "Cookie: session=must-not-leak",
+                url = exactUrl,
+                quality = "Best available",
+                acquisitionMethod = DiagnosticStore.BROWSER_FALLBACK_METHOD,
+            ),
+        )
+
+        val entry = store.entries.value.single()
+        assertEquals(exactUrl, entry.url)
+        assertTrue(entry.toFormattedString().contains("URL: $exactUrl"))
+        assertFalse(entry.detail.contains("must-not-leak"))
+        val persisted = java.io.File(dir, "diagnostics.json").readText()
+        assertTrue(persisted.contains(exactUrl))
+        assertFalse(persisted.contains("must-not-leak"))
+    }
+
+    @Test
+    fun nativeFailureDiagnosticsStillRedactSensitivePathsAndQueryValues() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = DiagnosticStore(tempFolder.root, scope)
+
+        store.record(
+            DiagnosticEntry(
+                id = "native-entry",
+                jobId = "job-native",
+                title = "Native clip",
+                stage = "transfer",
+                failureCategory = "HTTP",
+                summary = "HTTP 403",
+                detail = "",
+                url = "https://cdn.example.test/private/path?token=query-secret&v=123",
+                quality = "",
+                acquisitionMethod = "Native yt-dlp",
+            ),
+        )
+
+        val entry = store.entries.value.single()
+        assertTrue(entry.url.contains("[redacted path]"))
+        assertFalse(entry.url.contains("private/path"))
+        assertFalse(entry.url.contains("query-secret"))
+        assertTrue(entry.url.contains("v=123"))
+    }
+
+    @Test
+    fun diagnosticReportRecordsTheRuntimeAndVersionThatRanTheJob() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val dir = tempFolder.root
+        val store = DiagnosticStore(dir, scope)
+
+        store.record(
+            DiagnosticEntry(
+                id = "runtime-entry",
+                jobId = "job-runtime",
+                title = "Runtime clip",
+                stage = "transfer",
+                failureCategory = "HTTP",
+                summary = "HTTP 403",
+                detail = "",
+                url = "https://cdn.example.test/clip",
+                quality = "1080p",
+                acquisitionMethod = "Native yt-dlp",
+                runtime = "Custom example/yt-dlp nightly • yt-dlp 2026.10.01",
+            ),
+        )
+
+        val entry = store.entries.value.single()
+        assertTrue(
+            entry.toFormattedString()
+                .contains("Runtime: Custom example/yt-dlp nightly • yt-dlp 2026.10.01"),
+        )
+        val reloaded = DiagnosticStore(dir, scope)
+        kotlinx.coroutines.delay(150)
+        assertEquals(
+            "Custom example/yt-dlp nightly • yt-dlp 2026.10.01",
+            reloaded.entries.value.single().runtime,
+        )
+    }
+
+    @Test
+    fun diagnosticReportOmitsTheRuntimeLineWhenNoRuntimeWasRecorded() {
+        val entry = DiagnosticEntry(
+            jobId = "job-legacy",
+            title = "Legacy entry",
+            stage = "transfer",
+            failureCategory = "HTTP",
+            summary = "HTTP 403",
+            detail = "",
+            url = "https://example.com/watch?v=1",
+            quality = "",
+            acquisitionMethod = "Native yt-dlp",
+        )
+        assertFalse(entry.toFormattedString().contains("Runtime:"))
+    }
+
+    @Test
+    fun storePersistenceBoundedRetentionAndClear() = runBlocking {        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val dir = tempFolder.root
         val store = DiagnosticStore(dir, scope)
 

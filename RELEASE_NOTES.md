@@ -1,3 +1,29 @@
+# VRKA Android 5.1.0
+
+VRKA Android 5.1.0 introduces comprehensive interface localization across 14 languages, preflight download size estimation, an AMOLED-optimized luminous wake progress indicator, custom yt-dlp runtime validation, and an updated GeckoView 159 engine.
+
+## Highlights
+
+- **14 Languages & System Default:** Complete interface localization supporting Arabic (with full RTL support), Bengali, Simplified Chinese, English, French, German, Gujarati, Hindi, Kannada, Portuguese (Brazil), Portuguese (Portugal), Spanish, Tamil, and Telugu, with resource-key parity across all languages.
+- **Preflight Download Size Estimation:** Accurate approximate size estimates displayed on the download card and Android Share Sheet prior to queueing or downloading.
+- **Directional Luminous Wake Progress Bar:** Redesigned download progress renderer featuring an 18-track streak and cached analytic teardrop glow optimized for AMOLED displays.
+- **Custom yt-dlp Runtime Management:** Settings now supports configuring and validating custom yt-dlp forks while keeping upstream OpenPGP signature verification for official releases.
+- **GeckoView 159 Engine Update:** Bundled Mozilla GeckoView runtime updated to 159.0.20261022150525 with uBlock Origin 1.74.0 and hardened private-session cleanup.
+- **Notification & Share Sheet Refinements:** Streamlined notifications without duplicate large icons, and unified format selection on the compact floating share card.
+
+## Release Verification
+
+- **Production APK:** `VRKA-Android-v5.1.0.apk`
+- **Package ID:** `com.mvrk.vrka`
+- **Version Code:** `50100`
+- **Version Name:** `5.1.0`
+- **File Size:** 157,192,535 bytes
+- **SHA-256:** `CA5C74F0C59A98FE225D133A79E98A9E2913E8F82BFDAC0C841A27F2DCD1F28A`
+- **Signing Scheme:** APK Signature Scheme v2 (RSA 4096-bit)
+- **Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
+
+---
+
 # VRKA Android 5.0.2
 
 ## 5.0.2
