@@ -73,9 +73,9 @@ class ComponentCardNarrowScreenTest {
         show(availableWidthDp = 288)
 
         composeRule.onNodeWithText("Installiert: v2026.08.19").assertIsDisplayed()
-        // The available version appears in both the version line and the badge.
-        composeRule.onAllNodesWithText("v2026.09.01").assertCountEquals(2)
-        composeRule.onAllNodesWithText("v2026.09.01").onFirst().assertIsDisplayed()
+        // The available version appears in the secondary text and in the badge.
+        composeRule.onAllNodesWithText("v2026.09.01", substring = true).assertCountEquals(2)
+        composeRule.onAllNodesWithText("v2026.09.01", substring = true).onFirst().assertIsDisplayed()
         composeRule.onNodeWithText("Jetzt aktualisieren").assertIsDisplayed()
 
         val installed = composeRule.onNodeWithText("Installiert: v2026.08.19")
