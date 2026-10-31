@@ -336,7 +336,9 @@
     <string name="status_failed">தோல்வியடைந்தது</string>
     <string name="status_finishing">முடிக்கிறது</string>
     <string name="status_initialized">துவக்கப்பட்டது</string>
+    <string name="status_idle">செயலற்றது</string>
     <string name="status_installed">நிறுவப்பட்டது: %1$s</string>
+    <string name="status_installed_idle">நிறுவப்பட்டது · செயலற்றது</string>
     <string name="status_merging">இணைக்கிறது</string>
     <string name="status_not_started">தொடங்கப்படவில்லை</string>
     <string name="status_preparing">தயாராகிறது</string>

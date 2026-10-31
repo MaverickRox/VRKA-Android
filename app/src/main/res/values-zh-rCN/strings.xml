@@ -336,7 +336,9 @@
     <string name="status_failed">已失败</string>
     <string name="status_finishing">正在完成</string>
     <string name="status_initialized">已就绪</string>
+    <string name="status_idle">空闲</string>
     <string name="status_installed">已安装: %1$s</string>
+    <string name="status_installed_idle">已安装 · 空闲</string>
     <string name="status_merging">正在合并</string>
     <string name="status_not_started">未启动</string>
     <string name="status_preparing">正在准备</string>

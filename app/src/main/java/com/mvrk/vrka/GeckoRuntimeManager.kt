@@ -7,8 +7,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,6 +42,31 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
 
     private val _mediaDetectorActive = MutableStateFlow(false)
     val mediaDetectorActive: StateFlow<Boolean> = _mediaDetectorActive.asStateFlow()
+
+    /**
+     * Task-scoped browser sessions currently open. Keyed by fallback task id so a stale
+     * cleanup can never mark a newer session inactive.
+     */
+    private val openBrowserSessions = MutableStateFlow<Set<String>>(emptySet())
+    val browserSessionActive: StateFlow<Boolean> = openBrowserSessions
+        .map { it.isNotEmpty() }
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
+    fun browserSessionOpened(taskId: String) {
+        openBrowserSessions.update { it + taskId }
+    }
+
+    fun browserSessionClosed(taskId: String) {
+        openBrowserSessions.update { it - taskId }
+    }
+
+    /**
+     * True when the bundled media-detector extension is available for lazy registration.
+     * Reads the APK assets only; it must never instantiate the GeckoView runtime.
+     */
+    fun hasBundledMediaDetector(): Boolean = runCatching {
+        context.assets.list(MEDIA_DETECTOR_ASSET_DIR)?.isNotEmpty() == true
+    }.getOrDefault(false)
 
     @Volatile
     var mediaDetector: WebExtension? = null
@@ -419,6 +448,7 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
         const val UBLOCK_ID = "uBlock0@raymondhill.net"
         const val MEDIA_DETECTOR_ID = "media-detector@vrka.mvrk.com"
         private const val RETIRED_WEB_EXTENSION_ID = "{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}"
+        private const val MEDIA_DETECTOR_ASSET_DIR = "extensions/media-detector"
 
         @Volatile
         private var INSTANCE: GeckoRuntimeManager? = null

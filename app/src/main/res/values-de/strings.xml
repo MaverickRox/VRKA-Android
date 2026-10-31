@@ -336,7 +336,9 @@ Möchten Sie parallele Downloads wirklich aktivieren?</string>
     <string name="status_failed">Fehlgeschlagen</string>
     <string name="status_finishing">Wird fertiggestellt</string>
     <string name="status_initialized">Initialisiert</string>
+    <string name="status_idle">Inaktiv</string>
     <string name="status_installed">Installiert: %1$s</string>
+    <string name="status_installed_idle">Installiert · Inaktiv</string>
     <string name="status_merging">Zusammenführen</string>
     <string name="status_not_started">Nicht gestartet</string>
     <string name="status_preparing">Wird vorbereitet</string>

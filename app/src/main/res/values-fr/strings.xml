@@ -336,7 +336,9 @@ Voulez-vous vraiment activer les téléchargements simultanés ?</string>
     <string name="status_failed">Échoué</string>
     <string name="status_finishing">Finalisation</string>
     <string name="status_initialized">Initialisé</string>
+    <string name="status_idle">Inactif</string>
     <string name="status_installed">Installé : %1$s</string>
+    <string name="status_installed_idle">Installé · Inactif</string>
     <string name="status_merging">Fusion</string>
     <string name="status_not_started">Non démarré</string>
     <string name="status_preparing">En préparation</string>
