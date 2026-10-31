@@ -19,6 +19,9 @@ data class SizeEstimate(
     val detail: String = "",
     /** Local, non-UI explanation of how the estimate was produced or why it failed. */
     val diagnostic: String = "",
+    /** Streams the estimate resolved to, so the same selection is auditable. */
+    val videoFormatId: String? = null,
+    val audioFormatId: String? = null,
 ) {
     val isAvailable: Boolean
         get() = bytes != null && bytes > 0
@@ -55,6 +58,25 @@ data class FormatSizeOption(
     val fps: Double? = null,
     val bytes: Long? = null,
 )
+
+/**
+ * Canonical result of resolving a request against one metadata document: the exact format
+ * IDs yt-dlp will fetch, plus the size calculated from those same streams. The share card,
+ * the home screen and the size chips all resolve through this path, so a label can never be
+ * used as a format ID and two screens can never disagree about which streams were selected.
+ */
+@Immutable
+data class FormatPlan(
+    val videoFormatId: String? = null,
+    val audioFormatId: String? = null,
+    val height: Int? = null,
+    val fps: Double? = null,
+    val bytes: Long? = null,
+    val kind: SizeEstimateKind = SizeEstimateKind.UNAVAILABLE,
+) {
+    val formatIds: List<String>
+        get() = listOfNotNull(videoFormatId, audioFormatId)
+}
 
 /**
  * User-facing view of a single metadata document: title, available video heights with local
@@ -119,6 +141,37 @@ object SizeEstimateCalculator {
         } else {
             single(root, request, title, recalculateSelection)
         }
+    }
+
+    /**
+     * Resolves the exact streams a request will fetch and the size of those streams. Both the
+     * share card and the home screen call this for their estimate, so the same URL, document
+     * and option always produce the same format IDs and the same byte total.
+     */
+    fun planFromMetadataJson(jsonText: String, request: DownloadRequest): FormatPlan? {
+        val root = parseRoot(jsonText) ?: return null
+        if (root.optString("_type") == "playlist" || root.optJSONArray("entries") != null) return null
+        val streams = if (request.mode == MediaMode.AUDIO) {
+            listOfNotNull(selectLocalAudio(root, request))
+        } else {
+            selectLocalVideo(root, request) ?: return null
+        }
+        if (streams.isEmpty()) return null
+        val estimate = single(root, request, root.optString("title"), recalculateSelection = true)
+        val first = streams.firstOrNull()
+        val audioOnly = request.mode == MediaMode.AUDIO
+        return FormatPlan(
+            videoFormatId = first?.optString("format_id")?.takeIf(String::isNotBlank)?.takeUnless { audioOnly },
+            audioFormatId = when {
+                audioOnly -> first?.optString("format_id")?.takeIf(String::isNotBlank)
+                streams.size > 1 -> streams.getOrNull(1)?.optString("format_id")?.takeIf(String::isNotBlank)
+                else -> null
+            },
+            height = first?.optInt("height", 0)?.takeIf { it > 0 && !audioOnly },
+            fps = first?.optDouble("fps", Double.NaN)?.takeIf { it.isFinite() && it > 0 && !audioOnly },
+            bytes = estimate.bytes.takeIf { estimate.isAvailable },
+            kind = estimate.kind,
+        )
     }
 
     /**
@@ -389,8 +442,10 @@ object SizeEstimateCalculator {
 
     /**
      * Re-selects video streams from the cached format table using the same tier order as
-     * [DownloadRequestFactory.buildVideoFormat]. Always reported as approximate because the
-     * local ranking mirrors the selector without being the selector itself.
+     * [DownloadRequestFactory.buildVideoFormat]. The ranking mirrors yt-dlp's format sort
+     * (resolution, then frame rate, then HDR, then codec, then bitrate) where the document
+     * exposes those fields, so "Best available" follows yt-dlp's policy instead of assuming
+     * the numerically highest resolution.
      */
     private fun locallySelectedVideo(
         json: JSONObject,
@@ -417,16 +472,35 @@ object SizeEstimateCalculator {
         }
         if (missing.isNotEmpty() || total <= 0) return unavailableMissing(title, missing)
 
+        val merged = streams.size > 1
+        val videoId = streams.firstOrNull()?.optString("format_id")?.takeIf(String::isNotBlank)
+        val audioId = if (merged) {
+            streams.getOrNull(1)?.optString("format_id")?.takeIf(String::isNotBlank)
+        } else {
+            null
+        }
+
         if (isTrimmed(request)) {
             val scaled = scaleForTrim(total, rawDuration, effectiveDuration)
                 ?: return SizeEstimate.unavailable("trim-unknown").copy(title = title)
-            return SizeEstimate(SizeEstimateKind.APPROXIMATE, scaled, title, "trim")
+            return SizeEstimate(
+                SizeEstimateKind.APPROXIMATE,
+                scaled,
+                title,
+                "trim",
+                videoFormatId = videoId,
+                audioFormatId = audioId,
+            )
         }
         return SizeEstimate(
+            // This is a local re-selection, so it stays approximate even when a single
+            // component reports an exact filesize: only yt-dlp can confirm the pick.
             kind = SizeEstimateKind.APPROXIMATE,
             bytes = total,
             title = title,
-            detail = if (streams.size > 1) "local-merged" else "local",
+            detail = if (merged) "local-merged" else "local",
+            videoFormatId = videoId,
+            audioFormatId = audioId,
         )
     }
 
@@ -486,11 +560,7 @@ object SizeEstimateCalculator {
             val fpsMatches = minFps == null || format.optDouble("fps", 0.0) >= minFps
             heightMatches && fpsMatches
         }
-        .maxWithOrNull(
-            compareBy<JSONObject>({ it.optInt("height", 0) })
-                .thenBy { it.optDouble("fps", 0.0) }
-                .thenBy { it.optDouble("tbr", 0.0) },
-        )
+        .maxWithOrNull(videoPreference)
 
     private fun bestProgressiveStream(
         candidates: List<JSONObject>,
@@ -500,11 +570,31 @@ object SizeEstimateCalculator {
             val height = format.optInt("height", 0)
             heightLimit == null || (height > 0 && height <= heightLimit)
         }
-        .maxWithOrNull(
-            compareBy<JSONObject>({ it.optInt("height", 0) })
-                .thenBy { it.optDouble("fps", 0.0) }
-                .thenBy { it.optDouble("tbr", 0.0) },
-        )
+        .maxWithOrNull(videoPreference)
+
+    /**
+     * Used with [maxWithOrNull]: ascending keys select the largest resolution/frame rate,
+     * the highest HDR rank and the highest bitrate, while the descending codec key prefers
+     * the alphabetically first name (av01 before avc1 before vp9), matching yt-dlp's default
+     * format sort where the document exposes those fields.
+     */
+    private val videoPreference = compareBy<JSONObject> { it.optInt("height", 0) }
+        .thenBy { it.optDouble("fps", 0.0) }
+        .thenBy { hdrRank(it) }
+        .thenByDescending { it.optString("vcodec", "") }
+        .thenBy { it.optDouble("tbr", 0.0) }
+
+    private fun hdrRank(format: JSONObject): Int {
+        val hdr = format.optString("hdr", "")
+            .ifBlank { format.optString("dynamic_range", "") }
+        return when {
+            hdr.contains("dv", ignoreCase = true) || hdr.contains("dolby", ignoreCase = true) -> 4
+            hdr.contains("hdr10+", ignoreCase = true) -> 3
+            hdr.contains("hdr", ignoreCase = true) -> 2
+            hdr.contains("hlg", ignoreCase = true) -> 1
+            else -> 0
+        }
+    }
 
     private fun bestAudioStream(candidates: List<JSONObject>): JSONObject? =
         candidates.maxWithOrNull(
