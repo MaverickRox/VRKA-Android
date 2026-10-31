@@ -1,0 +1,8 @@
+VRKA Android 5.1.0
+
+- Added full interface localization for 14 languages and System Default.
+- Added preflight download size estimation for downloads and shared links.
+- Redesigned download progress indicator with an AMOLED-optimized luminous wake.
+- Updated Mozilla GeckoView engine to 159.0.20261022150525.
+- Added custom yt-dlp runtime validation and selection.
+- Refined notifications, share card presentation, and component update state handling.

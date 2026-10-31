@@ -5,7 +5,7 @@ VRKA Android incorporates open-source libraries, engines, and extensions in full
 ---
 
 ### 1. Mozilla GeckoView
-- **Project**: Mozilla GeckoView (`org.mozilla.geckoview:geckoview-arm64-v8a:156.0.20260921121718`)
+- **Project**: Mozilla GeckoView (`org.mozilla.geckoview:geckoview-arm64-v8a:159.0.20261022150525`)
 - **License**: Mozilla Public License 2.0 (MPL 2.0)
 - **Source**: https://hg.mozilla.org/mozilla-central/
 
