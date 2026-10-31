@@ -49,7 +49,7 @@ class AppUpdateManager(
     private var activeDownloadJob: Job? = null
 
     val currentVersion: SemanticVersion by lazy {
-        SemanticVersion.parseOrNull(BuildConfig.VERSION_NAME) ?: SemanticVersion(4, 5, 1)
+        SemanticVersion.parseOrNull(BuildConfig.VERSION_NAME) ?: SemanticVersion(5, 1, 0)
     }
 
     init {

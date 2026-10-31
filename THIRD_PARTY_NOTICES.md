@@ -5,7 +5,7 @@ VRKA Android incorporates open-source libraries, engines, and extensions in full
 ---
 
 ### 1. Mozilla GeckoView
-- **Project**: Mozilla GeckoView (`org.mozilla.geckoview:geckoview-arm64-v8a:156.0.20260921121718`)
+- **Project**: Mozilla GeckoView (`org.mozilla.geckoview:geckoview-arm64-v8a:159.0.20261022150525`)
 - **License**: Mozilla Public License 2.0 (MPL 2.0)
 - **Source**: https://hg.mozilla.org/mozilla-central/
 
@@ -30,4 +30,10 @@ VRKA Android incorporates open-source libraries, engines, and extensions in full
 - **Author**: Colophon Foundry
 - **License**: SIL Open Font License 1.1 (OFL-1.1)
 - **Source**: https://github.com/googlefonts/spacemono
+
+### 6. Mornye switch component
+- **Project**: Mornye 5.2.6 (`AppSwitch` / `_MornyeSwitch`, `lib/widgets/app_switch.dart`)
+- **License**: GNU Lesser General Public License v3.0 (LGPL-3.0); incorporated into VRKA under GPL-3.0 as permitted by LGPL-3.0 section 3
+- **Source**: https://github.com/MaverickRox/Mornye
+- **Use**: geometry, timing, drag and accessibility behavior of `VrkaSwitch.kt`
 

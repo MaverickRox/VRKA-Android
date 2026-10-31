@@ -250,30 +250,21 @@ class Vrka5UpgradeTests {
     }
 
     // =========================================================================
-    // 7. Impersonation Guard on Android
+    // 7. No automatic impersonation retry
     // =========================================================================
 
     @Test
-    fun impersonationBypassWhenUnsupported() {
+    fun downloadNeverAddsImpersonationFlags() {
         val stagingDir = File("build/test-staging")
         stagingDir.mkdirs()
         try {
-            // When enabled (default)
-            DownloadRequestFactory.setImpersonationSupported(true)
-            val job = DownloadJob(
-                id = "impersonate-test",
-                request = DownloadRequest(url = "https://youtube.com/watch?v=12345"),
-            )
-            val reqWithImpersonate = DownloadRequestFactory.download(job, stagingDir, recoveryAttempt = true)
-            assertTrue(reqWithImpersonate.hasOption("--extractor-args"))
-            assertEquals("generic:impersonate", reqWithImpersonate.getOption("--extractor-args"))
-
-            // When disabled due to lack of curl_cffi on Android
-            DownloadRequestFactory.setImpersonationSupported(false)
-            val reqNoImpersonate = DownloadRequestFactory.download(job, stagingDir, recoveryAttempt = true)
-            assertFalse(reqNoImpersonate.hasOption("--extractor-args"))
+            for (url in listOf("https://youtube.com/watch?v=12345", "https://example.test/media")) {
+                val job = DownloadJob(id = "no-impersonation", request = DownloadRequest(url = url))
+                val request = DownloadRequestFactory.download(job, stagingDir)
+                assertFalse(request.hasOption("--extractor-args"))
+                assertFalse(request.hasOption("--impersonate"))
+            }
         } finally {
-            DownloadRequestFactory.setImpersonationSupported(false)
             stagingDir.deleteRecursively()
         }
     }

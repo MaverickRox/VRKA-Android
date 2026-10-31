@@ -1,16 +1,12 @@
 package com.mvrk.vrka
 
-import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,131 +15,151 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
+// Reserved foreground id used before the first job is visible to the service.
+internal const val PENDING_NOTIFICATION_ID = 4107
+
+// Fallback notification posted when Android ends the data-sync foreground window.
+internal const val INTERRUPTED_NOTIFICATION_ID = 4108
+
+internal const val NOTIFICATION_ID_BASE = 4200
+
+internal fun notificationIdFor(jobId: String): Int =
+    NOTIFICATION_ID_BASE + (jobId.hashCode() and 0xFFFF)
+
+internal fun determinateProgressPercent(state: JobState, progress: Float): Int? =
+    if (state == JobState.DOWNLOADING && progress > 0f && progress.isFinite()) {
+        progress.toInt().coerceIn(0, 100)
+    } else {
+        null
+    }
+
 class DownloadService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val manager by lazy { applicationContext.vrkaApplication.downloads }
+    private val notificationManager by lazy { getSystemService(NotificationManager::class.java) }
+    private val postedJobNotifications = mutableSetOf<Int>()
+    private var foregroundNotificationId: Int? = null
+    private var foregroundTimedOut = false
+    private var handingOffToTransferJob = false
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
-        val initialJob = manager.jobs.value.firstOrNull { it.state.isForegroundWork }
-        showForeground(initialJob)
+        DownloadNotifications.ensureChannel(this)
+        showForeground(manager.jobs.value.firstOrNull { it.state.isForegroundWork })
         serviceScope.launch {
-            manager.jobs.collectLatest { jobs ->
-                val active = jobs.firstOrNull { it.state.isForegroundWork }
-                if (active == null) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                } else {
-                    showForeground(active)
-                }
-            }
+            manager.jobs.collectLatest(::syncNotifications)
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_CANCEL -> intent.getStringExtra(EXTRA_JOB_ID)?.let(manager::cancel)
+            ACTION_CANCEL -> {
+                intent.getStringExtra(EXTRA_JOB_ID)?.let(manager::cancel)
+                syncNotifications(manager.jobs.value)
+            }
             ACTION_STOP_IF_IDLE -> {
                 if (manager.jobs.value.none { it.state.isForegroundWork }) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
+                    clearJobNotifications()
                     stopSelf()
-                    return START_NOT_STICKY
+                } else {
+                    syncNotifications(manager.jobs.value)
                 }
+                return START_NOT_STICKY
             }
+            else -> showForeground(manager.jobs.value.firstOrNull { it.state.isForegroundWork })
         }
-        val active = manager.jobs.value.firstOrNull { it.state.isForegroundWork }
-        showForeground(active)
         return START_NOT_STICKY
+    }
+
+    override fun onTimeout(startId: Int) {
+        handleForegroundTimeout()
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        handleForegroundTimeout()
     }
 
     override fun onDestroy() {
         serviceScope.cancel()
+        if (!handingOffToTransferJob) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            clearJobNotifications()
+        }
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun showForeground(job: DownloadJob?) {
-        val notification = buildNotification(job)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+    private fun syncNotifications(jobs: List<DownloadJob>) {
+        if (foregroundTimedOut) return
+        val active = jobs.filter { it.state.isForegroundWork }
+        if (active.isEmpty()) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            clearJobNotifications()
+            stopSelf()
+            return
         }
+        showForeground(active.first())
+        active.drop(1).forEach { job ->
+            notificationManager.notify(
+                notificationIdFor(job.id),
+                DownloadNotifications.build(this, job),
+            )
+        }
+        val activeIds = active.mapTo(mutableSetOf()) { notificationIdFor(it.id) }
+        postedJobNotifications.filterNot(activeIds::contains).forEach(notificationManager::cancel)
+        postedJobNotifications.clear()
+        postedJobNotifications.addAll(activeIds)
     }
 
-    private fun buildNotification(job: DownloadJob?): Notification {
-        val openIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java)
-                .putExtra(MainActivity.EXTRA_OPEN_QUEUE, true)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    private fun clearJobNotifications() {
+        postedJobNotifications.forEach(notificationManager::cancel)
+        postedJobNotifications.clear()
+        foregroundNotificationId = null
+    }
+
+    private fun handleForegroundTimeout() {
+        foregroundTimedOut = true
+        val action = DownloadRecovery.foregroundTimeoutAction(
+            DownloadTransferRuntime.isTransferJobRunning,
         )
-        val title = job?.title?.ifBlank { "VRKA download" } ?: "VRKA"
-        val status = job?.let(::jobStatusLabel) ?: "Preparing"
-        val summary = job?.let {
-            val progress = jobProgressSummary(it)
-            if (progress == it.detail) "$status • ${requestSummary(it.request)}"
-            else "$status • $progress"
-        } ?: "Preparing download"
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setColor(ContextCompat.getColor(this, R.color.vrka_purple))
-            .setContentTitle(title)
-            .setContentText(summary)
-            .setSubText("VRKA • $status")
-            .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
-            .setContentIntent(openIntent)
-            .setOnlyAlertOnce(true)
-            .setOngoing(true)
-            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-
-        if (job != null) {
-            if (job.state == JobState.DOWNLOADING && job.progress > 0f) {
-                builder.setProgress(100, job.progress.toInt(), false)
-            } else {
-                builder.setProgress(100, 0, true)
-            }
-            val cancelIntent = PendingIntent.getService(
-                this,
-                job.id.hashCode(),
-                Intent(this, DownloadService::class.java)
-                    .setAction(ACTION_CANCEL)
-                    .putExtra(EXTRA_JOB_ID, job.id),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        if (action == ForegroundTimeoutAction.HANDOFF) {
+            // Keep the current notification: the user-initiated transfer job takes ownership
+            // of progress and cancellation without reporting a false interruption.
+            handingOffToTransferJob = true
+            stopForeground(STOP_FOREGROUND_DETACH)
+            DownloadTransferRuntime.requestNotificationRefresh()
+        } else {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            clearJobNotifications()
+            notificationManager.notify(
+                INTERRUPTED_NOTIFICATION_ID,
+                DownloadNotifications.buildInterrupted(this),
             )
-            builder.addAction(R.drawable.ic_close, "Cancel", cancelIntent)
         }
-        return builder.build()
+        stopSelf()
     }
 
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Active downloads",
-            NotificationManager.IMPORTANCE_LOW,
-        ).apply {
-            description = "Progress for downloads started in VRKA"
-            setShowBadge(false)
+    private fun showForeground(job: DownloadJob?) {
+        val id = job?.let { notificationIdFor(it.id) } ?: PENDING_NOTIFICATION_ID
+        if (foregroundNotificationId != null && foregroundNotificationId != id) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
         }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val notification = DownloadNotifications.build(this, job)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            startForeground(id, notification)
+        }
+        foregroundNotificationId = id
+        postedJobNotifications.add(id)
     }
 
     companion object {
-        private const val CHANNEL_ID = "vrka_downloads"
-        private const val NOTIFICATION_ID = 4107
-        private const val ACTION_CANCEL = "com.mvrk.vrka.CANCEL"
-        private const val ACTION_STOP_IF_IDLE = "com.mvrk.vrka.STOP_IF_IDLE"
-        private const val EXTRA_JOB_ID = "job_id"
+        const val ACTION_CANCEL = "com.mvrk.vrka.CANCEL"
+        const val ACTION_STOP_IF_IDLE = "com.mvrk.vrka.STOP_IF_IDLE"
+        const val EXTRA_JOB_ID = "job_id"
 
         fun start(context: Context) {
             val intent = Intent(context, DownloadService::class.java)

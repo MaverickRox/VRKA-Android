@@ -1,3 +1,39 @@
+# VRKA Android 5.1.0 — Release Evidence
+
+**Verification date:** 2026-10-31
+
+**Source version:** `5.1.0` (`versionCode` 50100)
+**Validation state:** automated tests, release lint, production release build, APK metadata, signing certificate, and checksum verified. Physical OnePlus 11 was unavailable for this release; emulator instrumentation and automated test suites passed.
+
+## Automated checks
+
+| Check | Result |
+| --- | --- |
+| `:app:testDebugUnitTest` | PASS: 601 tests in 58 suites; 0 failures, 0 errors, 0 skipped |
+| `:app:lintRelease` | PASS: 275 warnings, 0 hints; no errors or fatal findings |
+| `:app:assembleRelease` | PASS: production-signed release APK built |
+| Release signing validation | PASS: verified with production PKCS#12 keystore |
+
+Result: `BUILD SUCCESSFUL`.
+
+Toolchain: Gradle 9.4.1 wrapper, Android Gradle Plugin 9.2.0, OpenJDK 25.0.3, Java source/target 17. The APK reports compile SDK 37 (minor API level 2), target API 36, minimum API 26, and `arm64-v8a` only.
+
+## APK identity and integrity
+
+- Canonical release asset: `VRKA-Android-v5.1.0.apk`
+- Local verified build: `app/build/outputs/apk/release/app-release.apk`
+- Size: 157,192,535 bytes
+- SHA-256: `CA5C74F0C59A98FE225D133A79E98A9E2913E8F82BFDAC0C841A27F2DCD1F28A`
+- Application ID: `com.mvrk.vrka`
+- Version: `5.1.0` (`versionCode` 50100)
+- Minimum / target / compile SDK: 26 / 36 / 37 (minor API level 2)
+- Packaged native ABI: `arm64-v8a`
+- Debuggable: false (non-debuggable)
+
+`aapt2 dump badging` confirmed package `com.mvrk.vrka`, `versionCode= 50100`, `versionName=5.1.0`, and application label `VRKA`. `apksigner verify --verbose --print-certs` verified one RSA 4096-bit signer using APK Signature Scheme v2. The production certificate SHA-256 is `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`; SHA-1 is `7758980F74A503684BF1A187994E447823D19D7C`. The fingerprints match the established production signing certificate. No signing secrets are recorded.
+
+---
+
 # VRKA Android 5.0.2 — Release Evidence
 
 **Verification date:** 2026-10-05

@@ -70,6 +70,7 @@ class FallbackEngine(
     private val ranker = EngineCandidateRanker()
     private val stateMachine = EngineStateMachine(taskId, state = EngineDownloadState.DIRECT_FAILED_ELIGIBLE_FOR_FALLBACK)
     private val cancelled = AtomicBoolean(false)
+    private val sessionRegistered = AtomicBoolean(false)
 
     private val _engineState = MutableStateFlow(EngineDownloadState.DIRECT_FAILED_ELIGIBLE_FOR_FALLBACK)
     val engineState: StateFlow<EngineDownloadState> = _engineState.asStateFlow()
@@ -143,6 +144,8 @@ class FallbackEngine(
             newSession.open(runtimeManager.runtime)
             session = newSession
             _activeSession.value = newSession
+            runtimeManager.browserSessionOpened(taskId)
+            sessionRegistered.set(true)
             newSession
         }
         Log.i(TAG, "Fallback GeckoSession opened in ${SystemClock.elapsedRealtime() - sessionOpenStartMs}ms")
@@ -345,6 +348,7 @@ class FallbackEngine(
                 if (qjsPath != null) {
                     addOption("--js-runtimes", "quickjs:$qjsPath")
                 }
+                com.mvrk.vrka.DownloadRequestFactory.applyCacheDir(this)
                 val ua = bundle.userAgent.ifBlank { com.mvrk.vrka.DownloadRequestFactory.DESKTOP_USER_AGENT }
                 addOption("--user-agent", ua)
                 if (bundle.referer.isNotBlank()) {
@@ -579,6 +583,11 @@ class FallbackEngine(
 
     fun cleanup() {
         try {
+            if (sessionRegistered.compareAndSet(true, false)) {
+                runCatching {
+                    GeckoRuntimeManager.getInstance(context).browserSessionClosed(taskId)
+                }
+            }
             _activeSession.value = null
             val s = session
             session = null

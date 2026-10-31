@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import java.io.File
 import java.net.URLConnection
 
@@ -37,6 +38,31 @@ internal class OutputPublisher(
     fun delete(uriText: String): Boolean = runCatching {
         context.contentResolver.delete(Uri.parse(uriText), null, null) > 0
     }.getOrDefault(false)
+
+    /** Byte size of a published document, as the provider itself reports it. */
+    fun sizeOf(uriText: String): Long? = runCatching {
+        context.contentResolver.query(
+            Uri.parse(uriText),
+            arrayOf(OpenableColumns.SIZE),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+        }
+    }.getOrNull()?.takeIf { it > 0L }
+
+    fun nodeName(uriText: String): String? = runCatching {
+        context.contentResolver.query(
+            Uri.parse(uriText),
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+        }
+    }.getOrNull()
 
     fun fileExists(uriText: String): Boolean = runCatching {
         val uri = Uri.parse(uriText)
@@ -139,20 +165,23 @@ internal class OutputPublisher(
         return "$stem-${System.currentTimeMillis().toString(36).takeLast(8)}$extension"
     }
 
-    private fun mimeType(name: String): String =
-        URLConnection.guessContentTypeFromName(name)
-            ?: when (name.substringAfterLast('.', "").lowercase()) {
-                "mkv" -> "video/x-matroska"
-                "opus" -> "audio/opus"
-                "ogg" -> "audio/ogg"
-                "wav" -> "audio/wav"
-                "mp3" -> "audio/mpeg"
-                "flac" -> "audio/flac"
-                "m3u8" -> "application/vnd.apple.mpegurl"
-                else -> "application/octet-stream"
-            }
+    private fun mimeType(name: String): String = guessMimeType(name)
 
     companion object {
+        fun guessMimeType(name: String?): String {
+            if (name.isNullOrBlank()) return "application/octet-stream"
+            return URLConnection.guessContentTypeFromName(name)
+                ?: when (name.substringAfterLast('.', "").lowercase()) {
+                    "mkv" -> "video/x-matroska"
+                    "opus" -> "audio/opus"
+                    "ogg" -> "audio/ogg"
+                    "wav" -> "audio/wav"
+                    "mp3" -> "audio/mpeg"
+                    "flac" -> "audio/flac"
+                    "m3u8" -> "application/vnd.apple.mpegurl"
+                    else -> "application/octet-stream"
+                }
+        }
         fun hasPersistedTreePermission(context: Context, treeUri: Uri): Boolean = runCatching {
             val persisted = context.contentResolver.persistedUriPermissions
             persisted.any { it.uri == treeUri && it.isWritePermission }

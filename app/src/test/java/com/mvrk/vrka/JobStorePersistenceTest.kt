@@ -3,6 +3,7 @@ package com.mvrk.vrka
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -98,6 +99,102 @@ class JobStorePersistenceTest {
     }
 
     @Test
+    fun publishedFinalSizeSurvivesReload() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "sized",
+                    request = sampleRequest("https://example.com/sized"),
+                    state = JobState.DONE,
+                    estimatedTotalBytes = 171L * 1024 * 1024,
+                    estimatedSizeAccuracy = SizeEstimateKind.APPROXIMATE,
+                    downloadedBytes = 171L * 1024 * 1024,
+                    reportedTotalBytes = 171L * 1024 * 1024,
+                    reportedTotalIsExact = false,
+                    actualFinalFileBytes = 80L * 1024 * 1024,
+                ),
+            ),
+        )
+
+        val loaded = store.load().single()
+
+        assertEquals(80L * 1024 * 1024, loaded.actualFinalFileBytes)
+        assertEquals(171L * 1024 * 1024, loaded.reportedTotalBytes)
+        assertEquals(171L * 1024 * 1024, loaded.estimatedTotalBytes)
+        assertEquals(SizeEstimateKind.APPROXIMATE, loaded.estimatedSizeAccuracy)
+        assertFalse(loaded.reportedTotalIsExact)
+    }
+
+    @Test
+    fun legacyRecordWithoutPublishedSizeLoadsWithNull() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "legacy",
+                    request = sampleRequest("https://example.com/legacy"),
+                    state = JobState.DONE,
+                    reportedTotalBytes = 5_000_000,
+                ),
+            ),
+        )
+
+        val loaded = store.load().single()
+        assertNull(loaded.actualFinalFileBytes)
+        assertNull(loaded.estimatedTotalBytes)
+        assertEquals(5_000_000L, loaded.reportedTotalBytes)
+    }
+
+    @Test
+    fun legacyRecordCreditItsTotalToTheTransferNotTheEstimate() {
+        val file = File(tempFolder.root, "legacy_total.json")
+        file.writeText(
+            """
+            [{"id":"old","state":"DONE","title":"Legacy","detail":"Complete",
+              "totalBytes":48200000,"totalIsExact":true,
+              "request":{"url":"https://example.com/old"}}]
+            """.trimIndent(),
+            Charsets.UTF_8,
+        )
+
+        val loaded = JobStore(file).load().single()
+
+        assertEquals(48_200_000L, loaded.reportedTotalBytes)
+        assertTrue(loaded.reportedTotalIsExact)
+        assertNull("An old transfer total must never be read as a preflight estimate", loaded.estimatedTotalBytes)
+    }
+
+    @Test
+    fun runtimeUsedByEachJobSurvivesReload() {
+        val store = createTestStore()
+        val jobs = listOf(
+            DownloadJob(
+                id = "stock-job",
+                request = sampleRequest("https://example.com/a"),
+                state = JobState.DONE,
+                runtimeName = "Stock yt-dlp",
+                runtimeVersion = "2026.09.05",
+            ),
+            DownloadJob(
+                id = "custom-job",
+                request = sampleRequest("https://example.com/b"),
+                state = JobState.FAILED,
+                runtimeName = "Custom example/yt-dlp nightly",
+                runtimeVersion = "2026.10.01",
+            ),
+        )
+
+        store.save(jobs)
+        val loaded = store.load().associateBy { it.id }
+
+        assertEquals("Stock yt-dlp", loaded.getValue("stock-job").runtimeName)
+        assertEquals("2026.09.05", loaded.getValue("stock-job").runtimeVersion)
+        assertEquals("Custom example/yt-dlp nightly", loaded.getValue("custom-job").runtimeName)
+        assertEquals("2026.10.01", loaded.getValue("custom-job").runtimeVersion)
+    }
+
+    @Test
     fun interruptedActiveJobsRecoverAsFailedOnRestart() {
         val store = createTestStore()
         val activeStates = listOf(
@@ -132,6 +229,59 @@ class JobStorePersistenceTest {
                 job.error.contains("interrupted when Android stopped VRKA") && job.error.contains("Tap retry"),
             )
         }
+    }
+
+    @Test
+    fun recoveryLoadPreservesInFlightStateAndPublishMarker() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "downloading",
+                    request = sampleRequest(),
+                    state = JobState.DOWNLOADING,
+                    title = "In Flight",
+                    detail = "Downloading 12%",
+                    progress = 12f,
+                ),
+                DownloadJob(
+                    id = "publishing",
+                    request = sampleRequest(),
+                    state = JobState.POSTPROCESSING,
+                    detail = "Publishing to Downloads",
+                    progress = 100f,
+                    publishStarted = true,
+                ),
+            ),
+        )
+
+        val restored = store.load(recoverActive = true).associateBy { it.id }
+
+        assertEquals(JobState.DOWNLOADING, restored.getValue("downloading").state)
+        assertEquals("Downloading 12%", restored.getValue("downloading").detail)
+        assertEquals(12f, restored.getValue("downloading").progress, 0.001f)
+        assertEquals(JobState.POSTPROCESSING, restored.getValue("publishing").state)
+        assertTrue("Publish marker must survive process death", restored.getValue("publishing").publishStarted)
+    }
+
+    @Test
+    fun publishMarkerSurvivesTerminalReload() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "done",
+                    request = sampleRequest(),
+                    state = JobState.DONE,
+                    publishStarted = true,
+                ),
+            ),
+        )
+
+        val restored = store.load().single()
+
+        assertEquals(JobState.DONE, restored.state)
+        assertTrue(restored.publishStarted)
     }
 
     @Test
@@ -199,6 +349,48 @@ class JobStorePersistenceTest {
 
         assertEquals(JobState.CANCELLED, loaded[2].state)
         assertEquals("User cancelled download", loaded[2].error)
+    }
+
+    @Test
+    fun byteCountsSurviveReloadForActiveAndCompletedJobs() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "active",
+                    request = sampleRequest(),
+                    state = JobState.DOWNLOADING,
+                    downloadedBytes = 12_400_000L,
+                    reportedTotalBytes = 48_200_000L,
+                    reportedTotalIsExact = true,
+                ),
+                DownloadJob(
+                    id = "done",
+                    request = sampleRequest(),
+                    state = JobState.DONE,
+                    downloadedBytes = 48_200_000L,
+                    reportedTotalBytes = 48_200_000L,
+                    reportedTotalIsExact = true,
+                ),
+                DownloadJob(
+                    id = "estimate-only",
+                    request = sampleRequest(),
+                    state = JobState.FAILED,
+                    estimatedTotalBytes = 10_000_000L,
+                    estimatedSizeAccuracy = SizeEstimateKind.APPROXIMATE,
+                ),
+            ),
+        )
+
+        val restored = store.load().associateBy { it.id }
+
+        assertEquals(12_400_000L, restored.getValue("active").downloadedBytes)
+        assertEquals(48_200_000L, restored.getValue("active").reportedTotalBytes)
+        assertTrue(restored.getValue("active").reportedTotalIsExact)
+        assertEquals(48_200_000L, restored.getValue("done").reportedTotalBytes)
+        assertEquals(10_000_000L, restored.getValue("estimate-only").estimatedTotalBytes)
+        assertEquals(SizeEstimateKind.APPROXIMATE, restored.getValue("estimate-only").estimatedSizeAccuracy)
+        assertNull(restored.getValue("estimate-only").reportedTotalBytes)
     }
 
     @Test

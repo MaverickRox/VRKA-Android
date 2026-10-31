@@ -212,3 +212,20 @@
 - Evidence: `release/security`.
 - Final source ZIP and `SHA256SUMS.txt` are generated after this checkpoint update.
 - Freeze status: no unresolved P0 or P1 security finding blocks Android 1.0.0.
+
+
+## VRKA Android 5.1.0 release checkpoint — 2026-10-31
+
+- Version: VRKA Android 5.1.0, version code 50100.
+- Package: `com.mvrk.vrka`.
+- ABI: `arm64-v8a`.
+- Min SDK: 26, Target SDK: 36, Compile SDK: 37 (minor API level 2).
+- APK: `VRKA-Android-v5.1.0.apk`.
+- APK size: 157,192,535 bytes.
+- APK SHA-256: `CA5C74F0C59A98FE225D133A79E98A9E2913E8F82BFDAC0C841A27F2DCD1F28A`.
+- Signing: APK Signature Scheme v2 passed with one RSA-4096 signer.
+- Certificate SHA-256: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`.
+- Certificate SHA-1: `7758980f74a503684bf1a187994e447823d19d7c`.
+- Build: 601 unit tests in 58 test suites passed (0 failures, 0 errors, 0 skipped); release lint 0 errors and 275 warnings; production release build with R8 minification and resource shrinking.
+- Features: 14 application languages (Arabic with RTL, Bengali, Simplified Chinese, English, French, German, Gujarati, Hindi, Kannada, Portuguese Brazil, Portuguese Portugal, Spanish, Tamil, Telugu) and System Default with 100% key parity; preflight download size estimation; directional luminous wake progress indicator; GeckoView 159.0.20261022150525 engine; custom yt-dlp runtime management; single-icon notification presentation.
+- Validation: automated test suites and emulator verification passed; physical OnePlus 11 hardware was unavailable.

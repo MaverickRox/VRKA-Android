@@ -1,30 +1,27 @@
 package com.mvrk.vrka
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,7 +30,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.Color
 
 @Composable
 internal fun ActiveDownloadStrip(
@@ -41,11 +37,6 @@ internal fun ActiveDownloadStrip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val animatedProgress by animateFloatAsState(
-        targetValue = (job.progress.coerceIn(0f, 100f) / 100f),
-        label = "strip progress",
-    )
-
     val colors = LocalVrkaColors.current
     val stripGlassTint = when {
         colors.isLight -> Color(0xEEFFFFFF)
@@ -99,7 +90,7 @@ internal fun ActiveDownloadStrip(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = job.title.ifBlank { "Active download" },
+                        text = job.title.ifBlank { stringResource(R.string.active_download_title) },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = VrkaTokens.TextPrimary,
@@ -112,7 +103,7 @@ internal fun ActiveDownloadStrip(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text(
-                            text = jobStatusLabel(job),
+                            text = jobStatusLabel(LocalContext.current, job),
                             style = MaterialTheme.typography.labelSmall,
                             color = VrkaTokens.AccentLight,
                             fontWeight = FontWeight.SemiBold,
@@ -130,24 +121,29 @@ internal fun ActiveDownloadStrip(
                             maxLines = 1,
                         )
                     }
+                    downloadSizeLabel(LocalContext.current, job)?.let { size ->
+                        Text(
+                            text = size,
+                            fontFamily = VrkaMonoFamily,
+                            fontSize = 10.sp,
+                            color = VrkaTokens.TextTertiary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 1.dp),
+                        )
+                    }
                 }
             }
 
             if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
-                LinearProgressIndicator(
-                    progress = { animatedProgress },
-                    strokeCap = StrokeCap.Round,
-                    trackColor = VrkaTokens.SurfaceInset,
-                    color = VrkaTokens.Accent,
+                VrkaGlowProgressBar(
+                    progress = job.progress / 100f,
+                    trackHeight = 3.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp)),
+                        .padding(top = 8.dp),
                 )
             }
         }
     }
 }
-
-

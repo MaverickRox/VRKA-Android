@@ -1,5 +1,7 @@
 package com.mvrk.vrka
 
+import androidx.compose.ui.res.stringResource
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -71,13 +73,10 @@ import kotlinx.coroutines.launch
 fun VrkaRoot(
     manager: VrkaDownloadManager,
     openQueueRequests: StateFlow<Long>,
-    sharedUrl: StateFlow<String?> = remember { kotlinx.coroutines.flow.MutableStateFlow(null) },
 ) {
     val context = LocalContext.current
     val jobs by manager.jobs.collectAsStateWithLifecycle()
     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
-    val incomingUrl by sharedUrl.collectAsStateWithLifecycle()
-    var sharedUrlForHome by remember { mutableStateOf<String?>(null) }
     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
     val diagnostics by manager.diagnostics.collectAsStateWithLifecycle()
@@ -90,7 +89,12 @@ fun VrkaRoot(
         pageCount = { destinations.size },
     )
     val destination = destinations[pagerState.currentPage]
-    var pendingRequest by remember { mutableStateOf<DownloadRequest?>(null) }
+    // Pull-based pager position: the navbar reads this on demand instead of receiving
+    // the offset as a parameter, so swiping no longer recomposes the bar every frame.
+    val pagerPositionProvider = remember(pagerState) {
+        { pagerState.currentPage + pagerState.currentPageOffsetFraction }
+    }
+    var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     var pendingAppUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -100,38 +104,33 @@ fun VrkaRoot(
         manager.componentUpdateManager.performStartupCheckIfNeeded(settings.updatePreference)
     }
 
-    LaunchedEffect(incomingUrl) {
-        if (!incomingUrl.isNullOrBlank()) {
-            sharedUrlForHome = incomingUrl
-            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.DOWNLOAD))
-        }
-    }
-
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
-        pendingRequest?.let(manager::enqueue)
-        pendingRequest = null
+        pendingDownload?.let { manager.enqueue(it.request, it.estimate) }
+        pendingDownload = null
         pendingAppUpdate?.let(manager.appUpdateManager::downloadAndInstall)
         pendingAppUpdate = null
     }
 
-    fun enqueue(request: DownloadRequest) {
+    fun enqueue(request: DownloadRequest, estimate: SizeEstimate?) {
         val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
         if (needsPermission) {
-            pendingRequest = request
+            pendingDownload = PendingDownload(request, estimate)
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            manager.enqueue(request)
+            manager.enqueue(request, estimate)
         }
         scope.launch {
             pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
         }
     }
+
+    val enqueueFailedMessage = stringResource(R.string.snackbar_enqueue_failed)
 
     fun downloadAppUpdate(release: AppReleaseInfo) {
         val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -184,9 +183,9 @@ fun VrkaRoot(
                     val historyJobs = remember(jobs) { jobs.filter { it.state.isTerminal } }
 
                     val handleEnqueue = remember(scope, snackbar) {
-                        { request: DownloadRequest ->
-                            runCatching { enqueue(request) }.onFailure { error ->
-                                pendingRequest = null
+                        { request: DownloadRequest, estimate: SizeEstimate? ->
+                            runCatching { enqueue(request, estimate) }.onFailure { error ->
+                                pendingDownload = null
                                 val message = error.message ?: "Could not add download"
                                 scope.launch { snackbar.showSnackbar(message) }
                             }
@@ -245,12 +244,12 @@ fun VrkaRoot(
                                     settings = settings,
                                     repository = manager.settingsRepository,
                                     runtime = runtime,
-                                    initialUrl = sharedUrlForHome,
-                                    onInitialUrlConsumed = { sharedUrlForHome = null },
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
                                     onEnqueue = handleEnqueue,
+                                    onEstimateSize = { request, force -> manager.estimateSize(request, force) },
+                                    onLoadMetadata = { request -> manager.metadata(request) },
                                     onUpdateDownloadLocation = { uri, mode, configured ->
                                         scope.launch {
                                             manager.settingsRepository.setDownloadLocation(uri, mode, configured)
@@ -261,7 +260,7 @@ fun VrkaRoot(
                             VrkaDestination.QUEUE -> {
                                 JobsScreen(
                                     jobs = activeJobs,
-                                    emptyMessage = "Your active queue is empty.",
+                                    emptyMessage = stringResource(R.string.queue_empty_message),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -277,7 +276,7 @@ fun VrkaRoot(
                             VrkaDestination.HISTORY -> {
                                 JobsScreen(
                                     jobs = historyJobs,
-                                    emptyMessage = "Completed and failed downloads appear here.",
+                                    emptyMessage = stringResource(R.string.history_empty_message),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -300,6 +299,7 @@ fun VrkaRoot(
                                     runtime = runtime,
                                     repository = manager.settingsRepository,
                                     onUpdateRuntime = manager::updateRuntime,
+                                    runtimeManager = manager.ytDlpRuntimeManager,
                                     diagnostics = diagnostics,
                                     onClearDiagnostics = manager::clearDiagnostics,
                                     modifier = Modifier
@@ -353,7 +353,7 @@ fun VrkaRoot(
 
                     VrkaFloatingNavBar(
                         selectedDestination = destination,
-                        pagerPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
+                        pagerPositionProvider = pagerPositionProvider,
                         onDestinationSelected = { dest ->
                             scope.launch {
                                 pagerState.animateScrollToPage(destinations.indexOf(dest))
@@ -395,6 +395,7 @@ fun VrkaRoot(
                         onDismiss = manager.componentUpdateManager::dismissStartupDialog,
                     )
                 }
+
             }
         }
     }
@@ -449,7 +450,7 @@ private fun FallbackInteractionOverlay(
                                 color = VrkaWarning.copy(alpha = 0.2f),
                             ) {
                                 Text(
-                                    "BROWSER FALLBACK",
+                                    stringResource(R.string.fallback_badge),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     color = VrkaWarning,
@@ -482,7 +483,7 @@ private fun FallbackInteractionOverlay(
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                 modifier = Modifier.height(34.dp),
                             ) {
-                                Text("Minimize", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.fallback_minimize), style = MaterialTheme.typography.labelMedium)
                             }
                             Button(
                                 onClick = onCancel,
@@ -494,7 +495,7 @@ private fun FallbackInteractionOverlay(
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                 modifier = Modifier.height(34.dp),
                             ) {
-                                Text("Cancel", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.fallback_cancel), style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
@@ -539,7 +540,7 @@ private fun FallbackInteractionOverlay(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Initializing fallback browser session...",
+                            stringResource(R.string.fallback_initializing),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
