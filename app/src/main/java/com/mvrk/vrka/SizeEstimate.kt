@@ -3,6 +3,7 @@ package com.mvrk.vrka
 import androidx.compose.runtime.Immutable
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 enum class SizeEstimateKind {
     EXACT,
@@ -47,6 +48,39 @@ class SizeEstimateGate {
     fun accepts(token: Int): Boolean = token == generation
 }
 
+/** One selectable video height with the locally calculated size for that selection. */
+@Immutable
+data class FormatSizeOption(
+    val height: Int,
+    val fps: Double? = null,
+    val bytes: Long? = null,
+)
+
+/**
+ * User-facing view of a single metadata document: title, available video heights with local
+ * size estimates, and the subtitle languages the source offers. It is derived from the same
+ * cached document used by [SizeEstimateCalculator], so the format selector, subtitle summary
+ * and share card never trigger separate yt-dlp extractions.
+ *
+ * Sizes here are always labelled approximate by the UI because they are re-selected locally
+ * from the format table rather than reported for a chosen `requested_formats` pair.
+ */
+@Immutable
+data class MetadataSnapshot(
+    val title: String = "",
+    val durationSeconds: Double? = null,
+    val videoOptions: List<FormatSizeOption> = emptyList(),
+    val subtitleLanguages: List<String> = emptyList(),
+    val automaticCaptionLanguages: List<String> = emptyList(),
+    val isPlaylist: Boolean = false,
+) {
+    val hasSubtitles: Boolean
+        get() = subtitleLanguages.isNotEmpty() || automaticCaptionLanguages.isNotEmpty()
+
+    fun sizeFor(height: Int?): FormatSizeOption? =
+        height?.let { selected -> videoOptions.firstOrNull { it.height == selected } }
+}
+
 /**
  * Turns a yt-dlp `--dump-single-json` payload into a final-output size estimate.
  *
@@ -84,6 +118,143 @@ object SizeEstimateCalculator {
             playlist(entries, request, title, recalculateSelection)
         } else {
             single(root, request, title, recalculateSelection)
+        }
+    }
+
+    /**
+     * Builds the shared UI metadata view from the same document that answers size questions.
+     * Returns null only when the payload is not a JSON object at all.
+     */
+    fun snapshotFromMetadataJson(jsonText: String, request: DownloadRequest): MetadataSnapshot? {
+        val root = parseRoot(jsonText) ?: return null
+        val title = root.optString("title").trim().take(MAX_TITLE_LENGTH)
+            .ifBlank { root.optString("fulltitle").trim().take(MAX_TITLE_LENGTH) }
+        val subtitles = subtitleLanguages(root, "subtitles")
+        val automaticCaptions = subtitleLanguages(root, "automatic_captions")
+        val entries = root.optJSONArray("entries")
+        if (root.optString("_type") == "playlist" || entries != null) {
+            return MetadataSnapshot(
+                title = title,
+                subtitleLanguages = subtitles,
+                automaticCaptionLanguages = automaticCaptions,
+                isPlaylist = true,
+            )
+        }
+        val duration = root.optDouble("duration", Double.NaN)
+            .takeIf { it.isFinite() && it > 0 }
+        return MetadataSnapshot(
+            title = title,
+            durationSeconds = duration,
+            videoOptions = videoSizeOptions(root, request, duration),
+            subtitleLanguages = subtitles,
+            automaticCaptionLanguages = automaticCaptions,
+        )
+    }
+
+    /**
+     * Bounded description of a metadata response for local diagnostics. It records the shape
+     * of the payload (format count, heights, selected ids, subtitle languages) instead of the
+     * full document, which can be ~100 KB and is never persisted.
+     */
+    fun summarizeMetadataJson(jsonText: String, maxChars: Int = 700): String {
+        val root = parseRoot(jsonText) ?: return "invalid-json (${jsonText.length} chars)"
+        val parts = mutableListOf<String>()
+        root.optString("title").trim().take(80).takeIf(String::isNotBlank)?.let { parts += "title=$it" }
+        root.optDouble("duration", Double.NaN).takeIf { it.isFinite() && it > 0 }?.let {
+            parts += "duration=" + String.format(Locale.US, "%.1f", it) + "s"
+        }
+        val entries = root.optJSONArray("entries")
+        if (root.optString("_type") == "playlist" || entries != null) {
+            parts += "playlistEntries=${entries?.length() ?: 0}"
+        } else {
+            val formats = allFormats(root)
+            parts += "formats=${formats.size}"
+            val heights = formats
+                .mapNotNull { format -> format.optInt("height", 0).takeIf { height -> height > 0 } }
+                .distinct()
+                .sortedDescending()
+            if (heights.isNotEmpty()) parts += "heights=${heights.joinToString(",")}"
+            requestedFormats(root)?.let { requested ->
+                val ids = (0 until requested.length()).mapNotNull { index ->
+                    requested.optJSONObject(index)?.optString("format_id")?.takeIf(String::isNotBlank)
+                }
+                if (ids.isNotEmpty()) parts += "requested=${ids.joinToString(",")}"
+            }
+            parts += "video=${formats.count { it.isVideoOnly() }} " +
+                "audio=${formats.count { it.isAudioOnly() }} " +
+                "muxed=${formats.count { it.isProgressive() }}"
+        }
+        subtitleLanguages(root, "subtitles").takeIf(List<String>::isNotEmpty)
+            ?.let { parts += "subtitles=${it.joinToString(",")}" }
+        subtitleLanguages(root, "automatic_captions").takeIf(List<String>::isNotEmpty)
+            ?.let { parts += "autoCaptions=${it.joinToString(",")}" }
+        return parts.joinToString("; ").take(maxChars)
+    }
+
+    private fun subtitleLanguages(json: JSONObject, key: String): List<String> =
+        json.optJSONObject(key)?.let { table ->
+            val names = mutableListOf<String>()
+            val iterator = table.keys()
+            while (iterator.hasNext()) {
+                val code = iterator.next()
+                // Live chat is not a downloadable subtitle track.
+                if (code.isNotBlank() && code != "live_chat") names += code
+            }
+            names.distinct().sorted()
+        } ?: emptyList()
+
+    /**
+     * The size of one selectable height is its best video stream plus the best audio stream,
+     * or the progressive stream alone. Merged pairs are summed once; no stream is counted
+     * twice and missing components simply leave that height without a size.
+     */
+    private fun videoSizeOptions(
+        json: JSONObject,
+        request: DownloadRequest,
+        duration: Double?,
+    ): List<FormatSizeOption> {
+        val formats = allFormats(json)
+        val formatsById = indexFormats(json)
+        val videoOnly = formats.filter { it.isVideoOnly() }
+        val progressive = formats.filter { it.isProgressive() }
+        val heights = (videoOnly + progressive)
+            .mapNotNull { format -> format.optInt("height", 0).takeIf { it > 0 } }
+            .distinct()
+            .sortedDescending()
+        if (heights.isEmpty()) return emptyList()
+        val audio = bestAudioStream(formats.filter { it.isAudioOnly() })
+        val effectiveDuration = effectiveDuration(request, duration)
+        return heights.mapNotNull { height ->
+            // A dedicated video stream is preferred; a progressive stream is the fallback
+            // for heights that only exist as a single muxed format.
+            val dedicated = videoOnly.filter { it.optInt("height", 0) == height }
+            val atHeight = dedicated.ifEmpty {
+                progressive.filter { it.optInt("height", 0) == height }
+            }
+            val sixtyFps = if (request.prefer60Fps) {
+                atHeight.filter { it.optDouble("fps", 0.0) >= 60.0 }
+            } else {
+                emptyList()
+            }
+            val video = (sixtyFps.ifEmpty { atHeight }).maxWithOrNull(
+                compareBy<JSONObject>({ it.optDouble("fps", 0.0) })
+                    .thenBy { it.optDouble("tbr", 0.0) },
+            ) ?: return@mapNotNull null
+            val videoSize = resolveSize(video, formatsById, duration) ?: return@mapNotNull null
+            val audioSize = if (video.isProgressive()) {
+                null
+            } else {
+                audio?.let { resolveSize(it, formatsById, duration) } ?: return@mapNotNull null
+            }
+            var total = videoSize.bytes + (audioSize?.bytes ?: 0L)
+            if (isTrimmed(request)) {
+                total = scaleForTrim(total, duration, effectiveDuration) ?: return@mapNotNull null
+            }
+            FormatSizeOption(
+                height = height,
+                fps = video.optDouble("fps", Double.NaN).takeIf { it.isFinite() && it > 0 },
+                bytes = total.takeIf { it > 0 },
+            )
         }
     }
 

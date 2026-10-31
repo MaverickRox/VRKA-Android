@@ -237,6 +237,7 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="opt_sponsorblock_categories_hint">Nomes de categorias separados por vírgulas</string>
     <string name="opt_subtitle_pattern">Padrão de idioma das legendas</string>
     <string name="opt_subtitles_helper">As transferências de legendas utilizam o caminho normal do yt-dlp. O navegador de recurso atualmente não obtém legendas.</string>
+    <string name="metadata_subtitles_available">Legendas: %1$s</string>
     <string name="opt_trim_end">Fim</string>
     <string name="opt_trim_start">Início</string>
     <string name="opt_trim_title">Recorte opcional (HH:MM:SS ou segundos)</string>

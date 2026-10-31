@@ -237,6 +237,7 @@
     <string name="opt_sponsorblock_categories_hint">కామాలతో వేరు చేయబడిన వర్గం పేర్లు</string>
     <string name="opt_subtitle_pattern">ఉపశీర్షిక భాషా నమూనా</string>
     <string name="opt_subtitles_helper">ఉపశీర్షిక డౌన్‌లోడ్‌లు సాధారణ yt-dlp మార్గాన్ని ఉపయోగిస్తాయి. బ్రౌజర్ ఫాల్‌బ్యాక్ ప్రస్తుతం ఉపశీర్షికలను పొందదు.</string>
+    <string name="metadata_subtitles_available">ఉపశీర్షికలు: %1$s</string>
     <string name="opt_trim_end">ముగింపు</string>
     <string name="opt_trim_start">ప్రారంభం</string>
     <string name="opt_trim_title">ఐచ్ఛిక ట్రిమ్ (HH:MM:SS లేదా సెకన్లు)</string>

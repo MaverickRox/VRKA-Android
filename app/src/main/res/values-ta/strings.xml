@@ -237,6 +237,7 @@
     <string name="opt_sponsorblock_categories_hint">காற்புள்ளியால் பிரிக்கப்பட்ட பிரிவு பெயர்கள்</string>
     <string name="opt_subtitle_pattern">துணைத்தலைப்பு மொழி அமைப்பு</string>
     <string name="opt_subtitles_helper">துணைத்தலைப்பு பதிவிறக்கங்கள் இயல்பான yt-dlp பாதையைப் பயன்படுத்துகின்றன. உலாவி ஃபால்பேக் தற்போது துணைத்தலைப்புகளைப் பெறாது.</string>
+    <string name="metadata_subtitles_available">வசன வரிகள்: %1$s</string>
     <string name="opt_trim_end">முடிவு</string>
     <string name="opt_trim_start">தொடக்க</string>
     <string name="opt_trim_title">விருப்ப நறுக்குதல் (HH:MM:SS அல்லது வினாடிகள்)</string>

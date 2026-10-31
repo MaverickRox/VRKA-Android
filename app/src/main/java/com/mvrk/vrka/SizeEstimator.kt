@@ -15,6 +15,7 @@ import java.util.UUID
 data class SizePreflight(
     val estimate: SizeEstimate,
     val startedAtEpochMs: Long,
+    val finishedAtEpochMs: Long,
     val durationMs: Long,
     val exitCode: Int?,
     val timedOut: Boolean,
@@ -22,14 +23,20 @@ data class SizePreflight(
     val runtimeLabel: String,
     val formatSelector: String,
     val stdoutChars: Int,
+    /** Actual command executed (header values redacted) for local diagnostics. */
+    val command: String = "",
+    /** Bounded description of the metadata response; the full document is never persisted. */
+    val documentSummary: String = "",
     /** Raw metadata document, retained so other selections can be recalculated locally. */
     val document: String? = null,
 )
 
 /**
  * Runs the metadata-only size preflight on whichever yt-dlp runtime is currently active.
- * A failed or timed-out preflight is reported as [SizeEstimateKind.UNAVAILABLE]; it never
- * blocks the download and never affects the browser-fallback state machine.
+ * One invocation returns the complete metadata document (all formats and subtitles); every
+ * later selection is answered locally from it. A failed or timed-out preflight is reported as
+ * [SizeEstimateKind.UNAVAILABLE]; it never blocks the download and never affects the
+ * browser-fallback state machine.
  */
 class SizeEstimator(
     private val runtimeLabel: () -> String = { "" },
@@ -55,25 +62,37 @@ class SizeEstimator(
             timedOut: Boolean = false,
             stderr: String = "",
             stdoutChars: Int = 0,
+            command: String = "",
+            documentSummary: String = "",
             document: String? = null,
-        ) = SizePreflight(
-            estimate = estimate,
-            startedAtEpochMs = started,
-            durationMs = System.currentTimeMillis() - started,
-            exitCode = exitCode,
-            timedOut = timedOut,
-            stderrTail = stderr.trim().lineSequence().filter(String::isNotBlank).toList()
-                .takeLast(MAX_STDERR_LINES).joinToString("\n").take(MAX_STDERR_CHARS),
-            runtimeLabel = runtime,
-            formatSelector = formatSelector,
-            stdoutChars = stdoutChars,
-            document = document,
-        )
+        ): SizePreflight {
+            val finished = System.currentTimeMillis()
+            return SizePreflight(
+                estimate = estimate,
+                startedAtEpochMs = started,
+                finishedAtEpochMs = finished,
+                durationMs = finished - started,
+                exitCode = exitCode,
+                timedOut = timedOut,
+                stderrTail = stderr.trim().lineSequence().filter(String::isNotBlank).toList()
+                    .takeLast(MAX_STDERR_LINES).joinToString("\n").take(MAX_STDERR_CHARS),
+                runtimeLabel = runtime,
+                formatSelector = formatSelector,
+                stdoutChars = stdoutChars,
+                command = command,
+                documentSummary = documentSummary,
+                document = document,
+            )
+        }
 
         if (!request.commandTemplateId.isNullOrBlank()) {
             return report(SizeEstimate.unavailable("custom-command"))
         }
 
+        val ytDlpRequest = DownloadRequestFactory.sizeEstimate(request)
+        val command = runCatching {
+            DownloadRequestFactory.diagnosticCommand(ytDlpRequest)
+        }.getOrDefault("")
         val uniqueId = "size-" + UUID.randomUUID()
         var stderr = ""
         var exitCode: Int? = null
@@ -85,10 +104,7 @@ class SizeEstimator(
                 withTimeoutOrNull(timeoutOverrideMs ?: timeoutMs) {
                     runInterruptible(Dispatchers.IO) {
                         try {
-                            val response = YoutubeDL.getInstance().execute(
-                                DownloadRequestFactory.sizeEstimate(request),
-                                uniqueId,
-                            )
+                            val response = YoutubeDL.getInstance().execute(ytDlpRequest, uniqueId)
                             exitCode = response.exitCode
                             stderr = response.err
                             response.out
@@ -126,10 +142,21 @@ class SizeEstimator(
                 exitCode = exitCode,
                 timedOut = timedOut,
                 stderr = stderr,
+                command = command,
             )
         }
 
-        val estimate = SizeEstimateCalculator.fromMetadataJson(stdout, request)
+        // The preflight intentionally omits `-f`, so the document's `requested_formats`
+        // describe yt-dlp's default selection rather than the user's choice. Recalculate the
+        // requested quality locally from the complete format table.
+        val estimate = SizeEstimateCalculator.fromMetadataJson(
+            stdout,
+            request,
+            recalculateSelection = true,
+        )
+        val documentSummary = runCatching {
+            SizeEstimateCalculator.summarizeMetadataJson(stdout)
+        }.getOrDefault("")
         return report(
             estimate = if (estimate.isAvailable) {
                 estimate
@@ -148,6 +175,8 @@ class SizeEstimator(
             exitCode = exitCode,
             stderr = stderr,
             stdoutChars = stdout.length,
+            command = command,
+            documentSummary = documentSummary,
             document = stdout,
         )
     }

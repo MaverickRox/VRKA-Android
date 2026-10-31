@@ -237,6 +237,7 @@
     <string name="opt_sponsorblock_categories_hint">أسماء الفئات مفصولة بفواصل</string>
     <string name="opt_subtitle_pattern">نمط لغة الترجمة</string>
     <string name="opt_subtitles_helper">تستخدم تنزيلات الترجمة مسار yt-dlp العادي. متصفح الدعم البديل لا يجلب الترجمات حالياً.</string>
+    <string name="metadata_subtitles_available">الترجمة: %1$s</string>
     <string name="opt_trim_end">النهاية</string>
     <string name="opt_trim_start">البداية</string>
     <string name="opt_trim_title">قص اختياري (HH:MM:SS أو ثوانٍ)</string>

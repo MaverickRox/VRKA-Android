@@ -237,6 +237,7 @@ Tem certeza de que deseja ativar downloads simultâneos?</string>
     <string name="opt_sponsorblock_categories_hint">Nomes de categorias separados por vírgula</string>
     <string name="opt_subtitle_pattern">Padrão de idioma das legendas</string>
     <string name="opt_subtitles_helper">Os downloads de legendas usam o caminho normal do yt-dlp. O navegador de fallback atualmente não baixa legendas.</string>
+    <string name="metadata_subtitles_available">Legendas: %1$s</string>
     <string name="opt_trim_end">Fim</string>
     <string name="opt_trim_start">Início</string>
     <string name="opt_trim_title">Corte opcional (HH:MM:SS ou segundos)</string>

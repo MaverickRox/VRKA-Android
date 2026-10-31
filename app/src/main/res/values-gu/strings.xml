@@ -237,6 +237,7 @@
     <string name="opt_sponsorblock_categories_hint">અલ્પવિરામથી અલગ કરેલા કેટેગરીના નામો</string>
     <string name="opt_subtitle_pattern">ઉપશીર્ષક ભાષા પેટર્ન</string>
     <string name="opt_subtitles_helper">ઉપશીર્ષક ડાઉનલોડ સામાન્ય yt-dlp પાથનો ઉપયોગ કરે છે. બ્રાઉઝર ફૉલબૅક હાલમાં ઉપશીર્ષકો લાવતું નથી.</string>
+    <string name="metadata_subtitles_available">સબટાઇટલ: %1$s</string>
     <string name="opt_trim_end">અંત</string>
     <string name="opt_trim_start">શરૂઆત</string>
     <string name="opt_trim_title">વૈકલ્પિક ટ્રિમ (HH:MM:SS અથવા સેકન્ડ)</string>
