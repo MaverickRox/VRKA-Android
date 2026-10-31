@@ -149,6 +149,15 @@ internal fun ShareConfigSheet(
         null
     }
     val previewRequest = ShareRequestBuilder.build(link.url, preferences, type, template)
+    val selectionLabel = if (type == ShareMediaType.AUDIO) {
+        if (audioFormat == AudioFormat.MP3) {
+            "MP3 $bitrate kbps"
+        } else {
+            audioFormat.label.substringBefore(" (")
+        }
+    } else {
+        videoQualityLabel(quality)
+    }
 
     val estimateGate = remember(link.id) { SizeEstimateGate() }
     var estimate by remember(link.id) { mutableStateOf<SizeEstimate?>(null) }
@@ -206,9 +215,7 @@ internal fun ShareConfigSheet(
             scope.launch { repository.setShareSheetPreferences(preferences) }
         }
         onEnqueue(
-            ShareRequestBuilder.build(link.url, preferences, type, template).copy(
-                destinationTreeUri = destination,
-            ),
+            previewRequest.copy(destinationTreeUri = destination),
             estimate,
         )
         onDismiss()
@@ -316,15 +323,7 @@ internal fun ShareConfigSheet(
                                             VrkaChip(
                                                 selected = quality == item,
                                                 onClick = { quality = item },
-                                                label = when (item) {
-                                                    VideoQuality.BEST -> stringResource(R.string.video_quality_best)
-                                                    VideoQuality.P2160 -> "2160p 4K"
-                                                    VideoQuality.P1440 -> "1440p 2K"
-                                                    VideoQuality.P1080 -> "1080p FHD"
-                                                    VideoQuality.P720 -> "720p HD"
-                                                    VideoQuality.P480 -> "480p"
-                                                    VideoQuality.P360 -> "360p"
-                                                },
+                                                label = videoQualityLabel(item),
                                                 isMonospace = true,
                                             )
                                         }
@@ -392,6 +391,7 @@ internal fun ShareConfigSheet(
                                 ShareEstimateCard(
                                     estimate = estimate,
                                     pending = estimating,
+                                    selectionLabel = selectionLabel,
                                     onRetry = { estimateRetryToken++ },
                                 )
                             }
@@ -478,6 +478,17 @@ internal fun ShareConfigSheet(
 }
 
 @Composable
+private fun videoQualityLabel(item: VideoQuality): String = when (item) {
+    VideoQuality.BEST -> stringResource(R.string.video_quality_best)
+    VideoQuality.P2160 -> "2160p 4K"
+    VideoQuality.P1440 -> "1440p 2K"
+    VideoQuality.P1080 -> "1080p FHD"
+    VideoQuality.P720 -> "720p HD"
+    VideoQuality.P480 -> "480p"
+    VideoQuality.P360 -> "360p"
+}
+
+@Composable
 private fun ShareSectionLabel(text: String) {
     Text(
         text,
@@ -534,6 +545,7 @@ private fun ShareOptionToggle(
 private fun ShareEstimateCard(
     estimate: SizeEstimate?,
     pending: Boolean,
+    selectionLabel: String,
     onRetry: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -565,7 +577,7 @@ private fun ShareEstimateCard(
                 }
                 estimate?.isAvailable == true -> {
                     Text(
-                        stringResource(
+                        selectionLabel + " · " + stringResource(
                             if (estimate.kind == SizeEstimateKind.EXACT) {
                                 R.string.estimate_exact
                             } else {
