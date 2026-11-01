@@ -278,6 +278,103 @@ class ReleaseManifestVerifierTest {
     }
 
     @Test
+    fun testFutureIssuedTimestampBeyondToleranceRejected() {
+        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
+        if (secretKeyFile.exists()) {
+            val futureManifest = testManifestJson.replace("2026-11-01T00:00:00Z", "2026-11-01T05:00:00Z")
+            val manifestBytes = futureManifest.toByteArray()
+            val sigBytes = ReleaseManifestSigner.signDetached(manifestBytes, FileInputStream(secretKeyFile))
+
+            val err = assertThrows(ManifestValidationException::class.java) {
+                verifier.verifyAndParseManifest(
+                    manifestBytes = manifestBytes,
+                    signatureBytes = sigBytes,
+                    currentInstalledPackage = "com.mvrk.vrka",
+                    currentInstalledVersionCode = 50002L,
+                    currentStoredRevision = 1L,
+                    expectedReleaseTag = "v5.1.0",
+                    currentTimeMillis = 1793494800000L, // 2026-11-01T01:00:00Z (issued is 4h in future)
+                )
+            }
+            assertTrue(err.message!!.contains("in the future"))
+        }
+    }
+
+    @Test
+    fun testClockSkewWithinToleranceAccepted() {
+        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
+        if (secretKeyFile.exists()) {
+            // issued_at is 5 minutes (300 seconds) in the future relative to client currentTimeMillis
+            val clientTime = 1793494800000L // 2026-11-01T01:00:00Z
+            val futureFiveMinutes = "2026-11-01T01:05:00Z"
+            val skewManifest = testManifestJson.replace("2026-11-01T00:00:00Z", futureFiveMinutes)
+            val manifestBytes = skewManifest.toByteArray()
+            val sigBytes = ReleaseManifestSigner.signDetached(manifestBytes, FileInputStream(secretKeyFile))
+
+            val parsed = verifier.verifyAndParseManifest(
+                manifestBytes = manifestBytes,
+                signatureBytes = sigBytes,
+                currentInstalledPackage = "com.mvrk.vrka",
+                currentInstalledVersionCode = 50002L,
+                currentStoredRevision = 1L,
+                expectedReleaseTag = "v5.1.0",
+                currentTimeMillis = clientTime,
+            )
+            assertNotNull(parsed)
+            assertEquals("v5.1.0", parsed.releaseTag)
+        }
+    }
+
+    @Test
+    fun testIso8601UtcParsingAndConversion() {
+        // Valid UTC timestamp with 'Z'
+        val parsedUtc = ReleaseManifestVerifier.parseIso8601("2026-11-01T06:40:14Z")
+        assertNotNull(parsedUtc)
+
+        // Non-UTC or malformed formats without 'Z' must return null
+        val parsedMalformed = ReleaseManifestVerifier.parseIso8601("2026-11-01 06:40:14")
+        assertEquals(null, parsedMalformed)
+
+        val parsedInvalid = ReleaseManifestVerifier.parseIso8601("invalid-timestamp")
+        assertEquals(null, parsedInvalid)
+    }
+
+    @Test
+    fun testMetadataRevision3MonotonicUpgradeAccepted() {
+        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
+        if (secretKeyFile.exists()) {
+            val rev3Manifest = testManifestJson.replace("\"metadata_revision\": 1", "\"metadata_revision\": 3")
+            val manifestBytes = rev3Manifest.toByteArray()
+            val sigBytes = ReleaseManifestSigner.signDetached(manifestBytes, FileInputStream(secretKeyFile))
+
+            // Revision 3 accepted when stored is 2
+            val parsed = verifier.verifyAndParseManifest(
+                manifestBytes = manifestBytes,
+                signatureBytes = sigBytes,
+                currentInstalledPackage = "com.mvrk.vrka",
+                currentInstalledVersionCode = 50002L,
+                currentStoredRevision = 2L,
+                expectedReleaseTag = "v5.1.0",
+                currentTimeMillis = 1793494800000L,
+            )
+            assertEquals(3L, parsed.metadataRevision)
+
+            // Revision 3 rejected when stored is 4 (anti-rollback)
+            assertThrows(ManifestValidationException::class.java) {
+                verifier.verifyAndParseManifest(
+                    manifestBytes = manifestBytes,
+                    signatureBytes = sigBytes,
+                    currentInstalledPackage = "com.mvrk.vrka",
+                    currentInstalledVersionCode = 50002L,
+                    currentStoredRevision = 4L,
+                    expectedReleaseTag = "v5.1.0",
+                    currentTimeMillis = 1793494800000L,
+                )
+            }
+        }
+    }
+
+    @Test
     fun generateAndVerifyReleaseManifestAsc() {
         val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
         if (secretKeyFile.exists()) {
@@ -295,6 +392,9 @@ class ReleaseManifestVerifierTest {
                 val sigFile = File(manifestFile.parentFile, "VRKA-Android-v5.1.0.manifest.json.asc")
                 sigFile.writeBytes(sigBytes)
 
+                val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
+                val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt) ?: System.currentTimeMillis()
+
                 // Verify the generated signature passes full manifest verification
                 val parsed = verifier.verifyAndParseManifest(
                     manifestBytes = manifestBytes,
@@ -303,7 +403,7 @@ class ReleaseManifestVerifierTest {
                     currentInstalledVersionCode = 50002L,
                     currentStoredRevision = 1L,
                     expectedReleaseTag = "v5.1.0",
-                    currentTimeMillis = 1793494800000L,
+                    currentTimeMillis = issuedEpoch + 1000L,
                 )
                 assertEquals("5.1.0", parsed.versionName)
                 assertEquals(157202797L, parsed.apk.sizeBytes)

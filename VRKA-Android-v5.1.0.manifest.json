@@ -1,7 +1,7 @@
 {
   "schema": "https://vrka.org/schema/release-manifest/v1.json",
   "schema_version": 1,
-  "metadata_revision": 2,
+  "metadata_revision": 3,
   "channel": "stable",
   "repository": {
     "owner": "MaverickRox",
@@ -11,9 +11,9 @@
   "application_id": "com.mvrk.vrka",
   "version_name": "5.1.0",
   "version_code": 50100,
-  "source_commit": "2e5b82216bfba9d3ffb7888f7b7cb3b6c23063f6",
-  "issued_at": "2026-11-01T00:00:00Z",
-  "expires_at": "2027-11-01T00:00:00Z",
+  "source_commit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+  "issued_at": "2026-11-01T06:42:11Z",
+  "expires_at": "2027-11-01T06:42:11Z",
   "min_updater_version": "5.1.0",
   "apk": {
     "filename": "VRKA-Android-v5.1.0.apk",

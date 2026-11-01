@@ -188,8 +188,8 @@ All 5 release assets published to GitHub release `v5.1.0` (`https://github.com/M
 | Asset Filename | File Size | SHA-256 Digest | Status |
 |---|---|---|---|
 | `VRKA-Android-v5.1.0.apk` | 157,202,797 bytes | `5051ecfd6319ca2cafdd4287904006fbc54b06faac5444d3a3c73df5cdc848aa` | **VERIFIED** |
-| `VRKA-Android-v5.1.0.manifest.json` | 862 bytes | `ec1bfa6566563de46ed6471b3d2104f820264bc05cf086eeb7007f0334025c9f` | **VERIFIED** (rev 2) |
-| `VRKA-Android-v5.1.0.manifest.json.asc` | 870 bytes | `0ec9d9922dff3fcf8d38391f1c30d188f996122dda6d0b50d4893e255a3bc058` | **VERIFIED** (GnuPG PASS) |
+| `VRKA-Android-v5.1.0.manifest.json` | 862 bytes | `f1a47b342061f5149b293e1361695f12b69e5fa3d5d912ac85a520a428cafa8e` | **VERIFIED** (rev 3) |
+| `VRKA-Android-v5.1.0.manifest.json.asc` | 870 bytes | `17b3c504eb4352fcb34815975e973ab8aa6aaebc6fd1852e2719646858b4fb35` | **VERIFIED** (GnuPG PASS) |
 | `SHA256SUMS` | 1,104 bytes | — | **VERIFIED** (Matches all 4 assets) |
 | `VRKA-Release-Public-Key.asc` | 1,754 bytes | `7f2a6ef42a4f66289e31c4fefff44b7ba294f9d0c696ace1f20602401641f38a` | **VERIFIED** (Key ID `0xD519380BEBA1B9F7`) |
 

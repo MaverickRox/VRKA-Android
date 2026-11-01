@@ -1,66 +1,227 @@
 # VRKA Android 5.1.0 — Current Production Architecture
 
-This documents the current 5.1.0 production source. Its core architecture builds upon the hardened 5.0.2 baseline, adding full 14-language localization, preflight download size estimation, custom yt-dlp runtime validation, an updated GeckoView 159 engine, an AMOLED-optimized luminous wake progress renderer, and a cryptographically authenticated in-app updater architecture. Release-specific build and test evidence is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+This document defines the current production architecture for VRKA Android 5.1.0. It is grounded in the verified source code and build artifacts on the `main` branch. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
 
-## Normal downloads
+---
 
-The UI submits a request to `VrkaDownloadManager`. `DownloadRequestFactory` creates the yt-dlp invocation. yt-dlp performs the transfer; FFmpeg performs local processing where requested. VRKA validates the staged output before `OutputPublisher` publishes it and updates history.
+## 1. Architectural Overview
 
-## Browser Fallback
+VRKA Android is a native Android media downloader and passive web stream discovery application built with **Jetpack Compose** and **Kotlin Coroutines**. It operates strictly on-device with zero application telemetry or cloud tracking.
 
-An eligible yt-dlp failure can enter Browser Fallback. GeckoView navigates the public page in a task-scoped private session. The VRKA media-detector WebExtension reports candidates to the native bridge; the candidate store ranks and stabilizes them. VRKA probes a selected candidate with yt-dlp, then uses the standard yt-dlp transfer path. Local FFmpeg processing, output validation, and publication follow as needed. Browser Fallback does not use an app-owned HLS/DASH transfer engine and does not request or publish subtitles.
+The 5.1.0 release establishes the following core architectural pillars:
+- **Primary Transfer Engine**: `yt-dlp` is the primary and sole transfer engine for both direct downloads and Browser Fallback acquisitions.
+- **Browser Fallback Engine**: Mozilla `GeckoView` operates in a task-scoped private session to load protected pages and observe media streams.
+- **Media Candidate Discovery**: An internal first-party `VRKA Media Detector` WebExtension passively intercepts media requests and DOM elements, passing candidates to native Kotlin via `GeckoMediaBridge`.
+- **Integrated Content Filtering**: Bundled `uBlock Origin` filters ad, tracking, and popup requests inside GeckoView during fallback discovery.
+- **Local Media Processing**: `FFmpeg` handles local audio extraction, container remuxing, stream validation, and optional H.264 transcoding.
+- **14-Language Interface Localization**: Comprehensive multilingual support across 14 languages plus System Default, including complete Right-to-Left (RTL) layout mirroring for Arabic and 100% string resource key parity.
+- **Cryptographically Authenticated In-App Self-Updater**: Machine-readable release manifests authenticated by detached OpenPGP signatures against a pinned 4096-bit RSA trust anchor, featuring anti-rollback, anti-freeze, and two-stage installation verification.
+- **Independent Component Updaters**: Dedicated background update managers for `yt-dlp` and `uBlock Origin` with single-flight locks and dynamic runtime version introspection.
 
-## Component ownership
+---
 
-- **GeckoView:** browser runtime, navigation, and extension host.
-- **VRKA media detector:** passive candidate discovery and native bridge messages.
-- **uBlock Origin:** browser request filtering.
-- **yt-dlp:** normal and Browser Fallback transfers; component update support.
-- **FFmpeg:** local processing, probing, validation, and optional H.264 conversion.
-- **Dormant transfer prototype:** `VrkaDownloadManager.downloadViaMediaEngine` and `MediaEngineRouter` remain in the source, but `downloadViaMediaEngine` has no callers. The production flow uses `downloadOnce` for normal jobs and for Browser Fallback candidates; it does not route transfers to Media3, FFmpeg download engines, or N_m3u8DL-RE.
-- **N_m3u8DL-RE:** capability gate remains disabled, and its only router is dormant.
-- **Retired Puemos extension:** no shipped asset, runtime registration, component row, or updater path remains. One-time migration code removes the previous extension and its old update state from existing installs.
+## 2. Interface Localization & Multilingual Architecture
 
-No dormant transfer route was reconnected by the UI or component cleanup changes. The dormant code is retained as source only; its behavior is not a shipped production capability.
+VRKA Android 5.1.0 provides complete interface localization across **14 distinct languages** plus **System Default**:
 
-## Application updater
+| Locale Tag | Language | Native Name | Layout Direction | Resource Directory |
+|---|---|---|---|---|
+| `ar` | Arabic | العربية | Right-to-Left (RTL) | `res/values-ar/strings.xml` |
+| `bn` | Bengali | বাংলা | Left-to-Right (LTR) | `res/values-bn/strings.xml` |
+| `zh-rCN` | Simplified Chinese | 简体中文 | Left-to-Right (LTR) | `res/values-zh-rCN/strings.xml` |
+| `en` | English (Default) | English | Left-to-Right (LTR) | `res/values/strings.xml` |
+| `fr` | French | Français | Left-to-Right (LTR) | `res/values-fr/strings.xml` |
+| `de` | German | Deutsch | Left-to-Right (LTR) | `res/values-de/strings.xml` |
+| `gu` | Gujarati | ગુજરાતી | Left-to-Right (LTR) | `res/values-gu/strings.xml` |
+| `hi` | Hindi | हिन्दी | Left-to-Right (LTR) | `res/values-hi/strings.xml` |
+| `kn` | Kannada | ಕನ್ನಡ | Left-to-Right (LTR) | `res/values-kn/strings.xml` |
+| `pt-rBR` | Portuguese (Brazil) | Português (Brasil) | Left-to-Right (LTR) | `res/values-pt-rBR/strings.xml` |
+| `pt-rPT` | Portuguese (Portugal) | Português (Portugal) | Left-to-Right (LTR) | `res/values-pt-rPT/strings.xml` |
+| `es` | Spanish | Español | Left-to-Right (LTR) | `res/values-es/strings.xml` |
+| `ta` | Tamil | தமிழ் | Left-to-Right (LTR) | `res/values-ta/strings.xml` |
+| `te` | Telugu | తెలుగు | Left-to-Right (LTR) | `res/values-te/strings.xml` |
 
-The updater accepts stable three-part tags and requires cryptographically authenticated release manifests signed with an OpenPGP detached signature (`VRKA-Android-vX.Y.Z.manifest.json.asc`).
+### Localization Technical Characteristics:
+1. **Resource Key Parity**: Every localized resource file maintains 100% key parity with the base English strings (`res/values/strings.xml`). Positional formatting specifiers (`%1$s`, `%2$d`) are strictly validated to prevent format-string runtime exceptions.
+2. **Full RTL Support**: For Arabic (`ar`), the application enforces complete bidirectional layout mirroring, start/end alignment semantics, and mirrored typography across all screens, navigation capsules, cards, and modal dialogs.
+3. **Language Selection & Persistence**: Users can change language preferences dynamically in Settings via `LanguageSelector`. Preferences are persisted in DataStore (`selected_language_tag`) and integrate with Android 13+ (API 33+) per-app language APIs via `LocaleManagerCompat`.
 
-### Architecture and Security Controls:
-1. **Pinned OpenPGP Trust Anchor:** The official VRKA release signing key is pinned in the application binary (`vrka_release_pubkey.asc`, RSA 4096-bit, key ID `0xD519380BEBA1B9F7`, fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`).
-2. **Strict Manifest Schema:** Manifests declare schema `https://vrka.org/schema/release-manifest/v1.json`, repository owner/name, release tag, version code, application ID, target APK filename, byte size, SHA-256 digest, and expected signing certificate SHA-256.
-3. **Cryptographic Algorithm Policy:** Only SHA-256 or stronger digest algorithms are accepted; weak algorithms (MD5, SHA-1, RIPEMD-160, DSA) are strictly rejected.
-4. **Anti-Freeze & Anti-Rollback Protections:** Manifests enforce expiration timestamps (`expires_at`) to defeat freeze attacks. Monotonically non-decreasing `metadata_revision` integers prevent replay attacks.
-5. **Two-Stage Verification Pipeline:**
-   - **Archive Integrity Stage:** Performed directly on the temporary download file (`app-update-<versionCode>.download.tmp`). Validates ZIP/APK archive parsing, package name, version code, and signer certificate fingerprints against the manifest without enforcing filename.
-   - **Staging Stage:** Performed after an atomic file move to the destination cache path (`VRKA-Android-vX.Y.Z.apk`). Enforces canonical naming, private update directory confinement, non-debuggability, and FileProvider URI exposure.
+---
 
-WorkManager executes persistent background downloads into the private update directory with bounded exponential retry for transient network failures.
+## 3. Core Media Acquisition Pipeline
 
-## Custom yt-dlp templates and headers
+```
+┌────────────────────────────────────────────────────────┐
+│                   Jetpack Compose UI                   │
+│   (HomeScreen, JobsScreen, HistoryScreen, Settings)   │
+└──────────────────────────┬─────────────────────────────┘
+                           │ User Request / Link
+                           ▼
+               ┌───────────────────────┐
+               │  VrkaDownloadManager  │
+               └───────────┬───────────┘
+                           │
+        ┌──────────────────┴──────────────────┐
+        ▼                                     ▼
+┌──────────────────────────┐      ┌──────────────────────────┐
+│  DownloadJobStore (DB)   │      │ Foreground DownloadService│
+│  State & Progress Sync   │      │ Notification & Workers   │
+└──────────────────────────┘      └──────────────────────────┘
+```
 
-Templates are parsed as argument lists and passed to yt-dlp without a shell. VRKA retains control of the public URL, staging path, and publication. The policy rejects shell hooks and unsafe path, config, credential, proxy, external-downloader, and extra-URL arguments. Browser Fallback clears selected templates and typed custom arguments/headers and uses the standard request builder.
+### 3.1 Normal Download Flow
+1. **Intake & Request Construction**:
+   - The user inputs a URL directly or shares a link via the Android Share Sheet.
+   - `VrkaDownloadManager` creates a job entry in `DownloadJobStore`.
+   - `DownloadRequestFactory` constructs argument lists (`argv`) for `yt-dlp` without invoking a shell.
+   - HTTP headers (`Referer`, `Origin`, custom headers) are validated against RFC 7230 token specifications and CRLF injection rejection. Sensitive tokens and cookies are redacted (`[REDACTED]`) from logs, crash reports, and UI state.
+2. **Extraction & Transfer**:
+   - `yt-dlp` executes stream extraction and downloading directly to an isolated temporary staging directory (`cacheDir/staging/<jobId>`).
+   - Progress callbacks stream bytes transferred, ETA, speed, and percentage to the foreground notification and Compose UI.
+3. **Local Post-Processing & Packaging**:
+   - If audio extraction is requested, `FFmpeg` extracts and encodes the selected format (MP3 with selectable 128–320 kbps bitrate, native Opus stream-copy with transcode fallback, or uncompressed 16-bit PCM WAV).
+   - If H.264 Compatibility Mode is active and the video codec is not H.264, `FFmpeg` transcodes video via `libx264` while copying audio/subtitle tracks.
+4. **Validation & MediaStore Export**:
+   - Staged files are verified: non-zero byte size, valid container headers, and expected format.
+   - `OutputPublisher` publishes the final file to the user's destination directory (`Downloads/VRKA` or user-selected SAF tree) and updates `DownloadHistoryStore`.
 
-## User-facing component state
+---
 
-Components & Updates lists only yt-dlp and uBlock Origin. Rows show the component name, installed version, state, and checked/latest version when available. The Stable/Nightly selector appears on the yt-dlp row. The check button is spaced before the following separator.
+## 4. Browser Fallback Subsystem
 
-`InstalledComponentVersionReader` reads `yt_dlp/version.py` dynamically from the active installed yt-dlp zipapp, initialized runtime `versionName()`, stored preferences, or directly from the active bundled `R.raw.ytdlp` resource by extracting `yt_dlp/version.py` through `ZipFile` (skipping the zipapp shebang line without hardcoding). Persisted manager/library versions serve as secondary fallbacks. The UI displays the resolved installed version, while remote latest-version results remain a separate value. During resolution it shows `Resolving…`, settling cleanly to the installed version without aborting or throwing false `INSTALLED_VERSION_UNAVAILABLE` exceptions.
+When direct `yt-dlp` extraction fails due to anti-bot challenges (e.g., Cloudflare, bot verification, HTTP 403 Forbidden, or dynamic client-side player scripts), `VrkaDownloadManager` automatically routes the request to the **Browser Fallback Subsystem**.
 
-Check All Updates runs both component checks concurrently on IO. Each request has a six-second connect timeout, six-second read timeout, an eight-second total check deadline, and a 64 KiB response-body cap. The earlier implementation performed blocking `HttpURLConnection` body reads inside coroutine timeouts. Coroutine timeout cannot interrupt a blocked socket read, and the socket read timeout resets as bytes arrive, so a server slowly dripping an unbounded response could keep the operation pending. The corrected request uses a cancellable continuation that disconnects the active connection, bounds response bytes, and enforces the per-component deadline. Cancellation propagates to the batch. Batch timeout/failure/cancellation settles any remaining checking rows and releases the single-flight guard in `finally`; per-component failures remain visible and never become “Up to date.”
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     Browser Fallback Subsystem                           │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                    GeckoView Private Session                       │  │
+│  │                                                                    │  │
+│  │  ┌─────────────────────────────┐  ┌─────────────────────────────┐  │  │
+│  │  │        uBlock Origin        │  │     VRKA Media Detector     │  │  │
+│  │  │   (uBlock0@raymondhill.net) │  │  (media-detector@vrka.mvrk) │  │  │
+│  │  │   Request & Tracker Filter  │  │  Passive DOM / Net Observer │  │  │
+│  │  └─────────────────────────────┘  └──────────────┬──────────────┘  │  │
+│  └──────────────────────────────────────────────────┼─────────────────┘  │
+│                                                     ▼ Candidates JSON    │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │             GeckoMediaBridge (Native Kotlin WebExtension API)       │  │
+│  └──────────────────────────────────┬─────────────────────────────────┘  │
+│                                     ▼                                    │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │            Candidate Store & Ranker (MIME, Bitrate, Resolution)     │  │
+│  └──────────────────────────────────┬─────────────────────────────────┘  │
+│                                     ▼ Selected Best Candidate Stream     │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │            yt-dlp Standard CLI Candidate Probing & Transfer        │  │
+│  └──────────────────────────────────┬─────────────────────────────────┘  │
+│                                     ▼ Transferred File                   │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │          FFmpeg Post-Processing ➔ Validation ➔ OutputPublisher     │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
+```
 
-## Navbar backdrop and active-pill optics
+### 4.1 Browser Fallback Lifecycle & Candidate Handoff
+1. **Isolated Session Initialization**:
+   `BrowserFallbackCoordinator` initializes an ephemeral, private Mozilla `GeckoView` session with dedicated cookie jars and storage partitions.
+2. **Content & Tracker Suppression**:
+   Bundled `uBlock Origin` (`uBlock0@raymondhill.net`) intercepts network requests to suppress banner advertisements, tracking scripts, coin miners, and malicious redirects.
+3. **Passive Candidate Sniffing**:
+   The internal `VRKA Media Detector` WebExtension (`media-detector@vrka.mvrk.com`) observes outgoing web requests (`webRequest.onBeforeRequest`) and inspects DOM `<video>` and `<audio>` elements for direct media URLs, HLS playlists (`.m3u8`), and DASH manifests (`.mpd`).
+4. **Native Bridge Interface**:
+   Discovered media candidates are formatted as JSON payloads and delivered over the WebExtension runtime messaging channel to `GeckoMediaBridge`.
+5. **Candidate Ranking & Selection**:
+   The candidate store collects, de-duplicates, and ranks stream candidates based on container quality, audio/video streams, resolution, and reported bitrate.
+6. **yt-dlp Execution**:
+   VRKA probes the top-ranked candidate with `yt-dlp` and executes the transfer using standard yt-dlp requests.
+   > [!IMPORTANT]
+   > User-defined custom yt-dlp template arguments and custom HTTP headers from normal mode are strictly isolated and not passed into Browser Fallback requests to ensure web player tokens and signatures are not corrupted.
+7. **Local Packaging & Publication**:
+   `FFmpeg` muxes streams, validates the container, and `OutputPublisher` saves the completed media file. Browser Fallback does not fetch subtitles; subtitle options apply to normal downloads.
 
-The navbar has two independently rendered layers. The outer capsule samples the live pager backdrop with the existing Compose backdrop API, applies a 0.75× blur, translucent veil, and edge highlight. The moving active pill samples `LocalAppBackdrop` directly at full resolution, so it transforms page pixels behind the pill rather than sampling the already tinted capsule. Its clipped rounded-rectangle layer applies a subtle blur, low-alpha glass sheen (`Color.White.copy(alpha = 0.05f)` / `0.08f`), and specular rim highlight, completely eliminating dark bubble tinting.
+---
 
-On API 33+, the active pill executes an AGSL `RuntimeShader` lens transform:
-- 1.35× center magnification
-- 20-dp refraction height and 14-dp refraction displacement around the rounded pill border
-- Depth effect with normal-map edge curvature
-- Chromatic dispersion / spectral aberration splitting red, green, and blue channels across the refraction boundary
-API 31–32 retain live backdrop blur and tint; API 26–30 use a translucent glass fallback. No new Flutter or external dependencies are added.
+## 5. WebExtension & Component Responsibilities
 
-The active indicator uses slot-based geometry (`slotWidthPx - 2 * slotInsetPx`) with a fixed height of 56 dp, ensuring uniform pill dimensions and identical corner radii across all destinations (e.g., "Queue" has the exact same pill geometry as "Download" and "Settings"). The indicator is positioned via layout `Modifier.offset` rather than `graphicsLayer.translationX`, ensuring `DrawBackdropNode` and `LayoutCoordinates` accurately sample the live backdrop directly beneath the active destination tab. The indicator smoothly interpolates position during pager swipes and nav drags.
+| Component | Nature | Role & Execution Boundary | Update Mechanism |
+|---|---|---|---|
+| **Mozilla GeckoView** | Core Engine | Headless / sandboxed browser engine hosting fallback navigation and extensions (`159.0.20261022150525`). | Static Gradle dependency (`geckoview-arm64-v8a`). Not updated via component updater. |
+| **VRKA Media Detector** | First-Party WebExtension | Passive media observation (`media-detector@vrka.mvrk.com`). Shipped in `assets/extensions/media-detector/`. | Shipped with application APK. |
+| **uBlock Origin** | Third-Party WebExtension | Network request and tracker filtering (`uBlock0@raymondhill.net` v1.74.0). Shipped as `assets/extensions/ublock.xpi`. | Updated in-app via `ComponentUpdateManager`. |
+| **yt-dlp** | Core Transfer Engine | Primary media extractor and downloader for both normal and browser fallback acquisitions. | Updated in-app via `ComponentUpdateManager` or custom runtime selection. |
+| **FFmpeg** | Local Media Engine | Local audio extraction, container muxing, validation, and optional H.264 transcoding. | Shipped via `youtubedl-android:ffmpeg` (`arm64-v8a`). |
+| **Puemos Extension** | **RETIRED** | **Completely removed from production.** No assets shipped, no runtime registration, no update mechanism. | One-time migration cleanup deletes legacy files from existing installs. |
+| **Dormant Transfer Prototype** | Prototype Code | `VrkaDownloadManager.downloadViaMediaEngine` and `MediaEngineRouter` exist in source only with no callers. | Dormant; not used in production. |
 
-These are the relevant reference behaviors studied in SpotiFLAC-Mobile: a separate active optical pill sampling the page backdrop, center magnification with edge refraction, and a moving navigation indicator synchronized to page selection. The source uses the `liquid_glass_easy` Flutter package; VRKA reproduces this natively in Compose and AGSL without copying Flutter code. References: [main_shell.dart](https://github.com/spotiflacapp/SpotiFLAC-Mobile/blob/main/lib/screens/main_shell.dart), [liquid_glass_easy 4.3.2](https://pub.dev/packages/liquid_glass_easy/versions/4.3.2).
+---
+
+## 6. Application Self-Updater Subsystem
+
+VRKA Android 5.1.0 includes an independent, cryptographically authenticated self-updater targeting official GitHub releases.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                   Application Self-Updater Architecture                  │
+│                                                                          │
+│  GitHub Releases API (Official Repo: MaverickRox/VRKA-Android)           │
+│  │                                                                       │
+│  ├── 1. Query Latest Release (24h Automatic Gate / Settings Manual Check)│
+│  │                                                                       │
+│  ├── 2. Download Machine-Readable Manifest & Detached Signature:         │
+│  │      • VRKA-Android-v5.1.0.manifest.json                              │
+│  │      • VRKA-Android-v5.1.0.manifest.json.asc                          │
+│  │                                                                       │
+│  ├── 3. Cryptographic Verification (ReleaseManifestVerifier):            │
+│  │      • Pinned 4096-bit RSA OpenPGP Key (0xD519380BEBA1B9F7)           │
+│  │      • SHA-256 Digest Verification of Detached Signature             │
+│  │      • Reject Weak Algorithms (MD5, SHA-1, RIPEMD-160, DSA)           │
+│  │      • Anti-Freeze Check: Current UTC time < expires_at               │
+│  │      • Anti-Rollback Check: metadata_revision >= stored_revision      │
+│  │      • Monotonic Version Check: remote versionCode > installedCode    │
+│  │                                                                       │
+│  ├── 4. WorkManager Download:                                            │
+│  │      • Stream APK to cacheDir/updates/app-update-<code >.download.tmp │
+│  │      • Validate HTTPS origin and host bounds                          │
+│  │                                                                       │
+│  ├── 5. Two-Stage Installation Verification:                             │
+│  │      • Stage 1 (Archive Integrity on .tmp): Zip archive validity,     │
+│  │        SHA-256 digest match, package ID ("com.mvrk.vrka"),           │
+│  │        versionCode, and signer certificate SHA-256.                   │
+│  │      • Stage 2 (Staged File Integrity): Atomic rename to canonical    │
+│  │        VRKA-Android-vX.Y.Z.apk, directory confinement, non-debuggable │
+│  │        flag, and FileProvider content URI generation.                 │
+│  │                                                                       │
+│  └── 6. Android PackageInstaller:                                        │
+│         • Launch ACTION_VIEW intent with FLAG_GRANT_READ_URI_PERMISSION  │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Trust Anchor & Verification Constants:
+- **Pinned Key ID**: `0xD519380BEBA1B9F7`
+- **Pinned Key Fingerprint**: `71165A658B3A8612AC2568C6D519380BEBA1B9F7`
+- **Public Key Resource**: `app/src/main/res/raw/vrka_release_pubkey.asc`
+- **Production Signer Certificate SHA-256**: `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
+
+---
+
+## 7. Component Updaters (yt-dlp & uBlock Origin)
+
+In-app component updates are managed independently from application self-updates:
+- **Target Components**: `yt-dlp` and `uBlock Origin` only.
+- **Background Execution**: Backed by `WorkManager` to ensure update downloads survive activity destruction.
+- **Concurrency Protection**: Strict single-flight locking per component prevents duplicate or spam requests.
+- **Dynamic Version Introspection**: `InstalledComponentVersionReader` dynamically reads `yt_dlp/version.py` directly from the active zipapp runtime or from bundled `R.raw.ytdlp` using `ZipFile` stream inspection.
+- **Network Guards**: Bounded connect (6s) and read (6s) timeouts, an 8-second per-component deadline, and a 64 KiB response cap protect against slow or hanging connections.
+
+---
+
+## 8. User Interface & Liquid Glass Optics
+
+The UI is built with **Jetpack Compose** using design tokens (`VrkaTokens`):
+- **Liquid Glass Navigation**: Two independently rendered layers. The outer capsule applies a 0.75× blur and translucent veil. The active pill samples `LocalAppBackdrop` directly at full resolution.
+- **AGSL RuntimeShader (API 33+)**: High-performance lens transform with 1.35× center magnification, 20-dp refraction height, 14-dp displacement, normal-map edge curvature, and chromatic aberration channel splitting. Fallback glass rendering is provided on API 26–32.
+- **Directional Luminous Wake Progress**: 18-track directional streak with cached analytic teardrop glow optimized for AMOLED black backgrounds.
+- **Preflight Download Size Estimation**: Calculates anticipated download size based on format plans prior to queueing.
+- **Dynamic Typography**: Monospace Space Mono (`VRKA Font`) and clean System (`Roboto`) font switching.
