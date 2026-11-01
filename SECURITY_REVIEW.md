@@ -42,7 +42,7 @@
 
 ## Verification boundary
 
-- Unit tests: 635 passing tests across 60 suites, 0 failures.
+- Unit tests: 639 passing tests across 61 suites, 0 failures.
 - Release lint: 275 warnings, 0 hints, 0 errors.
 - Production APK build: non-debuggable, minified with R8, shrunk resources.
 - Physical OnePlus 11 hardware was unavailable; emulator validation and automated suites passed.
