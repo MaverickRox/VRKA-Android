@@ -2,18 +2,19 @@
 
 This file records the current Gradle build configuration. It does not claim full physical device validation.
 
-| Setting | Value from pp/build.gradle.kts |
+| Setting | Value from app/build.gradle.kts |
 | --- | --- |
 | Application ID | com.mvrk.vrka |
-| ersionName / ersionCode | 5.1.0 / 50100 |
+| VersionName / VersionCode | 5.1.0 / 50100 |
 | Minimum API | 26 (Android 8.0) |
 | Target API | 36 (Android 16) |
 | Compile SDK | API 37, minor API level 2 |
-| Native ABI filter | rm64-v8a only |
+| Native ABI filter | arm64-v8a only |
 | GeckoView | 159.0.20261022150525 (geckoview-arm64-v8a) |
 | Java source / target | 17 |
+| Interface Locales | 14 languages + System Default (full RTL support) |
 
-The project does not configure rmeabi-v7a or x86_64 APK support. The 5.1.0 artifact metadata and packaged ABI are recorded in RELEASE_EVIDENCE.md after build verification.
+The project does not configure armeabi-v7a or x86_64 APK support. The 5.1.0 artifact metadata and packaged ABI are recorded in RELEASE_EVIDENCE.md after build verification.
 
 ## Platform behavior to validate on-device
 

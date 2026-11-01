@@ -35,10 +35,10 @@ Toolchain: Gradle 9.4.1 wrapper, Android Gradle Plugin 9.2.0, OpenJDK 25.0.3, Ja
 
 ## Cryptographically Authenticated Release Manifest
 
-- Release manifest: `VRKA-Android-v5.1.0.manifest.json` (862 bytes, metadata revision 2)
-  - SHA-256: `EC1BFA6566563DE46ED6471B3D2104F820264BC05CF086EEB7007F0334025C9F`
+- Release manifest: `VRKA-Android-v5.1.0.manifest.json` (862 bytes, metadata revision 3)
+  - SHA-256: `F1A47B342061F5149B293E1361695F12B69E5FA3D5D912AC85A520A428CAFA8E`
 - Detached OpenPGP signature: `VRKA-Android-v5.1.0.manifest.json.asc` (870 bytes)
-  - SHA-256: `0EC9D9922DFF3FCF8D38391F1C30D188F996122DDA6D0B50D4893E255A3BC058`
+  - SHA-256: `17B3C504EB4352FCB34815975E973AB8AA6AAEBC6FD1852E2719646858B4FB35`
 - Exported public key: `VRKA-Release-Public-Key.asc` (1,754 bytes)
   - SHA-256: `7F2A6EF42A4F66289E31C4FEFFF44B7BA294F9D0C696ACE1F20602401641F38A`
   - Key ID: `0xD519380BEBA1B9F7`
