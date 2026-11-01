@@ -389,7 +389,8 @@ class ReleaseManifestVerifierTest {
                     dataBytes = manifestBytes,
                     secretKeyStream = FileInputStream(secretKeyFile),
                 )
-                val sigFile = File(manifestFile.parentFile, "VRKA-Android-v5.1.0.manifest.json.asc")
+                val sigFile = File.createTempFile("manifest-test", ".asc")
+                sigFile.deleteOnExit()
                 sigFile.writeBytes(sigBytes)
 
                 val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
