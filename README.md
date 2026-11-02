@@ -28,7 +28,7 @@
 > **OFFICIAL DOWNLOAD PAGE:**
 > https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.0
 > 
-> **INSTALLATION:** Download `VRKA-Android-v5.1.0.apk` from the Assets section and install it over your existing VRKA installation. DO NOT UNINSTALL v5.0.2 FIRST.
+> **INSTALLATION:** Download `VRKA-Android-v5.1.0.apk` from the Assets section and install it over your existing VRKA installation. NO NEED TO UNINSTALL v5.0.2 FIRST.
 
 <div align="center">
   <img src="docs/assets/social-preview.png" alt="VRKA Android Social Preview" width="900" />
