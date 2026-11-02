@@ -13,8 +13,7 @@ class ProgressGlowGeometryTest {
         assertEquals(0f, geometry.fillWidthPx, 0.001f)
         assertEquals(0f, geometry.headCenterPx, 0.001f)
         assertEquals(0f, geometry.streakLengthPx, 0.001f)
-        assertEquals(0f, geometry.nearBloomHalfHeightPx, 0.001f)
-        assertEquals(0f, geometry.farBloomHalfHeightPx, 0.001f)
+        assertEquals(0f, geometry.bloomHalfHeightPx, 0.001f)
         assertFalse(geometry.headVisible)
     }
 
@@ -31,24 +30,17 @@ class ProgressGlowGeometryTest {
     }
 
     @Test
-    fun opticalTeardropGrowsWiderAndFainterThanItsCore() {
+    fun opticalConeSpreadsWellBeyondTheTrack() {
         val geometry = glowProgressGeometry(0.5f, TRACK_WIDTH, TRACK_HEIGHT)
 
         assertEquals(
-            TRACK_HEIGHT * GLOW_BLOOM_NEAR_HALF_HEIGHT_RATIO,
-            geometry.nearBloomHalfHeightPx,
+            TRACK_HEIGHT * GLOW_BLOOM_HALF_HEIGHT_RATIO,
+            geometry.bloomHalfHeightPx,
             0.001f,
         )
-        assertEquals(
-            TRACK_HEIGHT * GLOW_BLOOM_FAR_HALF_HEIGHT_RATIO,
-            geometry.farBloomHalfHeightPx,
-            0.001f,
-        )
-        assertTrue(geometry.nearBloomHalfHeightPx < geometry.farBloomHalfHeightPx)
-        // The haze must fade inside the component; otherwise the canvas would cut a flat line.
-        assertTrue(geometry.farBloomHalfHeightPx < TRACK_HEIGHT * GLOW_CANVAS_HEIGHT_RATIO / 2f)
-        assertTrue(GLOW_BLOOM_NEAR_HALF_HEIGHT_RATIO >= 1.5f)
-        assertTrue(GLOW_BLOOM_FAR_HALF_HEIGHT_RATIO >= 2f)
+        // The haze must fade inside the capture canvas; otherwise it would cut a flat line.
+        assertTrue(geometry.bloomHalfHeightPx < TRACK_HEIGHT * GLOW_CANVAS_HEIGHT_RATIO / 2f)
+        assertTrue(GLOW_BLOOM_HALF_HEIGHT_RATIO >= 3f)
     }
 
     @Test
@@ -59,8 +51,8 @@ class ProgressGlowGeometryTest {
         assertEquals(TRACK_WIDTH, geometry.headCenterPx, 0.001f)
         assertEquals(TRACK_HEIGHT * GLOW_STREAK_LENGTH_RATIO, geometry.streakLengthPx, 0.001f)
         assertEquals(
-            TRACK_HEIGHT * GLOW_BLOOM_FAR_HALF_HEIGHT_RATIO,
-            geometry.farBloomHalfHeightPx,
+            TRACK_HEIGHT * GLOW_BLOOM_HALF_HEIGHT_RATIO,
+            geometry.bloomHalfHeightPx,
             0.001f,
         )
         assertTrue(geometry.headVisible)
@@ -74,9 +66,9 @@ class ProgressGlowGeometryTest {
         assertEquals(fill, geometry.fillWidthPx, 0.001f)
         assertTrue(geometry.streakLengthPx <= fill)
         assertEquals(geometry.fillWidthPx, geometry.headCenterPx, 0.001f)
-        // The teardrop path is clamped to the bar in the renderer; its vertical scale is
-        // independent of progress, so a short bar still has a readable head bloom.
-        assertTrue(geometry.nearBloomHalfHeightPx > 0f)
+        // The renderer shrinks the whole comet to fit a short fill; these are its full-size
+        // measurements, which do not depend on progress.
+        assertTrue(geometry.bloomHalfHeightPx > 0f)
     }
 
     @Test
@@ -84,8 +76,7 @@ class ProgressGlowGeometryTest {
         val thin = glowProgressGeometry(0.5f, WIDE_TRACK, 4f)
         val thick = glowProgressGeometry(0.5f, WIDE_TRACK, 8f)
 
-        assertEquals(thin.nearBloomHalfHeightPx * 2f, thick.nearBloomHalfHeightPx, 0.001f)
-        assertEquals(thin.farBloomHalfHeightPx * 2f, thick.farBloomHalfHeightPx, 0.001f)
+        assertEquals(thin.bloomHalfHeightPx * 2f, thick.bloomHalfHeightPx, 0.001f)
         assertEquals(thin.streakLengthPx * 2f, thick.streakLengthPx, 0.001f)
     }
 
@@ -102,8 +93,7 @@ class ProgressGlowGeometryTest {
         )
         val noTrack = glowProgressGeometry(0.5f, TRACK_WIDTH, Float.NaN)
         assertEquals(TRACK_WIDTH / 2f, noTrack.fillWidthPx, 0.001f)
-        assertEquals(0f, noTrack.nearBloomHalfHeightPx, 0.001f)
-        assertEquals(0f, noTrack.farBloomHalfHeightPx, 0.001f)
+        assertEquals(0f, noTrack.bloomHalfHeightPx, 0.001f)
     }
 
     private companion object {
