@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 /**
  * Renders the production [GlowProgressRenderer] at the reference bar's proportions and
  * asserts the visible contracts: a long backwards streak, independent dispersion, a purple
- * fill behind the light, and a soft rounded head instead of a clipped white wall.
+ * fill behind the light, and a crisp rounded head with no light ahead of it.
  */
 @RunWith(AndroidJUnit4::class)
 class ProgressPreviewCaptureTest {
@@ -42,6 +42,10 @@ class ProgressPreviewCaptureTest {
         // The reference recording's stable frame measures a 55.7% fill; the host comparison
         // pairs this render with that frame so both sides show the same progress.
         render(File(output, "comparison_app_0557.png"), 0.557f)
+
+        render(File(output, "settle_000.png"), 1f)
+        render(File(output, "settle_050.png"), 1f, settled = 0.5f)
+        render(File(output, "settle_100.png"), 1f, settled = 1f)
 
         val animationDir = File(output, "animated").apply { mkdirs() }
         val frames = 60
@@ -85,8 +89,8 @@ class ProgressPreviewCaptureTest {
     fun dispersionExtendsBeyondTheTrackAndFadesInsideTheCanvas() {
         val headX = (WIDTH * 0.43f).toInt()
         val centerY = (HEIGHT / 2f).toInt()
-        val sampleX = headX - (TRACK * 2f).toInt()
-        val aboveY = centerY - (TRACK * 1.5f).toInt()
+        val sampleX = headX - (TRACK * 8f).toInt()
+        val aboveY = centerY - TRACK.toInt()
         val base = render(null, 0.43f, showStreak = false, showDispersion = false)
         val dispersion = render(null, 0.43f, showStreak = false)
 
@@ -97,8 +101,8 @@ class ProgressPreviewCaptureTest {
         )
         assertTrue(
             "dispersion must fall below the bar",
-            luma(dispersion.getPixel(sampleX, centerY + (TRACK * 1.5f).toInt())) >
-                luma(base.getPixel(sampleX, centerY + (TRACK * 1.5f).toInt())) + 8,
+            luma(dispersion.getPixel(sampleX, centerY + TRACK.toInt())) >
+                luma(base.getPixel(sampleX, centerY + TRACK.toInt())) + 8,
         )
         assertEquals(
             "the haze must reach zero before the canvas edge",
@@ -109,6 +113,45 @@ class ProgressPreviewCaptureTest {
             "the haze must reach zero before the canvas edge",
             BACKGROUND,
             dispersion.getPixel(sampleX, HEIGHT.toInt() - 1),
+        )
+    }
+
+    @Test
+    fun coneStartsAtTheHeadAndWidensBackwards() {
+        val headX = (WIDTH * 0.43f).toInt()
+        val offsetY = (HEIGHT / 2f).toInt() - (TRACK * 2.5f).toInt()
+        val base = render(null, 0.43f, showStreak = false, showDispersion = false)
+        val dispersion = render(null, 0.43f, showStreak = false)
+        val nearX = headX - (TRACK * 2f).toInt()
+        val farX = headX - (TRACK * 13f).toInt()
+        // Just outside the track, whose half-height is half a track.
+        val edgeY = (HEIGHT / 2f).toInt() - (TRACK * 0.75f).toInt()
+
+        assertTrue(
+            "the glow must begin right behind the head, not further back",
+            luma(dispersion.getPixel(headX - TRACK.toInt(), edgeY)) >
+                luma(base.getPixel(headX - TRACK.toInt(), edgeY)) + 8,
+        )
+        assertEquals(
+            "the cone must stay narrow next to the head",
+            base.getPixel(nearX, offsetY),
+            dispersion.getPixel(nearX, offsetY),
+        )
+        assertTrue(
+            "the cone must be wider further behind the head",
+            luma(dispersion.getPixel(farX, offsetY)) > luma(base.getPixel(farX, offsetY)),
+        )
+    }
+
+    @Test
+    fun coneFadesTowardsPurpleAtTheTail() {
+        val headX = (WIDTH * 0.43f).toInt()
+        val aboveY = (HEIGHT / 2f).toInt() - TRACK.toInt()
+        val pixel = render(null, 0.43f).getPixel(headX - (TRACK * 13f).toInt(), aboveY)
+
+        assertTrue(
+            "the tail of the glow must read as purple",
+            Color.blue(pixel) > Color.green(pixel) + 8,
         )
     }
 
@@ -130,10 +173,10 @@ class ProgressPreviewCaptureTest {
             "the head must be near-white",
             minChannel(combined.getPixel(headX - 1, centerY)) > 220,
         )
-        assertTrue(
-            "the endpoint must not be a hard wall",
-            luma(combined.getPixel(headX + 1, centerY)) >
-                luma(base.getPixel(headX + 1, centerY)) + 8,
+        assertEquals(
+            "nothing may light the track ahead of the head",
+            base.getPixel(headX + 2, centerY),
+            combined.getPixel(headX + 2, centerY),
         )
         assertTrue(
             "the head lens must be brighter than the spill",
@@ -147,8 +190,8 @@ class ProgressPreviewCaptureTest {
         val headX = (WIDTH * 0.51f).toInt()
         val centerY = (HEIGHT / 2f).toInt()
         val farX = headX - (TRACK * 8f).toInt()
-        val aboveX = headX - (TRACK * 2f).toInt()
-        val aboveY = centerY - (TRACK * 1.5f).toInt()
+        val aboveX = headX - (TRACK * 8f).toInt()
+        val aboveY = centerY - TRACK.toInt()
         val base = render(null, 0.51f, showStreak = false, showDispersion = false)
         val streakOnly = render(null, 0.51f, showDispersion = false)
         val dispersionOnly = render(null, 0.51f, showStreak = false)
@@ -171,14 +214,79 @@ class ProgressPreviewCaptureTest {
             base.getPixel(aboveX, aboveY),
             streakOnly.getPixel(aboveX, aboveY),
         )
-        assertTrue(
-            "combined must add the streak to the teardrop",
-            luma(combined.getPixel(farX, centerY)) > luma(streakOnly.getPixel(farX, centerY)) + 5,
+        assertEquals(
+            "the cone must sit under the bar, leaving the fill's colour untouched",
+            streakOnly.getPixel(farX, centerY),
+            combined.getPixel(farX, centerY),
         )
         assertTrue(
             "the purple fill remains visible in the streak-only render",
             Color.blue(streakOnly.getPixel(headX - (TRACK * 10f).toInt(), centerY)) >
                 Color.green(streakOnly.getPixel(headX - (TRACK * 10f).toInt(), centerY)) + 40,
+        )
+    }
+
+    @Test
+    fun lightSurfaceKeepsThePurpleGlow() {
+        val bitmap = Bitmap.createBitmap(WIDTH.toInt(), HEIGHT.toInt(), Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+        renderer.draw(
+            canvas = canvas,
+            width = WIDTH,
+            height = HEIGHT,
+            trackHeight = TRACK,
+            progress = 0.43f,
+            trackColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.08f),
+            accent = androidx.compose.ui.graphics.Color(ACCENT),
+            lightSurface = true,
+        )
+        val output = File(context.getExternalFilesDir(null), "progress-previews").apply { mkdirs() }
+        FileOutputStream(File(output, "progress_light.png")).use {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+        val pixel = bitmap.getPixel(
+            (WIDTH * 0.43f).toInt() - (TRACK * 13f).toInt(),
+            (HEIGHT / 2f).toInt() - TRACK.toInt(),
+        )
+        assertTrue("the glow must tint a light surface", Color.green(pixel) < 245)
+    }
+
+    @Test
+    fun finishedBarSettlesIntoSolidPurpleWithNoGlow() {
+        val centerY = (HEIGHT / 2f).toInt()
+        val headX = WIDTH.toInt() - (TRACK * 2f).toInt()
+        val glowX = WIDTH.toInt() - (TRACK * 8f).toInt()
+        val glowY = centerY - TRACK.toInt()
+        val running = render(null, 1f)
+        val settling = render(null, 1f, settled = 0.5f)
+        val settled = render(null, 1f, settled = 1f)
+
+        assertTrue(
+            "a running head is white",
+            minChannel(running.getPixel(headX, centerY)) > 200,
+        )
+        assertEquals(
+            "a settled head is the fill's purple",
+            ACCENT,
+            settled.getPixel(headX, centerY),
+        )
+        assertEquals(
+            "a settled bar is one solid purple",
+            settled.getPixel((TRACK * 2f).toInt(), centerY),
+            settled.getPixel(headX, centerY),
+        )
+        assertEquals(
+            "a settled bar has no glow",
+            BACKGROUND,
+            settled.getPixel(glowX, glowY),
+        )
+        val base = luma(BACKGROUND)
+        val runningGlow = luma(running.getPixel(glowX, glowY)) - base
+        val settlingGlow = luma(settling.getPixel(glowX, glowY)) - base
+        assertTrue(
+            "the glow fades part-way through, was $runningGlow then $settlingGlow",
+            settlingGlow in 1 until runningGlow,
         )
     }
 
@@ -213,6 +321,7 @@ class ProgressPreviewCaptureTest {
     private fun render(
         file: File?,
         progress: Float,
+        settled: Float = 0f,
         showStreak: Boolean = true,
         showDispersion: Boolean = true,
     ): Bitmap {
@@ -227,6 +336,7 @@ class ProgressPreviewCaptureTest {
             progress = progress,
             trackColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.12f),
             accent = androidx.compose.ui.graphics.Color(ACCENT),
+            settled = settled,
             showStreak = showStreak,
             showDispersion = showDispersion,
         )
