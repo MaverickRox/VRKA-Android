@@ -37,3 +37,10 @@ VRKA Android incorporates open-source libraries, engines, and extensions in full
 - **Source**: https://github.com/MaverickRox/Mornye
 - **Use**: geometry, timing, drag and accessibility behavior of `VrkaSwitch.kt`
 
+### 7. liquid_glass_easy navigation motion
+- **Project**: liquid_glass_easy 4.3.4 (`LiquidGlassAnimatedNavBar`, `LiquidGlassLensMotion`)
+- **Author**: Ahmed Gamil
+- **License**: MIT License
+- **Source**: https://pub.dev/packages/liquid_glass_easy
+- **Use**: spring, lift and squash motion of the selection pill in `VrkaNavPillMotion.kt`; no rendering code is used
+
