@@ -89,11 +89,6 @@ fun VrkaRoot(
         pageCount = { destinations.size },
     )
     val destination = destinations[pagerState.currentPage]
-    // Pull-based pager position: the navbar reads this on demand instead of receiving
-    // the offset as a parameter, so swiping no longer recomposes the bar every frame.
-    val pagerPositionProvider = remember(pagerState) {
-        { pagerState.currentPage + pagerState.currentPageOffsetFraction }
-    }
     var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     var pendingAppUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -353,7 +348,7 @@ fun VrkaRoot(
 
                     VrkaFloatingNavBar(
                         selectedDestination = destination,
-                        pagerPositionProvider = pagerPositionProvider,
+                        pagerState = pagerState,
                         onDestinationSelected = { dest ->
                             scope.launch {
                                 pagerState.animateScrollToPage(destinations.indexOf(dest))
