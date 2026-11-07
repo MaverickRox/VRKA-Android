@@ -411,24 +411,33 @@ private fun FallbackInteractionOverlay(
 ) {
     val session by fallbackState.engine.activeSession.collectAsStateWithLifecycle()
     val candidateCount by fallbackState.engine.candidateCount.collectAsStateWithLifecycle()
+    var address by remember(fallbackState.engine.taskId) {
+        mutableStateOf(fallbackState.engine.targetUrl)
+    }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-    ) {
+    fun navigate(input: String) {
+        val value = input.trim()
+        if (value.isEmpty()) return
+        val target = when {
+            value.contains(" ") -> "https://www.google.com/search?q=" + Uri.encode(value)
+            value.startsWith("https://", ignoreCase = true) ||
+                value.startsWith("http://", ignoreCase = true) -> value
+            else -> "https://$value"
+        }
+        address = target
+        session?.loadUri(target)
+    }
+
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize()) {
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 4.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
+                modifier = Modifier.fillMaxWidth().statusBarsPadding()
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -441,13 +450,13 @@ private fun FallbackInteractionOverlay(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Surface(
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(6.dp),
                                 color = VrkaWarning.copy(alpha = 0.2f),
                             ) {
                                 Text(
                                     stringResource(R.string.fallback_badge),
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    fontWeight = FontWeight.Bold,
                                     color = VrkaWarning,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                                 )
@@ -457,47 +466,67 @@ private fun FallbackInteractionOverlay(
                                     runCatching { Uri.parse(fallbackState.engine.targetUrl).host }.getOrNull().orEmpty()
                                 },
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         }
-
                         Spacer(Modifier.width(8.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                             OutlinedButton(
                                 onClick = onDismiss,
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                    horizontal = 12.dp,
-                                    vertical = 4.dp,
-                                ),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                                 modifier = Modifier.height(34.dp),
-                            ) {
-                                Text(stringResource(R.string.fallback_minimize), style = MaterialTheme.typography.labelMedium)
-                            }
+                            ) { Text(stringResource(R.string.fallback_minimize), style = MaterialTheme.typography.labelMedium) }
                             Button(
                                 onClick = onCancel,
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                    horizontal = 12.dp,
-                                    vertical = 4.dp,
-                                ),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                                 modifier = Modifier.height(34.dp),
-                            ) {
-                                Text(stringResource(R.string.fallback_cancel), style = MaterialTheme.typography.labelMedium)
-                            }
+                            ) { Text(stringResource(R.string.fallback_cancel), style = MaterialTheme.typography.labelMedium) }
                         }
                     }
 
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = address,
+                            onValueChange = { address = it },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            placeholder = { Text("Search or enter address") },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                imeAction = androidx.compose.ui.text.input.ImeAction.Go,
+                            ),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                onGo = { navigate(address) },
+                            ),
+                        )
+                        Button(
+                            onClick = { navigate(address) },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        ) { Text("Go") }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedButton(onClick = { session?.goBack() }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)) { Text("Back") }
+                        OutlinedButton(onClick = { session?.goForward() }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)) { Text("Forward") }
+                        OutlinedButton(onClick = { session?.reload() }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)) { Text("Reload") }
+                        OutlinedButton(onClick = { session?.stop() }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)) { Text("Stop") }
+                        OutlinedButton(onClick = { navigate("https://www.google.com") }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)) { Text("Home") }
+                    }
+
                     val statusMessage = when {
-                        candidateCount > 0 -> "Capturing media ($candidateCount stream(s) observed)"
-                        else -> "Select server / Press Play to initiate media stream"
+                        candidateCount > 0 -> "Media detector active · $candidateCount stream(s) observed"
+                        else -> "Browse normally, or select a server and press Play to detect media"
                     }
                     Text(
                         text = statusMessage,
@@ -509,31 +538,15 @@ private fun FallbackInteractionOverlay(
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (session != null) {
                     androidx.compose.ui.viewinterop.AndroidView(
-                        factory = { ctx ->
-                            org.mozilla.geckoview.GeckoView(ctx).apply {
-                                setSession(session!!)
-                            }
-                        },
-                        update = { view ->
-                            val s = session
-                            if (s != null) {
-                                view.setSession(s)
-                            }
-                        },
+                        factory = { ctx -> org.mozilla.geckoview.GeckoView(ctx).apply { setSession(session!!) } },
+                        update = { view -> session?.let(view::setSession) },
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
                             stringResource(R.string.fallback_initializing),
                             style = MaterialTheme.typography.bodyMedium,
@@ -545,4 +558,3 @@ private fun FallbackInteractionOverlay(
         }
     }
 }
-
