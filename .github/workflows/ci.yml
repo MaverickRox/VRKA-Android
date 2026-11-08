@@ -32,10 +32,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-37.2
-            build-tools;36.0.0
+
+      - name: Install Android 37.2 platform and build tools
+        run: |
+          yes | sdkmanager --channel=3 "platforms;android-37.2" "build-tools;36.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
