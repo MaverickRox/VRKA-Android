@@ -3,7 +3,7 @@
 **Verification date:** 2026-11-08
 
 **Source version:** `5.1.1` (`versionCode` 50101)
-**Source revision:** `main` at `aa15472` plus the local, uncommitted v5.1.1 working-tree changes. No commit, tag, release, or published asset exists for v5.1.1.
+**Source revision:** `main` at `ef656e5c4e3a145847faa52186b6aa21625447a4` (tagged `v5.1.1`). Official release published at https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.1.
 **Validation state:** JVM unit tests, Android test-source compilation, debug/devRelease builds, release-variant Kotlin compilation, lint, APK metadata, and hermetic updater security tests. Physical device validation performed on OnePlus 11 (Android 16, SDK 36, ARM64).
 
 ## Automated checks
@@ -17,7 +17,7 @@
 | Debug APK | `./gradlew assembleDebug` | PASS |
 | Development release APK (R8, debug keystore) | `./gradlew assembleDevRelease` | PASS |
 | Lint | `./gradlew lintDebug` | PASS: 277 warnings, 3 hints, 0 errors/fatal. Warnings in modified files are existing `UseKtx`, `LocalContextResourcesRead` and `ModifierParameter` patterns; the corrected estimator, JobStore, diagnostics, updater, destination and new accessibility code add no new lint ID |
-| CI workflow syntax | PyYAML parse of `.github/workflows/ci.yml` | PASS; the workflow has not been executed on GitHub |
+| CI workflow execution | GitHub Actions CI on `main` | PASS: 100% build & test pass (Run ID `42510821254`, duration 11m 19s) |
 
 Result: `BUILD SUCCESSFUL` for every command. The definitive unit run exited `0`; stdout and stderr were captured to `/tmp/vrka-unit-stdout.txt` and `/tmp/vrka-unit-stderr.txt`, and the XML report timestamps came from that same run (newest `2026-11-08 23:11:01`). The unit suite ran with an empty temporary `user.home`; the temporary home contained no `.vrka` directory. A regression test scans the unit-test sources to ensure no test references the production signing key. All previously key-gated cryptographic tests now run on every normal run with generated temporary OpenPGP keys.
 
@@ -44,7 +44,15 @@ Tested on connected physical OnePlus 11 (CPH2447, Android 16 / SDK 36, arm64-v8a
   - Confirmation dialog: 2160p at `54.75 MB` (synchronized with 4K chip).
   - Active download transfer: displayed `"Downloading media"` neutral state (correcting `"Downloading audio"`), `16.61 MiB/s`, `Downloaded 46.8 MiB / 51.7 MiB`.
   - Final output published to `Downloads/VRKA` at `52.2 MiB` (exact match to target output).
-- Captured full-resolution screenshots in `docs/screenshots/v5.1.1/` and produced AMOLED product showcase mockup `vrka-v5.1.1-showcase.png`.
+- Creative Commons demonstration with Big Buck Bunny 4K (60fps, CC-BY 3.0 Blender Foundation):
+  - Preflight format chip estimates: Best available and 4K chips synchronized at `~743 MB`.
+  - Destination & Confirmation modal: 2160p at `743 MB` into `Downloads/VRKA`.
+  - Active Queue transfer: tracked with 18-track Comet progress glow bar reaching 49.2% progress at `16.6 MB/s`.
+  - Completed History: verified published output at `709.0 MiB` in `Downloads/VRKA` with full playback actions.
+- Passive Browser Fallback & Stream Discovery:
+  - Navigated to Shaka Player adaptive streaming demo in GeckoView private session.
+  - Verified internal `VRKA Media Detector` WebExtension passively captured DASH/HLS stream manifests while bundled `uBlock Origin` filtered telemetry.
+- Captured 6 full-resolution, keyboard-free physical device screenshots in `docs/screenshots/v5.1.1/` and produced AMOLED product showcase mockup `vrka-v5.1.1-showcase.png`.
 
 ## Published v5.1.0 manifest integrity resolution
 
