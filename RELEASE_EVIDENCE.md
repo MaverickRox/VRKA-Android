@@ -44,15 +44,15 @@ Tested on connected physical OnePlus 11 (CPH2447, Android 16 / SDK 36, arm64-v8a
   - Confirmation dialog: 2160p at `54.75 MB` (synchronized with 4K chip).
   - Active download transfer: displayed `"Downloading media"` neutral state (correcting `"Downloading audio"`), `16.61 MiB/s`, `Downloaded 46.8 MiB / 51.7 MiB`.
   - Final output published to `Downloads/VRKA` at `52.2 MiB` (exact match to target output).
-- Creative Commons demonstration with Big Buck Bunny 4K (60fps, CC-BY 3.0 Blender Foundation):
-  - Preflight format chip estimates: Best available and 4K chips synchronized at `~743 MB`.
-  - Destination & Confirmation modal: 2160p at `743 MB` into `Downloads/VRKA`.
-  - Active Queue transfer: tracked with 18-track Comet progress glow bar reaching 49.2% progress at `16.6 MB/s`.
-  - Completed History: verified published output at `709.0 MiB` in `Downloads/VRKA` with full playback actions.
+- Creative Commons Multi-Download & Audio Extraction Demonstration:
+  - Video format preflight: Best available and 4K chips synchronized at `~743 MB` on Big Buck Bunny 4K (CC-BY 3.0 Blender Foundation).
+  - Audio extraction: downloaded Big Buck Bunny in Audio mode (MP3, 320 kbps), completing at `25.7 MiB` in `Downloads/VRKA`.
+  - Multi-job active Queue: *Tears of Steel* (CC-BY 3.0 Blender Foundation) actively transferring at `8.72 MiB/s` (`148.0 MiB / ~171.9 MiB`) while *Big Buck Bunny* remained queued in sequential pipeline.
+  - Completed History: verified multi-job storage containing *Tears of Steel* (Video 800p, `194.4 MiB`), *Sintel* (Video 872p, `179.8 MiB`), and *Big Buck Bunny* (Audio MP3 320 kbps, `25.7 MiB`) with active Open/Share/Delete controls.
 - Passive Browser Fallback & Stream Discovery:
   - Navigated to Shaka Player adaptive streaming demo in GeckoView private session.
-  - Verified internal `VRKA Media Detector` WebExtension passively captured DASH/HLS stream manifests while bundled `uBlock Origin` filtered telemetry.
-- Captured 6 full-resolution, keyboard-free physical device screenshots in `docs/screenshots/v5.1.1/` and produced AMOLED product showcase mockup `vrka-v5.1.1-showcase.png`.
+  - Initiated playback of "Big Buck Bunny: the Dark Truths" (HLS) and verified first-party `VRKA Media Detector` intercepted 11 candidate streams with uBlock Origin filtering.
+- Captured full-resolution (1440x3216), keyboard-free physical device screenshots in `docs/screenshots/v5.1.1/` and produced clean frameless AMOLED product showcase `vrka-v5.1.1-showcase.png` (no phone frames or simulated hardware).
 
 ## Published v5.1.0 manifest integrity resolution
 
