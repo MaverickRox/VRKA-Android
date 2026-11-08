@@ -58,7 +58,7 @@ class SizeEstimateTest {
     @Test
     fun singleFormatWithExactFilesizeStaysExact() {
         val estimate = estimate(
-            DownloadRequest(url = URL, quality = VideoQuality.P480),
+            DownloadRequest(url = URL, quality = VideoQuality.P480, embedMetadata = false, embedThumbnail = false),
             """{"title": "Progressive", "filesize": 900000}""",
         )
 
@@ -116,7 +116,7 @@ class SizeEstimateTest {
     @Test
     fun singleDownloadMetadataWithoutRequestedFormatsUsesTheDownloadsEntry() {
         val estimate = estimate(
-            DownloadRequest(url = URL, quality = VideoQuality.P480),
+            DownloadRequest(url = URL, quality = VideoQuality.P480, embedMetadata = false, embedThumbnail = false),
             """
             {
               "title": "Single download",
@@ -180,7 +180,7 @@ class SizeEstimateTest {
     @Test
     fun leadingProcessNoticesDoNotHideValidJson() {
         val estimate = estimate(
-            DownloadRequest(url = URL),
+            DownloadRequest(url = URL, embedMetadata = false, embedThumbnail = false),
             """
             [youtube] Extracting URL: https://example.test/video
             [youtube] jNQXAC9IVRw: Downloading webpage
@@ -306,7 +306,7 @@ class SizeEstimateTest {
     @Test
     fun playlistEntriesAreSummedWhenEveryEntryHasMetadata() {
         val exact = estimate(
-            DownloadRequest(url = URL, isPlaylist = true),
+            DownloadRequest(url = URL, isPlaylist = true, embedMetadata = false, embedThumbnail = false),
             """
             {
               "_type": "playlist",
@@ -323,7 +323,7 @@ class SizeEstimateTest {
         assertEquals("Playlist", exact.title)
 
         val approximate = estimate(
-            DownloadRequest(url = URL, isPlaylist = true),
+            DownloadRequest(url = URL, isPlaylist = true, embedMetadata = false, embedThumbnail = false),
             """
             {
               "_type": "playlist",
@@ -342,7 +342,7 @@ class SizeEstimateTest {
     @Test
     fun partialPlaylistMetadataIsNotReportedAsACompleteSize() {
         val estimate = estimate(
-            DownloadRequest(url = URL, isPlaylist = true),
+            DownloadRequest(url = URL, isPlaylist = true, embedMetadata = false, embedThumbnail = false),
             """
             {
               "_type": "playlist",
@@ -367,29 +367,36 @@ class SizeEstimateTest {
     }
 
     @Test
-    fun preflightFetchesEveryFormatInOnePassWithoutASelector() {
-        val requests = listOf(
-            DownloadRequest(url = URL, quality = VideoQuality.P1080, prefer60Fps = true),
-            DownloadRequest(url = URL, mode = MediaMode.AUDIO, audioFormat = AudioFormat.MP3, mp3Bitrate = 192),
-            DownloadRequest(url = URL, mode = MediaMode.AUDIO, audioFormat = AudioFormat.OPUS),
-            DownloadRequest(url = URL, mode = MediaMode.AUDIO, audioFormat = AudioFormat.WAV),
+    fun preflightUsesTheSameFormatSelectorAsTheTransfer() {
+        val videoRequest = DownloadRequest(url = URL, quality = VideoQuality.P1080, prefer60Fps = true)
+        val videoPreflight = DownloadRequestFactory.sizeEstimate(videoRequest)
+
+        // The estimate must describe the same streams the transfer will fetch.
+        assertEquals(
+            DownloadRequestFactory.formatSelectorFor(videoRequest),
+            videoPreflight.getOption("-f"),
         )
+        assertEquals("res,fps", videoPreflight.getOption("-S"))
+        assertTrue(videoPreflight.hasOption("--dump-single-json"))
+        assertTrue(videoPreflight.hasOption("--simulate"))
+        assertTrue(videoPreflight.hasOption("--no-playlist"))
+        assertFalse(videoPreflight.hasOption("--write-subs"))
+        assertFalse(videoPreflight.hasOption("--extract-audio"))
+        assertEquals("10", videoPreflight.getOption("--socket-timeout"))
+        assertEquals("2", videoPreflight.getOption("--retries"))
+        assertFalse(videoPreflight.hasOption("--legacy-server-connect"))
 
-        requests.forEach { request ->
-            val preflight = DownloadRequestFactory.sizeEstimate(request)
-
-            // No `-f`: the document must describe every resolution, codec and subtitle so one
-            // extraction can answer all later selections locally.
-            assertNull(preflight.getOption("-f"))
-            assertTrue(preflight.hasOption("--dump-single-json"))
-            assertTrue(preflight.hasOption("--simulate"))
-            assertTrue(preflight.hasOption("--no-playlist"))
-            assertFalse(preflight.hasOption("--write-subs"))
-            assertFalse(preflight.hasOption("--extract-audio"))
-            assertEquals("10", preflight.getOption("--socket-timeout"))
-            assertEquals("2", preflight.getOption("--retries"))
-            assertFalse(preflight.hasOption("--legacy-server-connect"))
-        }
+        val audioRequest = DownloadRequest(
+            url = URL,
+            mode = MediaMode.AUDIO,
+            audioFormat = AudioFormat.OPUS,
+        )
+        val audioPreflight = DownloadRequestFactory.sizeEstimate(audioRequest)
+        assertEquals(
+            DownloadRequestFactory.audioFormatSelector(AudioFormat.OPUS),
+            audioPreflight.getOption("-f"),
+        )
+        assertNull(audioPreflight.getOption("-S"))
     }
 
     @Test

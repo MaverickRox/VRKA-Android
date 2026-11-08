@@ -4,6 +4,7 @@
 
 | Version | Supported |
 | :--- | :--- |
+| 5.1.1 (local candidate, unpublished) | :construction: |
 | 5.1.0 | :white_check_mark: |
 | 5.0.2 | :white_check_mark: |
 | 5.0.1 and older | :x: |
@@ -15,6 +16,8 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 ## Release Integrity
 
 The official v5.1.0 release APK is production-signed. Verify its signature and SHA-256 against `RELEASE_EVIDENCE.md` or official GitHub release checksums before installation.
+
+The v5.1.1 local candidate has no production-signed APK, manifest, or detached signature. Its development APK is debug-signed only. Production signing, manifest signing, tagging, and publication must be performed separately with the release credentials.
 
 The `release` build type requires explicit signing properties; it has no debug-key fallback. Never publish signing properties, keystores, passwords, or private signing keys in this repository or artifact package.
 
@@ -42,7 +45,7 @@ The application binary embeds and pins the official VRKA OpenPGP release signing
 - Custom yt-dlp templates are argument arrays passed to yt-dlp, not shell commands. Validation blocks shell hooks, external downloaders, config files, cookie files, and output-path overrides. VRKA owns staging and publication paths.
 - Browser Fallback always hands the selected candidate to the standard yt-dlp request path. It keeps the original public page URL as the job source and clears custom template arguments and user-defined headers before transfer construction. Captured browser headers are validated and origin-bound by `HeaderValidation`.
 - User URLs are validated HTTP(S) inputs. They remain individual argv values; no shell is used.
-- Diagnostics and persisted job data sanitize URLs and sensitive header values. Avoid exporting diagnostic files containing site or account identifiers.
+- Failed-download diagnostics may retain the original submitted source URL for reproducibility, but credential-like query values, embedded signed CDN URLs, and source-userinfo are redacted. Successful downloads do not add source URLs. Diagnostic export shows a warning and requires an explicit opt-in to include the full original source URL. Avoid sharing diagnostic exports containing site or account identifiers.
 - GeckoView navigates in a task-scoped private session. The Settings clear action clears GeckoView cookies, DOM storage, auth sessions, site data, caches and the in-memory candidate bridge. It does not cancel an active task.
 - yt-dlp is the normal and Browser Fallback transfer engine. FFmpeg is used for local processing, probing and validation. The active browser extensions are the VRKA media detector and uBlock Origin. Dormant Media3 and gated N_m3u8DL-RE code are not advertised or routed as active download capabilities.
 

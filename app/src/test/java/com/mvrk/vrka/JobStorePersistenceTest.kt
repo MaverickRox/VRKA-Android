@@ -99,6 +99,28 @@ class JobStorePersistenceTest {
     }
 
     @Test
+    fun activeStreamAndPlaylistScopeSurviveReload() {
+        val store = createTestStore()
+        store.save(
+            listOf(
+                DownloadJob(
+                    id = "scoped",
+                    request = sampleRequest(),
+                    state = JobState.DOWNLOADING,
+                    activeStream = ActiveStream.AUDIO,
+                    playlistItemIndex = 3,
+                    playlistItemCount = 12,
+                ),
+            ),
+        )
+
+        val loaded = store.load().single()
+        assertEquals(ActiveStream.AUDIO, loaded.activeStream)
+        assertEquals(3, loaded.playlistItemIndex)
+        assertEquals(12, loaded.playlistItemCount)
+    }
+
+    @Test
     fun publishedFinalSizeSurvivesReload() {
         val store = createTestStore()
         store.save(
@@ -394,14 +416,244 @@ class JobStorePersistenceTest {
     }
 
     @Test
-    fun corruptedJsonFileRecoversGracefully() {
-        val targetFile = File(tempFolder.root, "corrupted_jobs.json")
-        targetFile.writeText("{ this is definitely not valid json !!! }", Charsets.UTF_8)
+    fun missingAndEmptyFilesAreNotTreatedAsCorruption() {
+        val missing = JobStore(File(tempFolder.root, "absent.json")).loadWithStatus()
+        assertEquals(JobStoreLoadState.MISSING, missing.state)
+        assertTrue(missing.jobs.isEmpty())
+        assertNull(missing.recoveryCopy)
 
-        val store = JobStore(targetFile)
-        val jobs = store.load()
-        assertNotNull(jobs)
-        assertTrue("Corrupted JSON should load as empty list without throwing", jobs.isEmpty())
+        val emptyFile = File(tempFolder.root, "empty.json").apply { writeText("") }
+        val empty = JobStore(emptyFile).loadWithStatus()
+        assertEquals(JobStoreLoadState.EMPTY, empty.state)
+        assertTrue(empty.jobs.isEmpty())
+    }
+
+    @Test
+    fun corruptedJsonFileIsPreservedAndReportedInsteadOfBeingOverwritten() {
+        val targetFile = File(tempFolder.root, "corrupted_jobs.json")
+        val original = "{ this is definitely not valid json !!! }"
+        targetFile.writeText(original, Charsets.UTF_8)
+
+        val result = JobStore(targetFile).loadWithStatus()
+
+        assertTrue("Unrecoverable JSON keeps an empty in-memory queue", result.jobs.isEmpty())
+        assertEquals(JobStoreLoadState.MALFORMED, result.state)
+        assertNotNull(result.recoveryCopy)
+        assertEquals(original, result.recoveryCopy!!.readText())
+        assertEquals("load must never rewrite the original", original, targetFile.readText())
+    }
+
+    @Test
+    fun truncatedFileSalvagesCompleteRecordsWithoutTouchingTheOriginal() {
+        val targetFile = File(tempFolder.root, "truncated_jobs.json")
+        val original = """
+            [
+              {"id":"one","state":"DONE","request":{"url":"https://example.com/1"}},
+              {"id":"two","state":"FAILED","request":{"url":"https://example.com/2"}},
+              {"id":"three","state":"DONE","request":{"url":"https://exa
+        """.trimIndent()
+        targetFile.writeText(original)
+
+        val result = JobStore(targetFile).loadWithStatus()
+
+        assertEquals(JobStoreLoadState.RECOVERED, result.state)
+        assertEquals(listOf("one", "two"), result.jobs.map { it.id })
+        assertEquals(original, targetFile.readText())
+        assertNotNull(result.recoveryCopy)
+    }
+
+    @Test
+    fun oneMalformedRecordDoesNotDiscardItsValidNeighbours() {
+        val targetFile = File(tempFolder.root, "mixed_jobs.json")
+        val original = """
+            [
+              {"id":"valid-one","state":"DONE","request":{"url":"https://example.com/1"}},
+              "not an object",
+              {"id":123,"state":"DONE","request":{"url":"https://example.com/bad-id"}},
+              {"id":"valid-two","state":"FAILED","request":{"url":"https://example.com/2"}}
+            ]
+        """.trimIndent()
+        targetFile.writeText(original)
+
+        val result = JobStore(targetFile).loadWithStatus()
+
+        assertEquals(JobStoreLoadState.RECOVERED, result.state)
+        assertEquals(listOf("valid-one", "valid-two"), result.jobs.map { it.id })
+        assertEquals(2, result.skippedRecords)
+        assertEquals(original, targetFile.readText())
+    }
+
+    @Test
+    fun duplicateIdsAndUnknownFieldsAreHandledDeterministically() {
+        val targetFile = File(tempFolder.root, "duplicate_jobs.json")
+        targetFile.writeText(
+            """
+            [
+              {"id":"same","state":"DONE","title":"first","request":{"url":"https://example.com/1"},"futureField":{"x":1}},
+              {"id":"same","state":"FAILED","title":"second","request":{"url":"https://example.com/2"}}
+            ]
+            """.trimIndent(),
+        )
+
+        val result = JobStore(targetFile).loadWithStatus()
+
+        assertEquals(JobStoreLoadState.RECOVERED, result.state)
+        assertEquals(1, result.jobs.size)
+        assertEquals("first", result.jobs.single().title)
+        assertEquals(1, result.skippedRecords)
+    }
+
+    @Test
+    fun unsupportedSchemaVersionIsPreservedAndReported() {
+        val targetFile = File(tempFolder.root, "future_jobs.json")
+        val original = """{"schemaVersion":99,"jobs":[]}"""
+        targetFile.writeText(original)
+
+        val result = JobStore(targetFile).loadWithStatus()
+
+        assertEquals(JobStoreLoadState.UNSUPPORTED_SCHEMA, result.state)
+        assertTrue(result.jobs.isEmpty())
+        assertNotNull(result.recoveryCopy)
+        assertEquals(original, targetFile.readText())
+    }
+
+    @Test
+    fun schemaVersionTwoRoundtrips() {
+        val store = createTestStore("v2.json")
+        val result = store.save(
+            listOf(DownloadJob(id = "v2", request = sampleRequest(), state = JobState.DONE)),
+        )
+
+        assertTrue(result.success)
+        val persisted = File(tempFolder.root, "v2.json").readText()
+        assertTrue(persisted.contains("\"schemaVersion\":2"))
+        assertEquals(1, store.loadWithStatus().jobs.size)
+        assertEquals(JobStoreLoadState.OK, store.loadWithStatus().state)
+    }
+
+    @Test
+    fun failedTemporaryFileCreationDoesNotDestroyTheOriginal() {
+        val targetFile = File(tempFolder.root, "jobs.json")
+        targetFile.writeText("original")
+        val ops = FailingOps().apply { failCreate = true }
+        val store = JobStore(targetFile, ops)
+
+        val result = store.save(listOf(DownloadJob(id = "new", request = sampleRequest())))
+
+        assertFalse(result.success)
+        assertEquals("original", targetFile.readText())
+    }
+
+    @Test
+    fun atomicMoveRejectionFallsBackToARegularReplaceMove() {
+        val ops = FailingOps().apply { atomicResult = false }
+        val store = JobStore(File(tempFolder.root, "jobs.json"), ops)
+
+        val result = store.save(listOf(DownloadJob(id = "fallback", request = sampleRequest())))
+
+        assertTrue(result.success)
+        assertEquals(listOf("fallback"), store.load().map { it.id })
+    }
+
+    @Test
+    fun aFailedFallbackMoveReportsFailureAndKeepsTheOriginal() {
+        val targetFile = File(tempFolder.root, "jobs.json")
+        targetFile.writeText("original")
+        val ops = FailingOps().apply {
+            atomicResult = false
+            failReplace = true
+        }
+        val store = JobStore(targetFile, ops)
+
+        val result = store.save(listOf(DownloadJob(id = "new", request = sampleRequest())))
+
+        assertFalse(result.success)
+        assertEquals("original", targetFile.readText())
+    }
+
+    @Test
+    fun fullStorageWriteFailureIsReportedAndPreservesTheOriginal() {
+        val targetFile = File(tempFolder.root, "jobs.json")
+        targetFile.writeText("original")
+        val ops = FailingOps().apply { failWrite = true }
+        val store = JobStore(targetFile, ops)
+
+        val result = store.save(listOf(DownloadJob(id = "new", request = sampleRequest())))
+
+        assertFalse(result.success)
+        assertTrue(result.error.contains("No space left"))
+        assertEquals("original", targetFile.readText())
+    }
+
+    @Test
+    fun interruptedTemporaryWriteNeverReplacesTheOriginal() {
+        val targetFile = File(tempFolder.root, "jobs.json")
+        targetFile.writeText("original")
+        val ops = FailingOps().apply { partialWrite = true }
+        val store = JobStore(targetFile, ops)
+
+        val result = store.save(listOf(DownloadJob(id = "new", request = sampleRequest())))
+
+        assertFalse(result.success)
+        assertEquals("original", targetFile.readText())
+    }
+
+    @Test
+    fun unwritableParentReportsFailureInsteadOfThrowing() {
+        val parentFile = File(tempFolder.root, "not-a-directory").apply { writeText("x") }
+        val target = File(parentFile, "jobs.json")
+        val store = JobStore(target)
+
+        val result = store.save(listOf(DownloadJob(id = "new", request = sampleRequest())))
+
+        assertFalse(result.success)
+        assertTrue(target.exists().not())
+    }
+
+    @Test
+    fun recoveryCopiesAreBounded() {
+        val targetFile = File(tempFolder.root, "bounded_jobs.json")
+        repeat(6) {
+            targetFile.writeText("{ broken $it")
+            assertEquals(JobStoreLoadState.MALFORMED, JobStore(targetFile).loadWithStatus().state)
+        }
+
+        val copies = tempFolder.root.listFiles { file -> file.name.startsWith("bounded_jobs.corrupt-") }
+            ?: emptyArray()
+        assertTrue("Expected at most ${JobStore.MAX_RECOVERY_COPIES} recovery copies, found ${copies.size}", copies.size <= JobStore.MAX_RECOVERY_COPIES)
+        assertTrue(copies.isNotEmpty())
+    }
+
+    private class FailingOps : JobStoreFileOps by DefaultJobStoreFileOps {
+        var failCreate = false
+        var failWrite = false
+        var partialWrite = false
+        var failReplace = false
+        var atomicResult: Boolean = true
+
+        override fun createTempFile(parent: File, prefix: String): File {
+            if (failCreate) throw java.io.IOException("Could not create temporary file")
+            return DefaultJobStoreFileOps.createTempFile(parent, prefix)
+        }
+
+        override fun writeText(file: File, text: String) {
+            if (failWrite) throw java.io.IOException("No space left on device")
+            if (partialWrite) {
+                file.writeText(text.take(text.length / 2))
+                throw java.io.IOException("Interrupted while writing")
+            }
+            DefaultJobStoreFileOps.writeText(file, text)
+        }
+
+        override fun atomicMove(source: File, target: File): Boolean {
+            if (!atomicResult) return false
+            return DefaultJobStoreFileOps.atomicMove(source, target)
+        }
+
+        override fun replaceMove(source: File, target: File) {
+            if (failReplace) throw java.io.IOException("Move failed")
+            DefaultJobStoreFileOps.replaceMove(source, target)
+        }
     }
 
     @Test

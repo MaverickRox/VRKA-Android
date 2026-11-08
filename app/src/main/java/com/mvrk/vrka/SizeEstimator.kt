@@ -146,13 +146,12 @@ class SizeEstimator(
             )
         }
 
-        // The preflight intentionally omits `-f`, so the document's `requested_formats`
-        // describe yt-dlp's default selection rather than the user's choice. Recalculate the
-        // requested quality locally from the complete format table.
+        // The preflight uses the same `-f` selector as the transfer, so `requested_formats`
+        // is authoritative: no local re-ranking is involved in the primary estimate.
         val estimate = SizeEstimateCalculator.fromMetadataJson(
             stdout,
             request,
-            recalculateSelection = true,
+            recalculateSelection = false,
         )
         val documentSummary = runCatching {
             SizeEstimateCalculator.summarizeMetadataJson(stdout)

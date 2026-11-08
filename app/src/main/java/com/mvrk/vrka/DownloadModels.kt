@@ -48,6 +48,13 @@ enum class MediaMode(val label: String) {
     AUDIO("Audio"),
 }
 
+/** The stream currently being transferred for a merged video+audio selection. */
+enum class ActiveStream {
+    VIDEO,
+    AUDIO,
+    MEDIA,
+}
+
 enum class VideoQuality(val label: String, val height: Int?) {
     BEST("Best available", null),
     P2160("2160p", 2160),
@@ -148,6 +155,11 @@ data class DownloadJob(
     val downloadedBytes: Long? = null,
     val reportedTotalBytes: Long? = null,
     val reportedTotalIsExact: Boolean = false,
+    // The active transfer scope. `progress`, downloadedBytes and reportedTotalBytes all
+    // describe this stream/item; they must never be mixed with a job-level aggregate.
+    val activeStream: ActiveStream? = null,
+    val playlistItemIndex: Int? = null,
+    val playlistItemCount: Int? = null,
     // Size of the published output as reported by the content provider. Only set after the
     // file exists in its final destination, so it never inherits an estimate.
     val actualFinalFileBytes: Long? = null,
@@ -166,20 +178,6 @@ data class DownloadJob(
     // died after this point is not auto-resumed because its outputs may already be published.
     val publishStarted: Boolean = false,
 )
-
-enum class StreamSelectionState {
-    IDLE,
-    RESOLVING,
-    RESOLVED,
-    AWAITING_CONFIRMATION,
-    QUEUED,
-    STARTING,
-    DOWNLOADING,
-    MERGING,
-    COMPLETED,
-    FAILED,
-    CANCELLED;
-}
 
 @Immutable
 data class RuntimeStatus(

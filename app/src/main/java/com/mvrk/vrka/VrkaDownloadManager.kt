@@ -5,6 +5,7 @@ import android.media.MediaMetadataRetriever
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import com.mvrk.vrka.engine.*
 import com.mvrk.vrka.update.AppUpdateManager
@@ -123,6 +124,7 @@ class VrkaDownloadManager(
         },
     )
     private val recordedEstimateDiagnostics = ConcurrentHashMap.newKeySet<String>()
+    private val reportedStoreIssues = ConcurrentHashMap.newKeySet<String>()
 
     fun clearDiagnostics() {
         scope.launch(Dispatchers.IO) {
@@ -172,8 +174,9 @@ class VrkaDownloadManager(
             }
             // Runs after persisted state is merged so the plan sees every record.
             resumeInterruptedWorkIfNeeded()
+            reportStoreLoadStatus(store.lastLoadResult)
             for (ignored in persistRequests) {
-                store.save(_jobs.value)
+                persistJobsNow()
             }
         }
         scope.launch(Dispatchers.IO) {
@@ -346,6 +349,13 @@ class VrkaDownloadManager(
             downloadedBytes = null,
             reportedTotalBytes = null,
             reportedTotalIsExact = false,
+            activeStream = null,
+            playlistItemIndex = null,
+            playlistItemCount = null,
+            // A retry resolves the page again; an estimate captured for an older browser
+            // candidate or a previous preflight must not describe the new attempt.
+            estimatedTotalBytes = null,
+            estimatedSizeAccuracy = SizeEstimateKind.UNAVAILABLE,
             outputUris = emptyList(),
             error = "",
             attempt = previous.attempt + 1,
@@ -394,8 +404,18 @@ class VrkaDownloadManager(
     fun setJobDestination(jobId: String, treeUri: String) {
         val job = current(jobId) ?: return
         if (job.state != JobState.WAITING_FOR_USER) return
+        val trimmed = treeUri.trim()
+        if (trimmed.isBlank() || !OutputPublisher.hasPersistedTreePermission(context, Uri.parse(trimmed))) {
+            update(
+                jobId,
+                state = JobState.WAITING_FOR_USER,
+                detail = "Download location unavailable; choose location",
+                persist = true,
+            )
+            return
+        }
         val updated = job.copy(
-            request = job.request.copy(destinationTreeUri = treeUri),
+            request = job.request.copy(destinationTreeUri = trimmed),
             state = JobState.PREPARING,
             detail = "Folder selected; resuming",
             updatedAt = System.currentTimeMillis(),
@@ -410,6 +430,7 @@ class VrkaDownloadManager(
         val job = _jobs.value.firstOrNull { it.id == jobId } ?: return
         if (!job.state.isTerminal) return
         scope.launch(Dispatchers.IO) {
+            diagnosticStore.clearUrlsForJob(jobId)
             mutate(persist = true) { jobs -> jobs.filterNot { it.id == jobId } }
         }
     }
@@ -423,6 +444,7 @@ class VrkaDownloadManager(
             val success = publisher.delete(uriText)
             if (success) deletedFiles++ else failedFiles++
         }
+        diagnosticStore.clearUrlsForJob(jobId)
         mutate(persist = true) { jobs -> jobs.filterNot { it.id == jobId } }
         return HistoryDeletionResult(
             deletedRecordsCount = 1,
@@ -434,6 +456,7 @@ class VrkaDownloadManager(
     fun deleteHistoryRecords(jobIds: Collection<String>) {
         val targetIds = jobIds.toSet()
         scope.launch(Dispatchers.IO) {
+            targetIds.forEach { diagnosticStore.clearUrlsForJob(it) }
             mutate(persist = true) { jobs ->
                 jobs.filterNot { it.id in targetIds && it.state.isTerminal }
             }
@@ -451,6 +474,7 @@ class VrkaDownloadManager(
                 if (success) deletedFiles++ else failedFiles++
             }
         }
+        targetIds.forEach { diagnosticStore.clearUrlsForJob(it) }
         mutate(persist = true) { jobs ->
             jobs.filterNot { it.id in targetIds && it.state.isTerminal }
         }
@@ -473,6 +497,7 @@ class VrkaDownloadManager(
                 }
             }
         }
+        targetJobs.forEach { diagnosticStore.clearUrlsForJob(it.id) }
         mutate(persist = true) { jobs ->
             jobs.filterNot { it.state.isTerminal }
         }
@@ -489,15 +514,41 @@ class VrkaDownloadManager(
 
     fun clearFinished() {
         scope.launch(Dispatchers.IO) {
+            _jobs.value.filter { it.state.isTerminal }.forEach { diagnosticStore.clearUrlsForJob(it.id) }
             mutate(persist = true) { list -> list.filterNot { it.state.isTerminal } }
         }
     }
 
     /**
+     * Best-effort size of the browser candidate that is actually being transferred. It runs
+     * beside the transfer and never blocks it; until it finishes (or if it fails) the card
+     * shows no estimate rather than the page-level number that described a different stream.
+     */
+    private fun estimateFallbackCandidate(
+        jobId: String,
+        job: DownloadJob,
+        mediaUrl: String,
+    ) {
+        scope.launch(Dispatchers.IO) {
+            val estimate = runCatching { estimateSize(job.request) }.getOrNull() ?: return@launch
+            if (!estimate.isAvailable) return@launch
+            val live = current(jobId) ?: return@launch
+            if (!FallbackEstimateIdentity.stillApplies(live, job.attempt, mediaUrl)) return@launch
+            update(
+                jobId,
+                estimatedTotalBytes = estimate.bytes,
+                estimatedSizeAccuracy = estimate.kind,
+                expectedAttempt = job.attempt,
+            )
+        }
+    }
+
+    /**
      * Metadata-only preflight for the confirmation, share and format UIs. One yt-dlp process
-     * per source returns the complete document; every selection is then calculated locally.
-     * Concurrent callers (the download screen and the share card, for example) join the same
-     * in-flight extraction, and [forceRefresh] bypasses both caches for the retry action.
+     * per source and selection returns the complete document; every resolution chip is still
+     * calculated locally from that document. Concurrent callers (the download screen and the
+     * share card, for example) join the same in-flight extraction, and [forceRefresh] bypasses
+     * both caches for the retry action.
      *
      * Nothing here runs until an extraction is actually required, so a warm cache hit never
      * pays the Python/FFmpeg initialisation cost.
@@ -536,6 +587,70 @@ class VrkaDownloadManager(
         return recordedEstimateDiagnostics.add(key)
     }
 
+    private fun reportStoreLoadStatus(result: JobStoreLoadResult?) {
+        if (result == null) return
+        val needsAttention = result.state == JobStoreLoadState.MALFORMED ||
+            result.state == JobStoreLoadState.READ_FAILED ||
+            result.state == JobStoreLoadState.UNSUPPORTED_SCHEMA ||
+            result.state == JobStoreLoadState.RECOVERED
+        if (!needsAttention) return
+        val summary = when (result.state) {
+            JobStoreLoadState.RECOVERED ->
+                "Queue/history recovered with ${result.skippedRecords} unreadable record(s)"
+            JobStoreLoadState.MALFORMED -> "Queue/history file was malformed and could not be decoded"
+            JobStoreLoadState.UNSUPPORTED_SCHEMA -> "Queue/history file uses an unsupported schema version"
+            JobStoreLoadState.READ_FAILED -> "Queue/history file could not be read"
+            JobStoreLoadState.MISSING, JobStoreLoadState.EMPTY, JobStoreLoadState.OK -> return
+        }
+        reportStoreIssue(
+            stage = "Queue/history recovery",
+            summary = summary,
+            detail = buildString {
+                if (result.detail.isNotBlank()) appendLine(result.detail)
+                appendLine("state=${result.state.name} kept=${result.jobs.size} skipped=${result.skippedRecords}")
+                result.recoveryCopy?.let { appendLine("recoveryCopy=${it.name}") }
+                append("The original file was preserved; it is not overwritten during load.")
+            },
+        )
+    }
+
+    private fun persistJobsNow(): Boolean {
+        val started = SystemClock.elapsedRealtime()
+        val result = store.save(_jobs.value)
+        Log.d(
+            "VRKA",
+            "JobStore save success=${result.success} jobs=${_jobs.value.size} elapsedMs=${SystemClock.elapsedRealtime() - started}",
+        )
+        if (!result.success) {
+            reportStoreIssue(
+                stage = "Queue/history persistence",
+                summary = "Could not save queue and history",
+                detail = result.error.ifBlank { "Unknown storage error" },
+            )
+        }
+        return result.success
+    }
+
+    private fun reportStoreIssue(stage: String, summary: String, detail: String) {
+        if (!reportedStoreIssues.add("$stage|$summary")) return
+        Log.w("VRKA", "$summary: ${detail.take(300)}")
+        scope.launch(Dispatchers.IO) {
+            diagnosticStore.record(
+                DiagnosticEntry(
+                    jobId = "storage-" + UUID.randomUUID(),
+                    title = "Queue and history storage",
+                    stage = stage,
+                    failureCategory = "STORAGE",
+                    summary = summary,
+                    detail = detail,
+                    url = "",
+                    quality = "",
+                    acquisitionMethod = "Local storage",
+                ),
+            )
+        }
+    }
+
     private suspend fun recordSizeDiagnostic(request: DownloadRequest, preflight: SizePreflight) {
         val estimate = preflight.estimate
         diagnosticStore.record(
@@ -572,7 +687,9 @@ class VrkaDownloadManager(
                         appendLine(preflight.stderrTail)
                     }
                 },
-                url = request.url,
+                url = "",
+                sourceUrl = "",
+                candidateUrl = "",
                 quality = request.quality.label,
                 acquisitionMethod = "Native yt-dlp",
                 runtime = preflight.runtimeLabel,
@@ -656,6 +773,17 @@ class VrkaDownloadManager(
 
         val targetTreeUri = currentJobInitial.request.destinationTreeUri?.takeIf { it.isNotBlank() }
             ?: settingsRepository.settings.value.outputTreeUri.takeIf { it.isNotBlank() }
+        if (OutputPublisher.requiresSafDestination() && targetTreeUri == null) {
+            // API 26-28 cannot publish through MediaStore.Downloads and VRKA deliberately does
+            // not request WRITE_EXTERNAL_STORAGE. Require the folder before any bytes move.
+            update(
+                jobId,
+                state = JobState.WAITING_FOR_USER,
+                detail = "Choose download location to start",
+                persist = true,
+            )
+            return
+        }
         if (!targetTreeUri.isNullOrBlank()) {
             val treeUri = Uri.parse(targetTreeUri)
             if (!OutputPublisher.hasPersistedTreePermission(context, treeUri)) {
@@ -773,6 +901,7 @@ class VrkaDownloadManager(
                         state = JobState.BROWSER_FALLBACK,
                         detail = "Direct extraction failed ($category); starting browser fallback",
                         error = "",
+                        resetEstimate = true,
                         persist = true,
                     )
 
@@ -815,10 +944,15 @@ class VrkaDownloadManager(
                                     ),
                                     state = JobState.PREPARING,
                                     detail = "${bundle.mediaKind.value.uppercase()} candidate selected; downloading",
+                                    // The page-level preflight describes the failed extraction,
+                                    // not the selected browser candidate. Never keep showing it.
+                                    estimatedTotalBytes = null,
+                                    estimatedSizeAccuracy = SizeEstimateKind.UNAVAILABLE,
                                     updatedAt = System.currentTimeMillis(),
                                 )
                                 replace(updated, persist = true)
                                 startForegroundServiceSafely()
+                                estimateFallbackCandidate(jobId, updated, bundle.mediaUrl)
 
                                 currentStage = "Browser Fallback yt-dlp Transfer"
                                 Log.i(
@@ -891,15 +1025,19 @@ class VrkaDownloadManager(
                 }
                 val tailOutput = (error as? DownloadExecutionException)?.outputTail?.takeLast(30)?.joinToString("\n")
                     ?: error.message.orEmpty().take(2000)
+                val sourceUrl = currentJob?.request?.url.orEmpty()
                 diagnosticStore.record(
                     DiagnosticEntry(
                         jobId = jobId,
-                        title = currentJob?.title?.ifBlank { currentJob.request.url }.orEmpty(),
+                        title = currentJob?.title?.ifBlank { sourceUrl }.orEmpty(),
                         stage = stage,
                         failureCategory = categoryName,
                         summary = failureMsg,
                         detail = tailOutput,
-                        url = currentJob?.request?.url.orEmpty(),
+                        url = sourceUrl,
+                        sourceUrl = sourceUrl,
+                        candidateUrl = currentJob?.request?.resolvedMediaUrl.orEmpty(),
+                        jobAttempt = currentJob?.attempt ?: 0,
                         quality = currentJob?.request?.quality?.label.orEmpty(),
                         acquisitionMethod = if (fallbackFailed || currentJob?.request?.resolvedMediaUrl != null) {
                             DiagnosticStore.BROWSER_FALLBACK_METHOD
@@ -952,6 +1090,9 @@ class VrkaDownloadManager(
         var transferStarted = false
         // Separate video/audio streams report their own totals; the merged job total is the sum.
         val sizeTracker = DownloadSizeTracker()
+        val resolutionTracker = ActualResolutionTracker()
+        var pendingStreamMetadata = java.util.ArrayDeque<StreamMetadata>()
+        var activeStreamKind: ActiveStream? = null
 
         val response = try {
             val includeSubtitles = job.request.resolvedMediaUrl == null
@@ -966,11 +1107,47 @@ class VrkaDownloadManager(
 
                 val isCommandLineEcho = line.startsWith("[debug]", ignoreCase = true) ||
                     line.contains("--print", ignoreCase = true) ||
-                    line.contains("before_dl:", ignoreCase = true) ||
                     line.contains("%(title)s", ignoreCase = true)
 
                 if (!isCommandLineEcho && (TRANSFER_STARTED_MARKERS.any { line.contains(it, ignoreCase = true) } || progress > 0f)) {
                     transferStarted = true
+                }
+
+                if (!isCommandLineEcho) {
+                    PlaylistProgressParser.parse(line)?.let { (index, total) ->
+                        // A playlist item is a new transfer scope. The previous item's
+                        // percentage and stage must not leak into this item.
+                        sizeTracker.reset()
+                        pendingStreamMetadata.clear()
+                        activeStreamKind = null
+                        update(
+                            job.id,
+                            detail = "Downloading",
+                            progress = 0f,
+                            resetSize = true,
+                            resetTransferScope = true,
+                            playlistItemIndex = index,
+                            playlistItemCount = total,
+                            expectedAttempt = job.attempt,
+                        )
+                    }
+                    StreamMarker.parse(line)?.let { metadata ->
+                        pendingStreamMetadata.addLast(metadata)
+                    }
+                    if (line.contains("[download] Destination:", ignoreCase = true)) {
+                        sizeTracker.beginStream()
+                        val destination = line.substringAfter("Destination:", "").trim()
+                        val kind = StreamClassification.classify(
+                            pendingStreamMetadata.pollFirst(),
+                            destination,
+                        )
+                        activeStreamKind = kind
+                        update(
+                            job.id,
+                            activeStream = kind,
+                            expectedAttempt = job.attempt,
+                        )
+                    }
                 }
 
                 if (!isCommandLineEcho && line.contains("__VRKA_TITLE__", ignoreCase = true)) {
@@ -980,11 +1157,12 @@ class VrkaDownloadManager(
                     }
                 }
 
-                if (!isCommandLineEcho && job.request.mode == MediaMode.VIDEO && line.contains("__VRKA_RES__", ignoreCase = true)) {
-                    val parsedRes = line.substringAfter("__VRKA_RES__").substringAfter("__vrka_res__").trim()
-                    val resHeight = parsedRes.toIntOrNull()
-                    if (resHeight != null && resHeight > 0) {
-                        update(job.id, actualResolution = "${resHeight}p", expectedAttempt = job.attempt)
+                if (!isCommandLineEcho && job.request.mode == MediaMode.VIDEO) {
+                    ActualResolutionTracker.parseMarker(line)?.let { height ->
+                        resolutionTracker.record(height)
+                        resolutionTracker.summary(job.request.isPlaylist)?.let { summary ->
+                            update(job.id, actualResolution = summary, expectedAttempt = job.attempt)
+                        }
                     }
                 }
 
@@ -1002,6 +1180,10 @@ class VrkaDownloadManager(
                             line.contains("[Metadata]", true) -> "Post-processing"
                         else -> "Downloading"
                     }
+                    if (detail == "Post-processing") {
+                        activeStreamKind = null
+                        pendingStreamMetadata.clear()
+                    }
                     update(
                         job.id,
                         state = if (detail == "Post-processing") {
@@ -1010,9 +1192,15 @@ class VrkaDownloadManager(
                             JobState.DOWNLOADING
                         },
                         progress = progress.coerceIn(0f, 100f),
-                        downloadedBytes = sizeUpdate?.downloadedBytes,
-                        reportedTotalBytes = sizeUpdate?.totalBytes,
-                        reportedTotalIsExact = sizeUpdate?.totalIsExact,
+                        downloadedBytes = sizeUpdate?.currentDownloadedBytes,
+                        reportedTotalBytes = sizeUpdate?.currentTotalBytes,
+                        reportedTotalIsExact = sizeUpdate?.currentIsExact,
+                        activeStream = if (detail == "Post-processing") {
+                            null
+                        } else {
+                            activeStreamKind ?: ActiveStream.MEDIA
+                        },
+                        resetTransferScope = detail == "Post-processing",
                         speed = speedPattern.find(line)?.groupValues?.getOrNull(1).orEmpty(),
                         etaSeconds = eta.takeIf { it >= 0 },
                         detail = detail,
@@ -1049,14 +1237,22 @@ class VrkaDownloadManager(
                 transferStarted = transferStarted,
             )
         }
+        val finalizeStarted = SystemClock.elapsedRealtime()
+        fun markFinalize(stage: String) {
+            Log.d("VRKA", "Finalize job=${job.id} stage=$stage elapsedMs=${SystemClock.elapsedRealtime() - finalizeStarted}")
+        }
+        markFinalize("transfer-exited")
         update(
             job.id,
             state = JobState.POSTPROCESSING,
             progress = 100f,
-            detail = "Publishing to Downloads",
-            persist = true,
+            detail = if (job.request.mode == MediaMode.VIDEO) "Merging output" else "Processing audio",
+            resetSize = true,
+            resetTransferScope = true,
+            persist = false,
         )
         markPublishStarted(job.id)
+        markFinalize("publish-marker-persisted")
         var outputs = if (job.request.commandTemplateId != null) {
             directory.walkTopDown()
                 .filter { it.isFile && it.extension.lowercase() in PUBLISHABLE_EXTENSIONS && isInsideDirectory(directory, it) }
@@ -1077,9 +1273,11 @@ class VrkaDownloadManager(
                 .toList()
         }
         check(outputs.isNotEmpty()) { "yt-dlp completed but produced no output file." }
+        markFinalize("outputs-discovered")
 
         if (job.request.mode == MediaMode.VIDEO && job.request.h264CompatibilityMode) {
             outputs = transcodeVideosToH264(job, outputs, directory)
+            markFinalize("transcode-complete")
         }
         var jobSubStatus = com.mvrk.vrka.subtitle.SubtitleStatus.NONE
         var jobSubNote = ""
@@ -1100,24 +1298,70 @@ class VrkaDownloadManager(
             }
         }
 
+        update(
+            job.id,
+            state = JobState.POSTPROCESSING,
+            detail = "Validating output",
+            persist = false,
+            expectedAttempt = job.attempt,
+        )
         if (job.request.mode == MediaMode.VIDEO) {
-            requireVideoStreams(job, outputs)
+            requireVideoStreams(job, outputs, resolutionTracker)
         } else {
             requireAudioStreams(job, outputs)
         }
+        markFinalize("validation-complete")
         // Final on-disk size is the most accurate number for the queue; per-stream progress
         // totals only describe the last video/audio download.
-        val finalBytes = outputs
-            .filter { it.extension.lowercase() in VIDEO_EXTENSIONS || it.extension.lowercase() in AUDIO_EXTENSIONS }
-            .sumOf { file -> runCatching { file.length() }.getOrDefault(0L) }
-            .takeIf { it > 0L }
+        val finalBytes = DownloadAccounting.mediaOutputBytes(outputs)
+        markFinalize("size-accounted")
+        if (finalBytes != null) {
+            // The transfer byte counters described the last stream; the post-processing
+            // total describes every media output that will be published.
+            update(
+                job.id,
+                reportedTotalBytes = finalBytes,
+                reportedTotalIsExact = true,
+                activeStream = null,
+                resetTransferScope = true,
+                expectedAttempt = job.attempt,
+            )
+        }
         if (isCancelled(job.id)) throw CancellationException("Download cancelled")
+        update(
+            job.id,
+            state = JobState.POSTPROCESSING,
+            detail = "Publishing to Downloads",
+            persist = false,
+        )
+        markFinalize("publication-started")
         val published = mutableListOf<String>()
+        val publishedMedia = mutableListOf<PublishedOutput>()
         try {
-            outputs.forEachIndexed { index, file ->
-                if (isCancelled(job.id)) throw CancellationException("Download cancelled")
-                val outputName = preferredOutputName(job, file, index, outputs.size)
-                published += publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+            val planned = outputs.mapIndexed { index, file ->
+                file to preferredOutputName(job, file, index, outputs.size)
+            }
+            val publishedOutputs = publisher.publishAll(
+                files = planned,
+                destinationTreeUri = job.request.destinationTreeUri,
+                shouldContinue = { !isCancelled(job.id) },
+                onPublished = { index, total ->
+                    update(
+                        job.id,
+                        detail = if (total == 1) {
+                            "Publishing file"
+                        } else {
+                            "Publishing ${index + 1} of $total"
+                        },
+                        expectedAttempt = job.attempt,
+                    )
+                },
+            )
+            publishedOutputs.forEach { output ->
+                published += output.uri.toString()
+                if (DownloadAccounting.isMediaExtension(output.extension)) {
+                    publishedMedia += output
+                }
             }
         } catch (error: Throwable) {
             published.forEach { uri -> runCatching { publisher.delete(uri) } }
@@ -1133,13 +1377,14 @@ class VrkaDownloadManager(
         } else {
             if (jobSubNote.isNotBlank()) "Saved ${published.size} files ($jobSubNote)" else "Saved ${published.size} files"
         }
-        // The published document is the authority for the finished size; the staging length is
-        // only a fallback when the provider does not expose it.
-        val publishedBytes = published
-            .mapNotNull(publisher::sizeOf)
-            .takeIf { it.isNotEmpty() }
+        // The published media documents are authoritative for the finished size. Subtitle
+        // sidecars are deliberately excluded so a playlist/video size never includes them.
+        val publishedBytes = publishedMedia
+            .map { it.bytes }
+            .takeIf { it.isNotEmpty() && it.all { bytes -> bytes > 0L } }
             ?.sum()
             ?: finalBytes
+        markFinalize("publication-complete")
         update(
             job.id,
             state = JobState.DONE,
@@ -1154,8 +1399,11 @@ class VrkaDownloadManager(
             subtitleStatus = jobSubStatus,
             persist = true,
         )
+        runCatching { diagnosticStore.clearUrlsForJob(job.id) }
         current(job.id)?.let { DownloadNotifications.notifyCompleted(context, it) }
+        markFinalize("done-state-posted")
         cleanupStaging(job.id)
+        markFinalize("staging-cleanup-complete")
     }
 
     private suspend fun downloadViaMediaEngine(
@@ -1258,11 +1506,14 @@ class VrkaDownloadManager(
                         requireAudioStreams(job, outputs)
                     }
                     val published = mutableListOf<String>()
+                    var publishedBytes: Long? = null
                     try {
                         outputs.forEachIndexed { index, file ->
                             if (isCancelled(job.id)) throw CancellationException("Download cancelled")
                             val outputName = preferredOutputName(job, file, index, outputs.size)
-                            published += publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+                            val output = publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri)
+                            published += output.uri.toString()
+                            publishedBytes = (publishedBytes ?: 0L) + output.bytes
                         }
                     } catch (error: Throwable) {
                         published.forEach { uri -> runCatching { publisher.delete(uri) } }
@@ -1276,15 +1527,13 @@ class VrkaDownloadManager(
                         downloadedBytes = result.totalBytes,
                         reportedTotalBytes = result.totalBytes,
                         reportedTotalIsExact = result.totalBytes > 0L,
-                        actualFinalFileBytes = published
-                            .mapNotNull(publisher::sizeOf)
-                            .takeIf { it.isNotEmpty() }
-                            ?.sum()
+                        actualFinalFileBytes = publishedBytes?.takeIf { it > 0L }
                             ?: result.totalBytes.takeIf { it > 0L },
                         outputUris = published,
                         error = "",
                         persist = true,
                     )
+                    runCatching { diagnosticStore.clearUrlsForJob(job.id) }
                     current(job.id)?.let { DownloadNotifications.notifyCompleted(context, it) }
                     cleanupStaging(job.id)
                 }
@@ -1408,11 +1657,14 @@ class VrkaDownloadManager(
         activeMediaProcesses.remove(jobId)
     }
 
-    private fun requireVideoStreams(job: DownloadJob, outputs: List<File>) {
+    private fun requireVideoStreams(
+        job: DownloadJob,
+        outputs: List<File>,
+        resolutionTracker: ActualResolutionTracker = ActualResolutionTracker(),
+    ) {
         if (job.request.mode != MediaMode.VIDEO) return
         val videoFiles = outputs.filter { it.extension.lowercase() in VIDEO_EXTENSIONS }
         check(videoFiles.isNotEmpty()) { "Video mode produced no video file; refusing to publish custom-command output." }
-        var detectedResolution: String? = null
         videoFiles.forEach { file ->
             val media = runCatching {
                 val retriever = MediaMetadataRetriever()
@@ -1438,7 +1690,7 @@ class VrkaDownloadManager(
                 "Video mode produced no video stream; refusing to publish an audio-only file."
             }
             if (media.third != null && media.third!! > 0) {
-                detectedResolution = "${media.third}p"
+                resolutionTracker.record(media.third)
             }
             job.request.quality.height?.let { cap ->
                 check(media.third == null || media.third!! <= cap) {
@@ -1446,8 +1698,8 @@ class VrkaDownloadManager(
                 }
             }
         }
-        if (detectedResolution != null && current(job.id)?.actualResolution == null) {
-            update(job.id, actualResolution = detectedResolution)
+        resolutionTracker.summary(job.request.isPlaylist)?.let { summary ->
+            update(job.id, actualResolution = summary)
         }
     }
 
@@ -1509,7 +1761,9 @@ class VrkaDownloadManager(
                 if (job.id == jobId) job.copy(publishStarted = true) else job
             }
         }
-        runCatching { store.save(_jobs.value) }
+        check(persistJobsNow()) {
+            "Could not persist the publish marker; refusing to publish to prevent duplicate files."
+        }
     }
 
     private fun stagingDirectory(jobId: String): File {
@@ -1556,8 +1810,15 @@ class VrkaDownloadManager(
         downloadedBytes: Long? = null,
         reportedTotalBytes: Long? = null,
         reportedTotalIsExact: Boolean? = null,
+        estimatedTotalBytes: Long? = null,
+        estimatedSizeAccuracy: SizeEstimateKind? = null,
+        activeStream: ActiveStream? = null,
+        playlistItemIndex: Int? = null,
+        playlistItemCount: Int? = null,
+        resetTransferScope: Boolean = false,
         actualFinalFileBytes: Long? = null,
         resetSize: Boolean = false,
+        resetEstimate: Boolean = false,
         outputUris: List<String>? = null,
         error: String? = null,
         actualResolution: String? = null,
@@ -1567,7 +1828,10 @@ class VrkaDownloadManager(
         persist: Boolean = false,
         expectedAttempt: Int? = null,
     ) {
-        mutate(persist) { list ->
+        val terminalUpdate = state?.isTerminal == true
+        // A terminal update is saved directly below for durability. Do not also enqueue
+        // the conflated persist channel for it, which would serialize the same job list twice.
+        mutate(persist && !terminalUpdate) { list ->
             list.map { job ->
                 when {
                     job.id != jobId -> job
@@ -1592,6 +1856,31 @@ class VrkaDownloadManager(
                         } else {
                             reportedTotalIsExact ?: job.reportedTotalIsExact
                         },
+                        estimatedTotalBytes = if (resetEstimate) {
+                            null
+                        } else {
+                            estimatedTotalBytes ?: job.estimatedTotalBytes
+                        },
+                        estimatedSizeAccuracy = if (resetEstimate) {
+                            SizeEstimateKind.UNAVAILABLE
+                        } else {
+                            estimatedSizeAccuracy ?: job.estimatedSizeAccuracy
+                        },
+                        activeStream = when {
+                            activeStream != null -> activeStream
+                            resetTransferScope -> null
+                            else -> job.activeStream
+                        },
+                        playlistItemIndex = when {
+                            playlistItemIndex != null -> playlistItemIndex
+                            resetTransferScope -> null
+                            else -> job.playlistItemIndex
+                        },
+                        playlistItemCount = when {
+                            playlistItemCount != null -> playlistItemCount
+                            resetTransferScope -> null
+                            else -> job.playlistItemCount
+                        },
                         actualFinalFileBytes = if (resetSize) {
                             null
                         } else {
@@ -1608,9 +1897,9 @@ class VrkaDownloadManager(
                 }
             }
         }
-        if (state?.isTerminal == true) {
+        if (terminalUpdate) {
             scope.launch(Dispatchers.IO + NonCancellable) {
-                store.save(_jobs.value)
+                persistJobsNow()
             }
         }
     }

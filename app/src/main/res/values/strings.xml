@@ -370,4 +370,15 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">Best available</string>
+    <string name="error_destination_required">Choose a download folder. Android 9 and older require a user-selected folder.</string>
+    <string name="progress_accessibility_label">Download progress</string>
+    <string name="status_downloading_video">Downloading video</string>
+    <string name="status_downloading_audio">Downloading audio</string>
+    <string name="download_playlist_item">Item %1$d of %2$d</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">Validating output</string>
+    <string name="status_downloading_media">Downloading media</string>
+    <string name="diagnostics_export_title">Export diagnostics</string>
+    <string name="diagnostics_export_warning">This export may reveal source links and viewing or download activity. Sensitive credentials remain redacted.</string>
+    <string name="diagnostics_export_include_source">Include full original source URL</string>
 </resources>

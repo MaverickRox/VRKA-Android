@@ -79,10 +79,10 @@ internal object DownloadRequestFactory {
         }
 
     /**
-     * Metadata-only preflight. Deliberately omits `-f`: yt-dlp then dumps every available
-     * video, audio and subtitle stream in one pass, which is exactly what the shared metadata
-     * repository needs. The format-specific size is calculated locally from that table, so a
-     * quality or audio change never launches another extraction.
+     * Metadata-only preflight. It uses the same format selector (and the same 60 fps sort)
+     * as [download], so yt-dlp's `requested_formats` describe exactly the streams the
+     * transfer will fetch. The dump still contains every format, so the snapshot can show
+     * sizes for the other resolutions without another extraction.
      *
      * Network waits are bounded here rather than by raising the caller's timeout: a stalled
      * socket or a broken extractor retry loop must fail with a useful state instead of
@@ -96,14 +96,30 @@ internal object DownloadRequestFactory {
             addOption("--socket-timeout", METADATA_SOCKET_TIMEOUT_SECONDS)
             addOption("--retries", METADATA_RETRIES)
             addOption("--extractor-retries", METADATA_EXTRACTOR_RETRIES)
+            addOption("-f", formatSelectorFor(request))
+            if (request.mode == MediaMode.VIDEO && request.prefer60Fps) {
+                addOption("-S", "res,fps")
+            }
             if (request.isPlaylist) {
                 request.playlistStart?.let { addOption("--playlist-start", it) }
                 request.playlistEnd?.let { addOption("--playlist-end", it) }
             } else {
                 addOption("--no-playlist")
             }
-            applyCacheDir(this)
+            if (request.customArguments.none { it == "--no-cache-dir" }) applyCacheDir(this)
             addSessionContext(request)
+            if (request.resolvedMediaUrl != null) {
+                val effectiveHeaders = HeaderValidation.resolveEffectiveHeaders(request)
+                if (effectiveHeaders.keys.none { it.equals("User-Agent", true) }) {
+                    addOption("--user-agent", DESKTOP_USER_AGENT)
+                }
+                if (effectiveHeaders.keys.none { it.equals("Referer", true) }) {
+                    addOption("--referer", request.url)
+                }
+            }
+            if (request.customArguments.isNotEmpty()) {
+                addCommands(safeCustomArguments(request).take(40))
+            }
         }
 
     /**
@@ -165,6 +181,14 @@ internal object DownloadRequestFactory {
             addOption("--legacy-server-connect")
             addOption("--concurrent-fragments", "4")
             addOption("--print", "before_dl:__VRKA_TITLE__%(title)s")
+            // The active stream type comes from yt-dlp's own selected format metadata, not
+            // from the requested app mode or a filename heuristic.
+            addOption("--print", "before_dl:${StreamMarker.TEMPLATE}")
+            if (options.mode == MediaMode.VIDEO) {
+                // `before_dl` runs once per selected item and exposes the resolved height,
+                // including for merged video+audio selections and every playlist entry.
+                addOption("--print", "before_dl:${ActualResolutionTracker.MARKER}%(height)s")
+            }
             addOption("--print", "after_move:$outputMarker%(filepath)s")
             val stagingTemplate = if (options.isPlaylist) {
                 "%(playlist_index|0)03d-%(title).96B.%(ext)s"
@@ -292,7 +316,7 @@ internal object DownloadRequestFactory {
         }
     }
 
-    private fun safeCustomArguments(request: DownloadRequest): List<String> {
+    internal fun safeCustomArguments(request: DownloadRequest): List<String> {
         val optionsWithValues = setOf(
             "-f",
             "--format",

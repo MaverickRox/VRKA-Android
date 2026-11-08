@@ -7,58 +7,358 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-internal class JobStore(private val target: File) {
+/** Result of reading the persisted queue/history file. */
+internal enum class JobStoreLoadState {
+    /** No file exists yet; this is the normal first-run state and is not corruption. */
+    MISSING,
+
+    /** The file parsed and every record was usable. */
+    OK,
+
+    /** The file exists but is empty; treated as an empty store, without a backup. */
+    EMPTY,
+
+    /** Some records were unreadable or malformed; valid records were kept. */
+    RECOVERED,
+
+    /** Nothing could be decoded; the original bytes are preserved in a recovery copy. */
+    MALFORMED,
+
+    /** The file declared a schema this build does not understand; it was preserved. */
+    UNSUPPORTED_SCHEMA,
+
+    /** The file could not be read at all; existence is unknown. */
+    READ_FAILED,
+}
+
+internal data class JobStoreLoadResult(
+    val jobs: List<DownloadJob>,
+    val state: JobStoreLoadState,
+    val skippedRecords: Int = 0,
+    val recoveryCopy: File? = null,
+    val detail: String = "",
+)
+
+internal data class JobStoreSaveResult(
+    val success: Boolean,
+    val error: String = "",
+)
+
+/**
+ * File operations behind [JobStore], separated so failure paths (temporary-file creation,
+ * interrupted writes, atomic-move rejection, full or read-only storage) are testable.
+ */
+internal interface JobStoreFileOps {
+    fun readText(file: File): String
+    fun createTempFile(parent: File, prefix: String): File
+    fun writeText(file: File, text: String)
+    fun atomicMove(source: File, target: File): Boolean
+    fun replaceMove(source: File, target: File)
+}
+
+internal object DefaultJobStoreFileOps : JobStoreFileOps {
+    override fun readText(file: File): String = file.readText(Charsets.UTF_8)
+
+    override fun createTempFile(parent: File, prefix: String): File =
+        File.createTempFile(prefix, ".tmp", parent)
+
+    override fun writeText(file: File, text: String) {
+        file.writeText(text, Charsets.UTF_8)
+    }
+
+    override fun atomicMove(source: File, target: File): Boolean = runCatching {
+        Files.move(
+            source.toPath(),
+            target.toPath(),
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE,
+        )
+        true
+    }.getOrDefault(false)
+
+    override fun replaceMove(source: File, target: File) {
+        Files.move(
+            source.toPath(),
+            target.toPath(),
+            StandardCopyOption.REPLACE_EXISTING,
+        )
+    }
+}
+
+/**
+ * Persists queue and history in an app-private JSON file.
+ *
+ * The store never rewrites or empties the file during [loadWithStatus]. A malformed or
+ * partially unreadable file is first copied to a bounded recovery file, valid records are
+ * salvaged, and the caller receives a [JobStoreLoadResult] describing what happened. Saving
+ * uses a temporary file followed by an atomic move and returns [JobStoreSaveResult] instead
+ * of silently swallowing failures.
+ */
+internal class JobStore(
+    private val target: File,
+    private val ops: JobStoreFileOps = DefaultJobStoreFileOps,
+) {
     constructor(context: Context) : this(File(context.filesDir, "download_jobs.json"))
+
+    @Volatile
+    var lastLoadResult: JobStoreLoadResult? = null
+        private set
 
     /**
      * [recoverActive] keeps in-flight states so a user-initiated transfer worker can resume
      * them. Without it, in-flight records are downgraded to FAILED as before.
      */
-    fun load(recoverActive: Boolean = false): List<DownloadJob> {
-        if (!target.isFile) return emptyList()
-        val loaded = runCatching {
-            val array = JSONArray(target.readText(Charsets.UTF_8))
-            buildList {
-                for (index in 0 until array.length()) {
-                    decode(array.getJSONObject(index), recoverActive)?.let(::add)
+    fun load(recoverActive: Boolean = false): List<DownloadJob> =
+        loadWithStatus(recoverActive).jobs
+
+    fun loadWithStatus(recoverActive: Boolean = false): JobStoreLoadResult {
+        val result = read(recoverActive)
+        lastLoadResult = result
+        return result
+    }
+
+    private fun read(recoverActive: Boolean): JobStoreLoadResult {
+        if (!target.isFile) {
+            return JobStoreLoadResult(emptyList(), JobStoreLoadState.MISSING)
+        }
+        val text = try {
+            ops.readText(target)
+        } catch (error: Throwable) {
+            return JobStoreLoadResult(
+                emptyList(),
+                JobStoreLoadState.READ_FAILED,
+                detail = error.message.orEmpty().take(MAX_DETAIL_CHARS),
+            )
+        }
+        if (text.isBlank()) {
+            return JobStoreLoadResult(emptyList(), JobStoreLoadState.EMPTY)
+        }
+
+        val trimmed = text.trim().removePrefix("\uFEFF")
+        val objectRoot = runCatching { JSONObject(trimmed) }.getOrNull()
+        if (objectRoot != null) {
+            val versionRaw = objectRoot.opt("schemaVersion")
+            val version = when (versionRaw) {
+                null, JSONObject.NULL -> LEGACY_SCHEMA_VERSION
+                is Number -> versionRaw.toInt()
+                else -> return preserveAndReport(
+                    text,
+                    JobStoreLoadResult(
+                        emptyList(),
+                        JobStoreLoadState.UNSUPPORTED_SCHEMA,
+                        detail = "schemaVersion is not a number",
+                    ),
+                )
+            }
+            if (version < LEGACY_SCHEMA_VERSION || version > CURRENT_SCHEMA_VERSION) {
+                return preserveAndReport(
+                    text,
+                    JobStoreLoadResult(
+                        emptyList(),
+                        JobStoreLoadState.UNSUPPORTED_SCHEMA,
+                        detail = "unsupported schema version $version",
+                    ),
+                )
+            }
+            val jobsArray = objectRoot.optJSONArray("jobs")
+                ?: return preserveAndReport(
+                    text,
+                    JobStoreLoadResult(
+                        emptyList(),
+                        JobStoreLoadState.MALFORMED,
+                        detail = "schema object has no jobs array",
+                    ),
+                )
+            return finishDecoded(text, decodeArray(jobsArray, recoverActive), "schema $version")
+        }
+
+        val array = runCatching { JSONArray(trimmed) }.getOrNull()
+        if (array != null) {
+            return finishDecoded(text, decodeArray(array, recoverActive), "legacy array")
+        }
+
+        // Truncated or otherwise invalid JSON: salvage complete record objects without
+        // touching the original file. This keeps valid neighbours when one record is torn.
+        val decoded = decodeObjects(salvageObjects(trimmed), recoverActive)
+        return preserveAndReport(
+            text,
+            JobStoreLoadResult(
+                jobs = decoded.jobs,
+                state = if (decoded.jobs.isEmpty()) {
+                    JobStoreLoadState.MALFORMED
+                } else {
+                    JobStoreLoadState.RECOVERED
+                },
+                skippedRecords = decoded.skipped,
+                detail = if (decoded.jobs.isEmpty()) "unparseable JSON" else "salvaged ${decoded.jobs.size} record(s)",
+            ),
+        )
+    }
+
+    private data class Decoded(val jobs: List<DownloadJob>, val skipped: Int)
+
+    private fun decodeArray(array: JSONArray, recoverActive: Boolean): Decoded {
+        val objects = ArrayList<JSONObject>(array.length())
+        var skipped = 0
+        for (index in 0 until array.length()) {
+            val value = array.optJSONObject(index)
+            if (value == null) skipped++ else objects += value
+        }
+        val decoded = decodeObjects(objects, recoverActive)
+        return Decoded(decoded.jobs, decoded.skipped + skipped)
+    }
+
+    private fun decodeObjects(objects: List<JSONObject>, recoverActive: Boolean): Decoded {
+        val byId = LinkedHashMap<String, DownloadJob>()
+        var skipped = 0
+        for (value in objects) {
+            val job = decode(value, recoverActive)
+            if (job == null) {
+                skipped++
+                continue
+            }
+            if (byId.putIfAbsent(job.id, job) != null) {
+                // Duplicate identity: keep the first occurrence and report the anomaly.
+                skipped++
+            }
+        }
+        return Decoded(byId.values.toList(), skipped)
+    }
+
+    private fun finishDecoded(
+        originalText: String,
+        decoded: Decoded,
+        label: String,
+    ): JobStoreLoadResult {
+        if (decoded.skipped == 0) {
+            return JobStoreLoadResult(decoded.jobs, JobStoreLoadState.OK)
+        }
+        return preserveAndReport(
+            originalText,
+            JobStoreLoadResult(
+                jobs = decoded.jobs,
+                state = if (decoded.jobs.isEmpty()) {
+                    JobStoreLoadState.MALFORMED
+                } else {
+                    JobStoreLoadState.RECOVERED
+                },
+                skippedRecords = decoded.skipped,
+                detail = "$label: skipped ${decoded.skipped} invalid record(s)",
+            ),
+        )
+    }
+
+    /**
+     * Copies the original file before any future save can replace it. Recovery copies are
+     * bounded so repeated failed starts cannot fill the app's private storage.
+     */
+    private fun preserveAndReport(
+        originalText: String,
+        result: JobStoreLoadResult,
+    ): JobStoreLoadResult {
+        val copy = runCatching { writeRecoveryCopy(originalText) }.getOrNull()
+        return result.copy(recoveryCopy = copy)
+    }
+
+    private fun writeRecoveryCopy(originalText: String): File? {
+        val parent = target.parentFile ?: return null
+        if (!parent.isDirectory) return null
+        pruneRecoveryCopies(parent)
+        val base = target.name.substringBeforeLast('.', target.name)
+        var stamp = System.currentTimeMillis()
+        var copy = File(parent, "$base.corrupt-$stamp.json")
+        while (copy.exists()) {
+            stamp++
+            copy = File(parent, "$base.corrupt-$stamp.json")
+        }
+        return runCatching {
+            ops.writeText(copy, originalText)
+            copy
+        }.getOrNull()
+    }
+
+    private fun pruneRecoveryCopies(parent: File) {
+        val copies = recoveryCopies(parent)
+        while (copies.size >= MAX_RECOVERY_COPIES) {
+            copies.removeAt(0).delete()
+        }
+    }
+
+    private fun recoveryCopies(parent: File): MutableList<File> {
+        val base = target.name.substringBeforeLast('.', target.name)
+        return (parent.listFiles { file -> file.isFile && file.name.startsWith("$base.corrupt-") } ?: emptyArray())
+            .sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.name })
+            .toMutableList()
+    }
+
+    private fun salvageObjects(text: String): List<JSONObject> {
+        val objects = mutableListOf<JSONObject>()
+        var depth = 0
+        var start = -1
+        var inString = false
+        var escaped = false
+        for (index in text.indices) {
+            val character = text[index]
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    character == '\\' -> escaped = true
+                    character == '"' -> inString = false
+                }
+                continue
+            }
+            when (character) {
+                '"' -> inString = true
+                '{' -> {
+                    if (depth == 0) start = index
+                    depth++
+                }
+                '}' -> {
+                    if (depth > 0) {
+                        depth--
+                        if (depth == 0 && start >= 0) {
+                            runCatching { JSONObject(text.substring(start, index + 1)) }
+                                .getOrNull()
+                                ?.let(objects::add)
+                            start = -1
+                        }
+                    }
                 }
             }
-        }.getOrDefault(emptyList())
-        // Rewrite legacy records after sensitive custom headers have been stripped.
-        save(loaded)
-        return loaded
+            if (objects.size >= MAX_RECOVERY_RECORDS) break
+        }
+        return objects
     }
 
     @Synchronized
-    fun save(jobs: List<DownloadJob>) {
-        runCatching {
+    fun save(jobs: List<DownloadJob>): JobStoreSaveResult {
+        var temporary: File? = null
+        return try {
             val array = JSONArray()
-            jobs.take(250).forEach { array.put(encode(it)) }
-            val parent = target.parentFile ?: return@runCatching
-            parent.mkdirs()
-            val temporary = File.createTempFile("jobs_", ".tmp", parent)
-            try {
-                temporary.writeText(array.toString(), Charsets.UTF_8)
-                runCatching {
-                    Files.move(
-                        temporary.toPath(),
-                        target.toPath(),
-                        StandardCopyOption.REPLACE_EXISTING,
-                        StandardCopyOption.ATOMIC_MOVE,
-                    )
-                }.getOrElse {
-                    runCatching {
-                        Files.move(
-                            temporary.toPath(),
-                            target.toPath(),
-                            StandardCopyOption.REPLACE_EXISTING,
-                        )
-                    }
+            jobs.take(MAX_JOBS).forEach { array.put(encode(it)) }
+            val payload = JSONObject()
+                .put("schemaVersion", CURRENT_SCHEMA_VERSION)
+                .put("jobs", array)
+                .toString()
+            val parent = target.parentFile
+                ?: return JobStoreSaveResult(false, "Store has no parent directory")
+            if (!parent.isDirectory && !parent.mkdirs() && !parent.isDirectory) {
+                return JobStoreSaveResult(false, "Could not create the store directory")
+            }
+            temporary = ops.createTempFile(parent, "jobs_")
+            ops.writeText(temporary, payload)
+            if (!ops.atomicMove(temporary, target)) {
+                ops.replaceMove(temporary, target)
+                if (!target.isFile) {
+                    return JobStoreSaveResult(false, "Atomic and fallback moves did not produce the store file")
                 }
-            } finally {
-                if (temporary.exists()) {
-                    temporary.delete()
-                }
+            }
+            JobStoreSaveResult(true)
+        } catch (error: Throwable) {
+            JobStoreSaveResult(false, error.message.orEmpty().take(MAX_DETAIL_CHARS))
+        } finally {
+            if (temporary != null && temporary.exists()) {
+                temporary.delete()
             }
         }
     }
@@ -78,6 +378,9 @@ internal class JobStore(private val target: File) {
             .put("estimatedSizeAccuracy", job.estimatedSizeAccuracy.name)
             .put("reportedTotalBytes", job.reportedTotalBytes)
             .put("reportedTotalIsExact", job.reportedTotalIsExact)
+            .put("activeStream", job.activeStream?.name)
+            .put("playlistItemIndex", job.playlistItemIndex)
+            .put("playlistItemCount", job.playlistItemCount)
             .put("actualFinalBytes", job.actualFinalFileBytes)
             .put("created", job.createdAt)
             .put("updated", job.updatedAt)
@@ -227,6 +530,11 @@ internal class JobStore(private val target: File) {
             } else {
                 value.optBoolean("totalIsExact", false)
             },
+            activeStream = value.optString("activeStream")
+                .takeIf { it.isNotBlank() && it != "null" }
+                ?.let { stored -> enumValues<ActiveStream>().firstOrNull { it.name == stored } },
+            playlistItemIndex = value.optionalInt("playlistItemIndex"),
+            playlistItemCount = value.optionalInt("playlistItemCount"),
             actualFinalFileBytes = value.optionalLong("actualFinalBytes"),
             createdAt = value.optLong("created", System.currentTimeMillis()),
             updatedAt = value.optLong("updated", System.currentTimeMillis()),
@@ -252,4 +560,13 @@ internal class JobStore(private val target: File) {
 
     private inline fun <reified T : Enum<T>> enumValue(value: String?, fallback: T): T =
         enumValues<T>().firstOrNull { it.name == value } ?: fallback
+
+    companion object {
+        const val CURRENT_SCHEMA_VERSION = 2
+        const val LEGACY_SCHEMA_VERSION = 1
+        const val MAX_JOBS = 250
+        const val MAX_RECOVERY_COPIES = 3
+        private const val MAX_RECOVERY_RECORDS = 1_000
+        private const val MAX_DETAIL_CHARS = 300
+    }
 }

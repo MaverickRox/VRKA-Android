@@ -1,26 +1,30 @@
-# Known Limitations — VRKA Android 5.1.0
+# Known Limitations — VRKA Android 5.1.1
 
 > [!IMPORTANT]
-> **USERS UPGRADING FROM VRKA v5.0.2 MUST DOWNLOAD AND INSTALL v5.1.0 DIRECTLY FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON.**
-> 
-> **OFFICIAL DOWNLOAD PAGE:**
-> https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.0
-> 
-> **INSTALLATION:** Download `VRKA-Android-v5.1.0.apk` from the Assets section and install it over your existing VRKA installation. DO NOT UNINSTALL v5.0.2 FIRST.
+> **v5.0.2 USERS STILL NEED THE ONE-TIME MANUAL UPGRADE.** The v5.0.2 client has an `APK verification failed: APK filename does not match the expected release` check that cannot update itself. Download and install `VRKA-Android-v5.1.1.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.1) over v5.0.2 without uninstalling. Application data and settings are preserved. This warning remains until affected users have a published client that can update normally.
 
 - The app and packaged native media libraries target `arm64-v8a`; other ABIs are not shipped.
 - VRKA does not bypass DRM, login, payment, CAPTCHA, consent, or other access controls. Site changes may require a yt-dlp or app update.
-- Preflight download size estimates are approximate calculations based on available metadata streams and format plans; actual bytes transferred may vary based on server encoding or post-processing.
+- Size estimates now use the same format selector as the transfer, but they still depend on the metadata yt-dlp returns. Exact `filesize` is labelled exact only for an unmodified single stream. Merge, trim, H.264 conversion, metadata, embedded subtitles, sponsor cuts, MP3/WAV conversion, and Browser Fallback segmented candidates are approximate. When the selected streams have no trustworthy size, bitrate, or duration, the app displays an unavailable state instead of a fabricated number.
+- Resolution chips use the complete format table plus the codec revealed by the selected-quality preflight; they are local re-selections and therefore approximate. The confirmation estimate for the chosen quality is the authoritative one. If an extractor omits height/codec metadata, a chip may show no size.
+- The actual-resolution marker relies on yt-dlp exposing `height`. When it reports `NA`, validation falls back to the downloaded file's metadata. Playlists with mixed heights show a `min–max` range rather than one item's height.
+- Playlist progress is deliberately scoped to the current item and current video/audio stream; the app does not invent an aggregate percentage when yt-dlp only reports per-item progress. The completed History size is the sum of published media outputs and excludes subtitle sidecars.
+- Browser Fallback candidate estimation is best-effort. If the candidate's metadata is expired, inaccessible, or has no trustworthy size, the card shows unavailable rather than the page estimate.
+- Finalization still requires local merge/transcode, output validation probes, full media-copy publication to MediaStore/SAF, and atomic JobStore persistence. These stages are not moved to post-completion background work because they are required for integrity and durability. Waterfall/stage timings could not be measured on Android hardware; debug stage logs are emitted for `Finalize job=…` and `JobStore save` so a device run can quantify them.
+- Diagnostic text now sanitizes embedded URLs as well as dedicated URL fields; path/route context is retained while query values and fragments are redacted.
+- Failed-download diagnostics may retain a sanitized original source URL for debugging; successful downloads do not persist source URLs, and a successful retry clears URL context from earlier failures. Export displays a warning and requires an explicit opt-in to include the full original source URL. Credentials and signed CDN access values remain redacted even when opted in.
+- Selecting a resolution triggers a metadata extraction for that selector. The first estimate for a new selector can take up to the preflight timeout (25 seconds); a warm cache or an in-flight request is reused. Estimation failure never blocks a valid download.
 - Browser Fallback discovers media in GeckoView and transfers the selected candidate with yt-dlp. Browser Fallback currently does not request or publish subtitles; subtitle options apply to the normal yt-dlp acquisition path.
 - H.264 Compatibility Mode is optional and off by default. It needs a downloaded local video, an available FFmpeg `libx264` encoder, temporary storage and extra processing time/battery. Conversion fails safely if the codec cannot be probed or the output does not validate. Audio and subtitle streams are copied where the input/container permits.
 - Custom yt-dlp templates apply to the explicitly selected normal attempt. They do not apply to Browser Fallback. VRKA blocks shell execution and path/output overrides, but a permitted yt-dlp option can still alter extraction behavior or fail on a particular site.
 - The Browser Session clear action clears GeckoView runtime cookies, DOM storage, auth sessions, site data, caches and in-memory discovered candidates. It does not cancel an active private fallback session or clear app settings, history, queue, or diagnostics.
 - Upgrading from previous releases may carry legacy extension or update state; migration logic cleans obsolete state upon first run.
-- **In-App Updater Migration from v5.0.2**: Devices currently running v5.0.2 encounter an `APK verification failed: APK filename does not match the expected release` error during in-app self-update due to a client-side verification check on the temporary download file in the v5.0.2 binary. Existing v5.0.2 users must manually install `VRKA-Android-v5.1.0.apk` from the GitHub release. Because both releases share the identical production signing key, all application data, settings, and download histories are preserved.
+- On Android 8 and Android 9, a user-selected SAF folder is required before a download starts. If the folder permission is revoked, the job returns to the folder prompt. API 29+ keeps the default `Downloads/VRKA` destination.
 - Component version is shown as unknown when the app cannot read a runtime, packaged-file or verified-update version. “Up to date” appears only after a check or verified component update.
 - Android may stop the application process under memory pressure; interrupted background work can be resumed or retried.
-- The physical OnePlus 11 device was unavailable during final 5.1.0 release publication. The historical OnePlus 11 report documents only the earlier 5.0 artifact and does not establish physical validation for 5.1.0.
+- The new accessibility and destination strings have English/base translations in every locale and translated values for the 14 supported languages, but the new translations have not been reviewed by native speakers. Text expansion and RTL layouts for the new strings were not visually checked on a device.
+- End-to-end device validation was completed on a physical OnePlus 11 (Android 16, SDK 36, ARM64) over ADB, verifying YouTube 4K stream estimation, neutral media stage labeling, and output finalization. Older platform versions (API 26–28) are verified via automated architectural and unit test policies.
 
 ## Validation Scope
 
-Automated test and build verification results are recorded in `RELEASE_EVIDENCE.md`. Verification includes 639 unit tests across 61 suites, release lint, production release build compilation, signature verification, and emulator execution.
+Automated test and build verification results are recorded in `RELEASE_EVIDENCE.md`. Verification includes 732 JVM unit tests across 72 suites with an isolated empty JVM home, lint, debug and production-release builds, APK signature and metadata inspection, and physical device validation on OnePlus 11 (Android 16, SDK 36, arm64-v8a).

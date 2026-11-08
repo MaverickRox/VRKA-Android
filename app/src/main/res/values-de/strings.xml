@@ -370,4 +370,15 @@ Möchten Sie parallele Downloads wirklich aktivieren?</string>
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">Beste verfügbare</string>
+    <string name="error_destination_required">Wählen Sie einen Download-Ordner. Android 9 und älter erfordern einen vom Benutzer ausgewählten Ordner.</string>
+    <string name="progress_accessibility_label">Download-Fortschritt</string>
+    <string name="status_downloading_video">Video wird heruntergeladen</string>
+    <string name="status_downloading_audio">Audio wird heruntergeladen</string>
+    <string name="download_playlist_item">Element %1$d von %2$d</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">Ausgabe wird überprüft</string>
+    <string name="status_downloading_media">Medien werden heruntergeladen</string>
+    <string name="diagnostics_export_title">Diagnose exportieren</string>
+    <string name="diagnostics_export_warning">Dieser Export kann Quelllinks und Anzeige- oder Downloadaktivitäten offenlegen. Sensible Anmeldedaten bleiben redigiert.</string>
+    <string name="diagnostics_export_include_source">Vollständige ursprüngliche Quell-URL einschließen</string>
 </resources>

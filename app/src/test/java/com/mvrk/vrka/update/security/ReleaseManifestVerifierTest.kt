@@ -2,37 +2,28 @@ package com.mvrk.vrka.update.security
 
 import org.bouncycastle.bcpg.ArmoredOutputStream
 import org.bouncycastle.bcpg.HashAlgorithmTags
-import org.bouncycastle.bcpg.PublicKeyAlgorithmTags
-import org.bouncycastle.bcpg.sig.IssuerFingerprint
-import org.bouncycastle.jce.provider.BouncyCastleProvider
-import org.bouncycastle.openpgp.PGPObjectFactory
 import org.bouncycastle.openpgp.PGPPublicKey
-import org.bouncycastle.openpgp.PGPSecretKeyRing
 import org.bouncycastle.openpgp.PGPSignature
 import org.bouncycastle.openpgp.PGPSignatureGenerator
-import org.bouncycastle.openpgp.PGPSignatureSubpacketGenerator
-import org.bouncycastle.openpgp.PGPUtil
-import org.bouncycastle.openpgp.operator.jcajce.JcaKeyFingerprintCalculator
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPKeyPair
-import org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyDecryptorBuilder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.security.KeyPairGenerator
-import java.security.Security
 import java.util.Date
 
 class ReleaseManifestVerifierTest {
 
     private lateinit var verifier: ReleaseManifestVerifier
+    private lateinit var pinnedVerifier: ReleaseManifestVerifier
+    private lateinit var testKey: TestPgpKeys.KeyMaterial
     private lateinit var pinnedPublicKey: PGPPublicKey
 
     private val testManifestJson = """
@@ -75,7 +66,9 @@ class ReleaseManifestVerifierTest {
             File("app/src/main/res/raw/vrka_release_pubkey.asc").inputStream()
         }
         pinnedPublicKey = ReleaseManifestVerifier.loadAndVerifyPublicKey(input)
-        verifier = ReleaseManifestVerifier(customPublicKeySupplier = { pinnedPublicKey })
+        pinnedVerifier = ReleaseManifestVerifier(customPublicKeySupplier = { pinnedPublicKey })
+        testKey = TestPgpKeys.generate()
+        verifier = TestPgpKeys.verifierFor(testKey)
     }
 
     @Test
@@ -84,6 +77,10 @@ class ReleaseManifestVerifierTest {
         assertEquals(ReleaseManifestVerifier.PINNED_RELEASE_KEY_ID, pinnedPublicKey.keyID)
         val fp = org.bouncycastle.util.encoders.Hex.toHexString(pinnedPublicKey.fingerprint).uppercase()
         assertEquals(ReleaseManifestVerifier.PINNED_RELEASE_KEY_FINGERPRINT, fp)
+        assertTrue(
+            "Hermetic tests must not reuse the production key",
+            testKey.publicKey.keyID != ReleaseManifestVerifier.PINNED_RELEASE_KEY_ID,
+        )
     }
 
     @Test
@@ -134,51 +131,38 @@ class ReleaseManifestVerifierTest {
             verifier.verifyDetachedSignature(
                 dataBytes = testManifestJson.toByteArray(),
                 signatureBytes = garbageSig,
-                publicKey = pinnedPublicKey,
+                publicKey = testKey.publicKey,
             )
         }
     }
 
     @Test
     fun testTruncatedSignatureBytesRejected() {
-        // Sign validly first (if secret key available) or test with corrupted header
-        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
-        if (secretKeyFile.exists()) {
-            val validSig = ReleaseManifestSigner.signDetached(
+        val validSig = TestPgpKeys.sign(testManifestJson.toByteArray(), testKey)
+        val truncated = validSig.copyOf(validSig.size / 2)
+        assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyDetachedSignature(
                 dataBytes = testManifestJson.toByteArray(),
-                secretKeyStream = FileInputStream(secretKeyFile),
+                signatureBytes = truncated,
+                publicKey = testKey.publicKey,
             )
-            val truncated = validSig.copyOf(validSig.size / 2)
-            assertThrows(ManifestValidationException::class.java) {
-                verifier.verifyDetachedSignature(
-                    dataBytes = testManifestJson.toByteArray(),
-                    signatureBytes = truncated,
-                    publicKey = pinnedPublicKey,
-                )
-            }
         }
     }
 
     @Test
     fun testTamperedManifestDetectedAndRejected() {
-        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
-        if (secretKeyFile.exists()) {
-            val originalBytes = testManifestJson.toByteArray()
-            val sig = ReleaseManifestSigner.signDetached(
-                dataBytes = originalBytes,
-                secretKeyStream = FileInputStream(secretKeyFile),
-            )
+        val originalBytes = testManifestJson.toByteArray()
+        val sig = TestPgpKeys.sign(originalBytes, testKey)
 
-            // Verify original passes
-            verifier.verifyDetachedSignature(originalBytes, sig, pinnedPublicKey)
+        // Verify original passes
+        verifier.verifyDetachedSignature(originalBytes, sig, testKey.publicKey)
 
-            // Tamper 1 byte
-            val tamperedBytes = testManifestJson.replace("50100", "50101").toByteArray()
-            val err = assertThrows(ManifestValidationException::class.java) {
-                verifier.verifyDetachedSignature(tamperedBytes, sig, pinnedPublicKey)
-            }
-            assertTrue(err.message!!.contains("invalid signature"))
+        // Tamper 1 byte
+        val tamperedBytes = testManifestJson.replace("50100", "50101").toByteArray()
+        val err = assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyDetachedSignature(tamperedBytes, sig, testKey.publicKey)
         }
+        assertTrue(err.message!!.contains("invalid signature"))
     }
 
     @Test
@@ -206,7 +190,7 @@ class ReleaseManifestVerifierTest {
             verifier.verifyDetachedSignature(
                 dataBytes = testManifestJson.toByteArray(),
                 signatureBytes = wrongKeySigBytes,
-                publicKey = pinnedPublicKey,
+                publicKey = testKey.publicKey,
             )
         }
         assertTrue(err.message!!.contains("does not match trusted key ID"))
@@ -214,115 +198,108 @@ class ReleaseManifestVerifierTest {
 
     @Test
     fun testInsecureHashAlgorithmRejected() {
-        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
-        if (secretKeyFile.exists()) {
-            val decoder = PGPUtil.getDecoderStream(FileInputStream(secretKeyFile))
-            val collection = org.bouncycastle.openpgp.PGPSecretKeyRingCollection(
-                decoder,
-                JcaKeyFingerprintCalculator().setProvider("BC"),
+        // Deliberately sign with SHA-1 using the temporary test key.
+        val weakSigBytes = TestPgpKeys.sign(
+            data = testManifestJson.toByteArray(),
+            key = testKey,
+            hashAlgorithm = HashAlgorithmTags.SHA1,
+        )
+
+        val err = assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyDetachedSignature(
+                dataBytes = testManifestJson.toByteArray(),
+                signatureBytes = weakSigBytes,
+                publicKey = testKey.publicKey,
             )
-            val secKey = collection.asSequence().flatMap { it.secretKeys.asSequence() }.first { it.isSigningKey }
-            val privKey = secKey.extractPrivateKey(
-                JcePBESecretKeyDecryptorBuilder().setProvider("BC").build("".toCharArray())
-            )
-
-            // Deliberately sign with SHA-1 (HashAlgorithmTags.SHA1 = 2)
-            val weakSignerBuilder = JcaPGPContentSignerBuilder(secKey.publicKey.algorithm, HashAlgorithmTags.SHA1)
-                .setProvider("BC")
-            val sigGen = PGPSignatureGenerator(weakSignerBuilder)
-            sigGen.init(PGPSignature.BINARY_DOCUMENT, privKey)
-            sigGen.update(testManifestJson.toByteArray())
-            val sig = sigGen.generate()
-
-            val baos = ByteArrayOutputStream()
-            ArmoredOutputStream(baos).use { it -> sig.encode(it) }
-            val weakSigBytes = baos.toByteArray()
-
-            val err = assertThrows(ManifestValidationException::class.java) {
-                verifier.verifyDetachedSignature(
-                    dataBytes = testManifestJson.toByteArray(),
-                    signatureBytes = weakSigBytes,
-                    publicKey = pinnedPublicKey,
-                )
-            }
-            assertTrue(err.message!!.contains("Insecure hash algorithm rejected"))
         }
+        assertTrue(err.message!!.contains("Insecure hash algorithm rejected"))
     }
 
     @Test
     fun testEndToEndVerifyAndParseManifestWithRealSignature() {
-        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
-        if (secretKeyFile.exists()) {
-            val manifestBytes = testManifestJson.toByteArray()
-            val sigBytes = ReleaseManifestSigner.signDetached(
-                dataBytes = manifestBytes,
-                secretKeyStream = FileInputStream(secretKeyFile),
-            )
+        val manifestBytes = testManifestJson.toByteArray()
+        val sigBytes = TestPgpKeys.sign(manifestBytes, testKey)
 
-            val parsed = verifier.verifyAndParseManifest(
-                manifestBytes = manifestBytes,
-                signatureBytes = sigBytes,
-                currentInstalledPackage = "com.mvrk.vrka",
-                currentInstalledVersionCode = 50002L,
-                currentStoredRevision = 1L,
-                expectedReleaseTag = "v5.1.0",
-                currentTimeMillis = 1793494800000L, // 2026-11-01T01:00:00Z
-            )
+        val parsed = verifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = sigBytes,
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50002L,
+            currentStoredRevision = 1L,
+            expectedReleaseTag = "v5.1.0",
+            currentTimeMillis = 1793494800000L, // 2026-11-01T01:00:00Z
+        )
 
-            assertNotNull(parsed)
-            assertEquals("5.1.0", parsed.versionName)
-            assertEquals(50100L, parsed.versionCode)
-            assertEquals("v5.1.0", parsed.releaseTag)
-            assertEquals("VRKA-Android-v5.1.0.apk", parsed.apk.filename)
-        }
+        assertNotNull(parsed)
+        assertEquals("5.1.0", parsed.versionName)
+        assertEquals(50100L, parsed.versionCode)
+        assertEquals("v5.1.0", parsed.releaseTag)
+        assertEquals("VRKA-Android-v5.1.0.apk", parsed.apk.filename)
     }
 
     @Test
     fun testFutureIssuedTimestampBeyondToleranceRejected() {
-        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
-        if (secretKeyFile.exists()) {
-            val futureManifest = testManifestJson.replace("2026-11-01T00:00:00Z", "2026-11-01T05:00:00Z")
-            val manifestBytes = futureManifest.toByteArray()
-            val sigBytes = ReleaseManifestSigner.signDetached(manifestBytes, FileInputStream(secretKeyFile))
+        val futureManifest = testManifestJson.replace("2026-11-01T00:00:00Z", "2026-11-01T05:00:00Z")
+        val manifestBytes = futureManifest.toByteArray()
+        val sigBytes = TestPgpKeys.sign(manifestBytes, testKey)
 
-            val err = assertThrows(ManifestValidationException::class.java) {
-                verifier.verifyAndParseManifest(
-                    manifestBytes = manifestBytes,
-                    signatureBytes = sigBytes,
-                    currentInstalledPackage = "com.mvrk.vrka",
-                    currentInstalledVersionCode = 50002L,
-                    currentStoredRevision = 1L,
-                    expectedReleaseTag = "v5.1.0",
-                    currentTimeMillis = 1793494800000L, // 2026-11-01T01:00:00Z (issued is 4h in future)
-                )
-            }
-            assertTrue(err.message!!.contains("in the future"))
-        }
-    }
-
-    @Test
-    fun testClockSkewWithinToleranceAccepted() {
-        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
-        if (secretKeyFile.exists()) {
-            // issued_at is 5 minutes (300 seconds) in the future relative to client currentTimeMillis
-            val clientTime = 1793494800000L // 2026-11-01T01:00:00Z
-            val futureFiveMinutes = "2026-11-01T01:05:00Z"
-            val skewManifest = testManifestJson.replace("2026-11-01T00:00:00Z", futureFiveMinutes)
-            val manifestBytes = skewManifest.toByteArray()
-            val sigBytes = ReleaseManifestSigner.signDetached(manifestBytes, FileInputStream(secretKeyFile))
-
-            val parsed = verifier.verifyAndParseManifest(
+        val err = assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyAndParseManifest(
                 manifestBytes = manifestBytes,
                 signatureBytes = sigBytes,
                 currentInstalledPackage = "com.mvrk.vrka",
                 currentInstalledVersionCode = 50002L,
                 currentStoredRevision = 1L,
                 expectedReleaseTag = "v5.1.0",
-                currentTimeMillis = clientTime,
+                currentTimeMillis = 1793494800000L, // 2026-11-01T01:00:00Z (issued is 4h in future)
             )
-            assertNotNull(parsed)
-            assertEquals("v5.1.0", parsed.releaseTag)
         }
+        assertTrue(err.message!!.contains("in the future"))
+    }
+
+    @Test
+    fun testClockSkewWithinToleranceAccepted() {
+        // issued_at is 5 minutes (300 seconds) in the future relative to client currentTimeMillis
+        val clientTime = 1793494800000L // 2026-11-01T01:00:00Z
+        val futureFiveMinutes = "2026-11-01T01:05:00Z"
+        val skewManifest = testManifestJson.replace("2026-11-01T00:00:00Z", futureFiveMinutes)
+        val manifestBytes = skewManifest.toByteArray()
+        val sigBytes = TestPgpKeys.sign(manifestBytes, testKey)
+
+        val parsed = verifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = sigBytes,
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50002L,
+            currentStoredRevision = 1L,
+            expectedReleaseTag = "v5.1.0",
+            currentTimeMillis = clientTime,
+        )
+        assertNotNull(parsed)
+        assertEquals("v5.1.0", parsed.releaseTag)
+    }
+
+    @Test
+    fun impossibleIssuedDateIsRejectedAfterSignatureVerification() {
+        val invalidManifest = testManifestJson.replace(
+            "2026-11-01T00:00:00Z",
+            "2026-02-30T00:00:00Z",
+        )
+        val manifestBytes = invalidManifest.toByteArray()
+        val signature = TestPgpKeys.sign(manifestBytes, testKey)
+
+        val error = assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyAndParseManifest(
+                manifestBytes = manifestBytes,
+                signatureBytes = signature,
+                currentInstalledPackage = "com.mvrk.vrka",
+                currentInstalledVersionCode = 50002L,
+                currentStoredRevision = 1L,
+                expectedReleaseTag = "v5.1.0",
+                currentTimeMillis = 1793494800000L,
+            )
+        }
+        assertTrue(error.message!!.contains("Invalid 'issued_at'"))
     }
 
     @Test
@@ -341,75 +318,65 @@ class ReleaseManifestVerifierTest {
 
     @Test
     fun testMetadataRevision3MonotonicUpgradeAccepted() {
-        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
-        if (secretKeyFile.exists()) {
-            val rev3Manifest = testManifestJson.replace("\"metadata_revision\": 1", "\"metadata_revision\": 3")
-            val manifestBytes = rev3Manifest.toByteArray()
-            val sigBytes = ReleaseManifestSigner.signDetached(manifestBytes, FileInputStream(secretKeyFile))
+        val rev3Manifest = testManifestJson.replace("\"metadata_revision\": 1", "\"metadata_revision\": 3")
+        val manifestBytes = rev3Manifest.toByteArray()
+        val sigBytes = TestPgpKeys.sign(manifestBytes, testKey)
 
-            // Revision 3 accepted when stored is 2
-            val parsed = verifier.verifyAndParseManifest(
+        // Revision 3 accepted when stored is 2
+        val parsed = verifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = sigBytes,
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50002L,
+            currentStoredRevision = 2L,
+            expectedReleaseTag = "v5.1.0",
+            currentTimeMillis = 1793494800000L,
+        )
+        assertEquals(3L, parsed.metadataRevision)
+
+        // Revision 3 rejected when stored is 4 (anti-rollback)
+        assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyAndParseManifest(
                 manifestBytes = manifestBytes,
                 signatureBytes = sigBytes,
                 currentInstalledPackage = "com.mvrk.vrka",
                 currentInstalledVersionCode = 50002L,
-                currentStoredRevision = 2L,
+                currentStoredRevision = 4L,
                 expectedReleaseTag = "v5.1.0",
                 currentTimeMillis = 1793494800000L,
             )
-            assertEquals(3L, parsed.metadataRevision)
-
-            // Revision 3 rejected when stored is 4 (anti-rollback)
-            assertThrows(ManifestValidationException::class.java) {
-                verifier.verifyAndParseManifest(
-                    manifestBytes = manifestBytes,
-                    signatureBytes = sigBytes,
-                    currentInstalledPackage = "com.mvrk.vrka",
-                    currentInstalledVersionCode = 50002L,
-                    currentStoredRevision = 4L,
-                    expectedReleaseTag = "v5.1.0",
-                    currentTimeMillis = 1793494800000L,
-                )
-            }
         }
     }
 
     @Test
-    fun generateAndVerifyReleaseManifestAsc() {
-        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
-        if (secretKeyFile.exists()) {
-            val manifestFile = listOf(
-                File("VRKA-Android-v5.1.0.manifest.json"),
-                File("../VRKA-Android-v5.1.0.manifest.json"),
-                File("../../VRKA-Android-v5.1.0.manifest.json"),
-            ).firstOrNull { it.exists() }
-            if (manifestFile != null) {
-                val manifestBytes = manifestFile.readBytes()
-                val sigBytes = ReleaseManifestSigner.signDetached(
-                    dataBytes = manifestBytes,
-                    secretKeyStream = FileInputStream(secretKeyFile),
-                )
-                val sigFile = File.createTempFile("manifest-test", ".asc")
-                sigFile.deleteOnExit()
-                sigFile.writeBytes(sigBytes)
+    fun publishedManifestDetachedSignatureVerifiesWithPinnedPublicKey() {
+        val manifestFile = listOf(
+            File("VRKA-Android-v5.1.0.manifest.json"),
+            File("../VRKA-Android-v5.1.0.manifest.json"),
+            File("../../VRKA-Android-v5.1.0.manifest.json"),
+        ).firstOrNull { it.exists() }
+        assertNotNull("The published v5.1.0 manifest must be present in the repository", manifestFile)
+        val signatureFile = File(manifestFile!!.path + ".asc")
+        assertTrue("The published detached signature must be present", signatureFile.exists())
 
-                val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
-                val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt) ?: System.currentTimeMillis()
+        val manifestBytes = manifestFile.readBytes()
+        val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
+        val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt)
+            ?: error("Published manifest has an invalid issued_at")
 
-                // Verify the generated signature passes full manifest verification
-                val parsed = verifier.verifyAndParseManifest(
-                    manifestBytes = manifestBytes,
-                    signatureBytes = sigBytes,
-                    currentInstalledPackage = "com.mvrk.vrka",
-                    currentInstalledVersionCode = 50002L,
-                    currentStoredRevision = 1L,
-                    expectedReleaseTag = "v5.1.0",
-                    currentTimeMillis = issuedEpoch + 1000L,
-                )
-                assertEquals("5.1.0", parsed.versionName)
-                assertEquals(157202797L, parsed.apk.sizeBytes)
-                assertEquals("5051ecfd6319ca2cafdd4287904006fbc54b06faac5444d3a3c73df5cdc848aa", parsed.apk.sha256)
-            }
-        }
+        val parsed = pinnedVerifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = signatureFile.readBytes(),
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50002L,
+            currentStoredRevision = 1L,
+            expectedReleaseTag = "v5.1.0",
+            currentTimeMillis = issuedEpoch + 1_000L,
+            publicKey = pinnedPublicKey,
+        )
+
+        assertEquals("5.1.0", parsed.versionName)
+        assertEquals(157_202_797L, parsed.apk.sizeBytes)
+        assertEquals("5051ecfd6319ca2cafdd4287904006fbc54b06faac5444d3a3c73df5cdc848aa", parsed.apk.sha256)
     }
 }

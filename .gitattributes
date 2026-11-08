@@ -1,2 +1,4 @@
 /app/src/test/resources/SHA2-256SUMS -text
 /app/src/test/resources/SHA2-256SUMS.sig -text
+/VRKA-Android-*.manifest.json -text
+/SHA256SUMS -text

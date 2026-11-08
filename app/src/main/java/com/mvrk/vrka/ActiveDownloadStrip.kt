@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -119,6 +121,11 @@ internal fun ActiveDownloadStrip(
                             fontSize = 11.sp,
                             color = VrkaTokens.TextSecondary,
                             maxLines = 1,
+                            // The bar's range semantics already announce progress. Keep
+                            // speed available without repeating the percentage.
+                            modifier = Modifier.clearAndSetSemantics {
+                                if (job.speed.isNotBlank()) contentDescription = job.speed
+                            },
                         )
                     }
                     downloadSizeLabel(LocalContext.current, job)?.let { size ->
@@ -138,6 +145,7 @@ internal fun ActiveDownloadStrip(
             if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
                 VrkaGlowProgressBar(
                     progress = job.progress / 100f,
+                    contentDescription = stringResource(R.string.progress_accessibility_label),
                     trackHeight = 3.dp,
                     modifier = Modifier
                         .fillMaxWidth()

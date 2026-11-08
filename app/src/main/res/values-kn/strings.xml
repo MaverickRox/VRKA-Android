@@ -370,4 +370,15 @@
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">ಅತ್ಯುತ್ತಮ ಲಭ್ಯ</string>
+    <string name="error_destination_required">ಡೌನ್‌ಲೋಡ್ ಫೋಲ್ಡರ್ ಆಯ್ಕೆಮಾಡಿ. Android 9 ಮತ್ತು ಹಳೆಯ ಆವೃತ್ತಿಗಳಿಗೆ ಬಳಕೆದಾರ ಆಯ್ಕೆ ಮಾಡಿದ ಫೋಲ್ಡರ್ ಅಗತ್ಯವಿದೆ.</string>
+    <string name="progress_accessibility_label">ಡೌನ್‌ಲೋಡ್ ಪ್ರಗತಿ</string>
+    <string name="status_downloading_video">ವೀಡಿಯೊ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ</string>
+    <string name="status_downloading_audio">ಆಡಿಯೊ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ</string>
+    <string name="download_playlist_item">ಐಟಂ %1$d / %2$d</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">ಔಟ್‌ಪುಟ್ ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ</string>
+    <string name="status_downloading_media">ಮೀಡಿಯಾ ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ</string>
+    <string name="diagnostics_export_title">ಡಯಾಗ್ನೋಸ್ಟಿಕ್ಸ್ ರಫ್ತು</string>
+    <string name="diagnostics_export_warning">ಈ ರಫ್ತು ಮೂಲ ಲಿಂಕ್‌ಗಳು ಮತ್ತು ವೀಕ್ಷಣೆ ಅಥವಾ ಡೌನ್‌ಲೋಡ್ ಚಟುವಟಿಕೆಯನ್ನು ಬಹಿರಂಗಪಡಿಸಬಹುದು. ಸಂವೇದನಾಶೀಲ ಐಡೆಂಟಿಟಿಗಳು ಮರೆಮಾಡಲಾಗಿರುತ್ತವೆ.</string>
+    <string name="diagnostics_export_include_source">ಸಂಪೂರ್ಣ ಮೂಲ URL ಸೇರಿಸಿ</string>
 </resources>

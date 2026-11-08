@@ -3,7 +3,6 @@ package com.mvrk.vrka
 import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.Immutable
-import com.mvrk.vrka.engine.FailureCategory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +16,11 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
+/**
+ * Persisted diagnostic schema. `sourceUrl`, `candidateUrl` and `jobAttempt` are additive
+ * optional fields: records written by older builds decode with empty/zero values, and the
+ * URL fields are sanitized before any write.
+ */
 @Immutable
 data class DiagnosticEntry(
     val id: String = UUID.randomUUID().toString(),
@@ -31,18 +35,34 @@ data class DiagnosticEntry(
     val quality: String,
     val acquisitionMethod: String,
     val runtime: String = "",
+    /** Failure-only original submitted source URL (already privacy-sanitized). */
+    val sourceUrl: String = "",
+    /** Failure-only Browser Fallback candidate URL (sanitized). */
+    val candidateUrl: String = "",
+    val jobAttempt: Int = 0,
 ) {
-    fun toFormattedString(): String = buildString {
+    fun toFormattedString(includeSourceUrl: Boolean = false): String = buildString {
         appendLine("--- VRKA DIAGNOSTIC REPORT ---")
         appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(timestamp))}")
         appendLine("Job ID: $jobId")
+        if (jobAttempt > 0) appendLine("Attempt: $jobAttempt")
         appendLine("Title: ${DiagnosticStore.sanitizeText(title).take(200)}")
         appendLine("Stage: $stage")
         appendLine("Category: $failureCategory")
         appendLine("Quality: $quality")
         appendLine("Method: $acquisitionMethod")
         if (runtime.isNotBlank()) appendLine("Runtime: ${DiagnosticStore.sanitizeText(runtime).take(160)}")
-        appendLine("URL: $url")
+        // The full source URL is opt-in at export time. The safe URL remains the default.
+        val displayedUrl = if (includeSourceUrl && sourceUrl.isNotBlank()) sourceUrl else url
+        val displayedUrlSafe = if (includeSourceUrl && sourceUrl.isNotBlank()) {
+            DiagnosticStore.sanitizeSourceUrl(displayedUrl)
+        } else {
+            DiagnosticStore.sanitizeUrl(displayedUrl)
+        }
+        appendLine("URL: $displayedUrlSafe")
+        if (candidateUrl.isNotBlank()) {
+            appendLine("Candidate: ${DiagnosticStore.sanitizeUrl(candidateUrl)}")
+        }
         appendLine("Summary: ${DiagnosticStore.sanitizeText(summary)}")
         if (detail.isNotBlank()) {
             appendLine("Details:")
@@ -89,6 +109,32 @@ class DiagnosticStore(
         }
     }
 
+    /**
+     * A retry that eventually succeeds must not keep a source URL from an earlier failed
+     * attempt. The failure entry itself remains useful; only its URLs are removed.
+     */
+    suspend fun clearUrlsForJob(jobId: String) {
+        if (jobId.isBlank()) return
+        mutex.withLock {
+            val current = loadFromDisk()
+            var changed = false
+            val updated = current.map { entry ->
+                if (entry.jobId == jobId &&
+                    (entry.url.isNotBlank() || entry.sourceUrl.isNotBlank() || entry.candidateUrl.isNotBlank())
+                ) {
+                    changed = true
+                    entry.copy(url = "", sourceUrl = "", candidateUrl = "")
+                } else {
+                    entry
+                }
+            }
+            if (changed) {
+                saveToDisk(updated)
+                _entries.value = updated
+            }
+        }
+    }
+
     private suspend fun load() {
         mutex.withLock {
             val loaded = loadFromDisk()
@@ -123,6 +169,9 @@ class DiagnosticStore(
                         quality = obj.optString("quality", ""),
                         acquisitionMethod = obj.optString("acquisitionMethod", "Native yt-dlp"),
                         runtime = obj.optString("runtime", ""),
+                        sourceUrl = obj.optString("sourceUrl", ""),
+                        candidateUrl = obj.optString("candidateUrl", ""),
+                        jobAttempt = obj.optInt("jobAttempt", 0),
                     )
                 )
             }
@@ -134,14 +183,14 @@ class DiagnosticStore(
     }
 
     private fun sanitizeEntry(entry: DiagnosticEntry): DiagnosticEntry {
-        // Browser-fallback failures need the exact page URL (including its query string) to be
-        // diagnosable. The URL field is the only exception; headers, cookies, and log tails stay
-        // redacted, and export remains an explicit user action.
-        val preserveExactUrl = entry.acquisitionMethod.equals(BROWSER_FALLBACK_METHOD, ignoreCase = true) ||
-            entry.failureCategory == FailureCategory.BROWSER_RECOVERABLE.name
+        // Browser-fallback failures used to keep the exact URL for diagnosis. Signed media
+        // URLs carry temporary credentials in their query (and sometimes in a path segment),
+        // so every entry is sanitized before it is persisted or exported.
         return entry.copy(
             title = sanitizeText(entry.title).take(200),
-            url = if (preserveExactUrl) entry.url.trim() else sanitizeUrl(entry.url),
+            url = sanitizeUrl(entry.url),
+            sourceUrl = if (entry.sourceUrl.isBlank()) "" else sanitizeSourceUrl(entry.sourceUrl),
+            candidateUrl = if (entry.candidateUrl.isBlank()) "" else sanitizeUrl(entry.candidateUrl),
             summary = sanitizeText(entry.summary).take(MAX_SUMMARY_LENGTH),
             detail = sanitizeText(entry.detail).take(MAX_DETAIL_LENGTH),
             runtime = sanitizeText(entry.runtime).take(160),
@@ -180,6 +229,9 @@ class DiagnosticStore(
             val quality = extractString("quality")
             val acquisitionMethod = extractString("acquisitionMethod").ifBlank { "Native yt-dlp" }
             val runtime = extractString("runtime")
+            val sourceUrl = extractString("sourceUrl")
+            val candidateUrl = extractString("candidateUrl")
+            val jobAttempt = extractLong("jobAttempt", 0L).toInt()
 
             entries.add(
                 DiagnosticEntry(
@@ -195,6 +247,9 @@ class DiagnosticStore(
                     quality = quality,
                     acquisitionMethod = acquisitionMethod,
                     runtime = runtime,
+                    sourceUrl = sourceUrl,
+                    candidateUrl = candidateUrl,
+                    jobAttempt = jobAttempt,
                 )
             )
         }
@@ -221,7 +276,10 @@ class DiagnosticStore(
                     append("    \"url\": ").append(quote(entry.url)).append(",\n")
                     append("    \"quality\": ").append(quote(entry.quality)).append(",\n")
                     append("    \"acquisitionMethod\": ").append(quote(entry.acquisitionMethod)).append(",\n")
-                    append("    \"runtime\": ").append(quote(entry.runtime)).append("\n")
+                    append("    \"runtime\": ").append(quote(entry.runtime)).append(",\n")
+                    append("    \"sourceUrl\": ").append(quote(entry.sourceUrl)).append(",\n")
+                    append("    \"candidateUrl\": ").append(quote(entry.candidateUrl)).append(",\n")
+                    append("    \"jobAttempt\": ").append(entry.jobAttempt).append("\n")
                     append("  }")
                 }
             }
@@ -266,17 +324,34 @@ class DiagnosticStore(
         private const val FILE_NAME = "diagnostics.json"
 
         private val SAFE_QUERY_PARAMS = setOf(
-            "v", "quality", "itag", "format", "width", "height", "fps", "type", "mime",
+            "v", "t", "list", "index", "start", "end", "page", "lang",
+            "quality", "itag", "format", "width", "height", "fps", "type", "mime",
+        )
+
+        private val SENSITIVE_KEYWORDS = listOf(
+            "token", "auth", "signature", "sign", "key", "session", "policy",
+            "credential", "secret", "password", "hmac", "sig", "jwt", "bearer",
+            "expire", "ipbits",
         )
 
         private val SECRET_PATTERNS = listOf(
             Regex("""(?i)Authorization:\s*Bearer\s+[^\r\n,;]+"""),
             Regex("""(?i)Bearer\s+[A-Za-z0-9\-_=.]+"""),
-            Regex("""(?i)(cookie|set-cookie|authorization|proxy-authorization|x-api-key|api-key|apikey|token|signature|key|secret|password|passwd|pwd)\s*[:=]\s*[^\r\n,;]+"""),
+            Regex("""(?i)(cookie|set-cookie|authorization|proxy-authorization|x-api-key|api-key|apikey|token|signature|key|secret|password|passwd|pwd)\s*[:=]\s*[^\r\n,;&]+"""),
             Regex("""[A-Za-z0-9+/]{40,}={0,2}"""),
         )
 
-        fun sanitizeUrl(rawUrl: String): String {
+        fun sanitizeUrl(rawUrl: String): String =
+            sanitizeUrlInternal(rawUrl, onlyKnownSafeParams = true)
+
+        /**
+         * Failure-only source URLs may retain useful non-sensitive query parameters (for
+         * example a video id) while credential-like names are still redacted.
+         */
+        fun sanitizeSourceUrl(rawUrl: String): String =
+            sanitizeUrlInternal(rawUrl, onlyKnownSafeParams = false)
+
+        private fun sanitizeUrlInternal(rawUrl: String, onlyKnownSafeParams: Boolean): String {
             if (rawUrl.isBlank()) return ""
             return runCatching {
                 val uri = java.net.URI(rawUrl.trim())
@@ -289,26 +364,65 @@ class DiagnosticStore(
                 if (':' in host && !host.startsWith("[")) host = "[$host]"
                 val port = uri.port.takeIf { it in 1..65535 && it != (if (scheme == "https") 443 else 80) }
                     ?.let { ":$it" }.orEmpty()
-                val safeOrigin = "$scheme://$host$port"
-                val query = uri.rawQuery ?: return@runCatching "$safeOrigin/[redacted path]"
+                val origin = "$scheme://$host$port"
+                val path = sanitizePath(uri.rawPath)
+                val query = uri.rawQuery ?: return@runCatching "$origin$path"
                 val pairs = query.split('&').map { pair ->
-                    val eq = pair.indexOf('=')
-                    if (eq < 0) {
-                        val key = pair.lowercase()
-                        if (key in SAFE_QUERY_PARAMS) pair else "$pair=[REDACTED]"
+                    val separator = pair.indexOf('=')
+                    val rawKey = if (separator < 0) pair else pair.substring(0, separator)
+                    val key = decodedQueryKey(rawKey)
+                    val preserve = if (onlyKnownSafeParams) {
+                        key in SAFE_QUERY_PARAMS && !isSensitiveKey(key)
                     } else {
-                        val key = pair.substring(0, eq)
-                        val lowerKey = key.lowercase()
-                        if (lowerKey in SAFE_QUERY_PARAMS) pair else "$key=[REDACTED]"
+                        !isSensitiveKey(key)
                     }
+                    if (preserve) pair else "$rawKey=[REDACTED]"
                 }
-                "$safeOrigin/[redacted path]?${pairs.joinToString("&")}"
+                "$origin$path?${pairs.joinToString("&")}"
             }.getOrDefault("[private URL]")
+        }
+
+        /**
+         * Preserves the route so diagnostics remain actionable, but redacts segments that
+         * carry credentials (for example `/signature/...` or a long opaque token).
+         */
+        private fun sanitizePath(rawPath: String?): String {
+            if (rawPath.isNullOrBlank()) return "/"
+            val segments = rawPath.split('/').map { segment ->
+                val decoded = runCatching {
+                    java.net.URLDecoder.decode(segment, "UTF-8")
+                }.getOrDefault(segment)
+                when {
+                    isSensitiveKey(decoded) -> "[REDACTED]"
+                    looksLikeOpaqueToken(decoded) -> "[REDACTED]"
+                    else -> segment
+                }
+            }
+            return segments.joinToString("/").ifBlank { "/" }
+        }
+
+        private fun decodedQueryKey(rawKey: String): String {
+            if (rawKey.isBlank()) return ""
+            return runCatching {
+                java.net.URLDecoder.decode(rawKey, "UTF-8")
+            }.getOrDefault(rawKey).lowercase(java.util.Locale.ROOT)
+        }
+
+        private fun isSensitiveKey(key: String): Boolean {
+            val lower = key.lowercase(java.util.Locale.ROOT)
+            return SENSITIVE_KEYWORDS.any(lower::contains)
+        }
+
+        private fun looksLikeOpaqueToken(value: String): Boolean {
+            if (value.length < 32) return false
+            val tokenChars = value.count { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
+            return tokenChars.toDouble() / value.length >= 0.9 && value.any(Char::isDigit)
         }
 
         fun sanitizeText(text: String): String {
             if (text.isBlank()) return ""
             var sanitized = HeaderValidation.redactSensitiveHeaderInText(text)
+            sanitized = sanitizeEmbeddedUrls(sanitized)
             for (pattern in SECRET_PATTERNS) {
                 sanitized = sanitized.replace(pattern) { match ->
                     val matchedText = match.value
@@ -321,7 +435,24 @@ class DiagnosticStore(
                     }
                 }
             }
-            return sanitized.replace(Regex("(?i)https?://[^\\s\\\"'<>]+"), "[private URL]")
+            return sanitized
+        }
+
+        private val EMBEDDED_URL = Regex("""(?i)https?:\\?/\\?/[^\s"'<>]+""")
+
+        /**
+         * Replaces every URL embedded in prose, JSON-like text or an error tail with its
+         * sanitized form. yt-dlp and FFmpeg errors frequently contain signed CDN URLs whose
+         * query carries temporary credentials.
+         */
+        private fun sanitizeEmbeddedUrls(text: String): String = EMBEDDED_URL.replace(text) { match ->
+            val normalized = match.value
+                .replace("\\/", "/")
+                .replace("&amp;", "&")
+                .replace("\\u0026", "&")
+            val trailing = normalized.takeLastWhile { it in ".,;:)]}" }
+            val core = normalized.dropLast(trailing.length)
+            sanitizeUrl(core) + trailing
         }
     }
 }

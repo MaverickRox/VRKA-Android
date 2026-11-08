@@ -1,7 +1,6 @@
 package com.mvrk.vrka.update.security
 
 import com.mvrk.vrka.update.AppUpdateManager
-import org.bouncycastle.openpgp.PGPPublicKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -12,7 +11,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -24,7 +22,7 @@ class ReleasePipelineEndToEndTest {
     @get:Rule
     val tempFolder = TemporaryFolder()
 
-    private lateinit var pinnedPublicKey: PGPPublicKey
+    private lateinit var testKey: TestPgpKeys.KeyMaterial
     private lateinit var verifier: ReleaseManifestVerifier
 
     private val v520ManifestJson = """
@@ -60,47 +58,35 @@ class ReleasePipelineEndToEndTest {
     @Before
     fun setUp() {
         ReleaseManifestVerifier.ensureBouncyCastleProvider()
-        val pubKeyFile = File("src/main/res/raw/vrka_release_pubkey.asc")
-        val input = if (pubKeyFile.exists()) {
-            FileInputStream(pubKeyFile)
-        } else {
-            File("app/src/main/res/raw/vrka_release_pubkey.asc").inputStream()
-        }
-        pinnedPublicKey = ReleaseManifestVerifier.loadAndVerifyPublicKey(input)
-        verifier = ReleaseManifestVerifier(customPublicKeySupplier = { pinnedPublicKey })
+        testKey = TestPgpKeys.generate()
+        verifier = TestPgpKeys.verifierFor(testKey)
     }
 
     @Test
     fun testFutureReleaseV520ManifestVerificationAndDomainValidation() {
-        val secretKeyFile = File(System.getProperty("user.home"), ".vrka/vrka_release_signing_key.sec")
-        if (secretKeyFile.exists()) {
-            val manifestBytes = v520ManifestJson.toByteArray()
-            val sigBytes = ReleaseManifestSigner.signDetached(
-                dataBytes = manifestBytes,
-                secretKeyStream = FileInputStream(secretKeyFile),
-            )
+        val manifestBytes = v520ManifestJson.toByteArray()
+        val sigBytes = TestPgpKeys.sign(manifestBytes, testKey)
 
-            // Current installed app is v5.1.0 (versionCode 50100, revision 1)
-            val manifest = verifier.verifyAndParseManifest(
-                manifestBytes = manifestBytes,
-                signatureBytes = sigBytes,
-                currentInstalledPackage = "com.mvrk.vrka",
-                currentInstalledVersionCode = 50100L,
-                currentStoredRevision = 1L,
-                expectedReleaseTag = "v5.2.0",
-                currentTimeMillis = 1793494800000L, // 2026-11-01T01:00:00Z
-            )
+        // Current installed app is v5.1.0 (versionCode 50100, revision 1)
+        val manifest = verifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = sigBytes,
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50100L,
+            currentStoredRevision = 1L,
+            expectedReleaseTag = "v5.2.0",
+            currentTimeMillis = 1793494800000L, // 2026-11-01T01:00:00Z
+        )
 
-            assertEquals("5.2.0", manifest.versionName)
-            assertEquals(50200L, manifest.versionCode)
-            assertEquals(2L, manifest.metadataRevision)
-            assertEquals("v5.2.0", manifest.releaseTag)
-            assertEquals("VRKA-Android-v5.2.0.apk", manifest.apk.filename)
-            assertEquals(
-                "9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA",
-                manifest.apk.certificateSha256,
-            )
-        }
+        assertEquals("5.2.0", manifest.versionName)
+        assertEquals(50200L, manifest.versionCode)
+        assertEquals(2L, manifest.metadataRevision)
+        assertEquals("v5.2.0", manifest.releaseTag)
+        assertEquals("VRKA-Android-v5.2.0.apk", manifest.apk.filename)
+        assertEquals(
+            "9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA",
+            manifest.apk.certificateSha256,
+        )
     }
 
     @Test

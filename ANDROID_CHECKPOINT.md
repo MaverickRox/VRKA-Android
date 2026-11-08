@@ -1,5 +1,15 @@
 # VRKA Android final checkpoint
 
+## v5.1.1 local candidate checkpoint — 2026-11-08
+
+- Base revision: `main` at `aa15472`; all v5.1.1 work is local and uncommitted.
+- Version: `5.1.1` (`versionCode` 50101); application ID unchanged at `com.mvrk.vrka`.
+- Canonical evidence: [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Canonical test record: [TEST_RESULTS.md](TEST_RESULTS.md).
+- Status: local release candidate only. Not production-signed, tagged, published, or device-validated.
+- PR #10 comet progress glow and PR #11 liquid navbar remain present; see the v5.1.0 sections below for their merge records.
+- The production signing key was not accessed. Only `assembleDebug` and `assembleDevRelease` were built.
+- Sections below are historical v5.1.0 and earlier checkpoints and are not superseded evidence for v5.1.1.
+
 ## Interrupted-state recovery checkpoint — 2026-07-29
 
 - The workspace does not contain a Git repository. Git status, commits, and diffs are unavailable.

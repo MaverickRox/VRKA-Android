@@ -112,11 +112,10 @@ internal fun ShareConfigSheet(
     var rememberChoices by remember(link.id) { mutableStateOf(false) }
     var submitted by remember(link.id) { mutableStateOf(false) }
 
-    val treeInvalid = settings.outputTreeUri.isNotBlank() &&
-        !OutputPublisher.isTreePermissionValid(context, settings.outputTreeUri)
-    val needsLocation = treeInvalid || settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME
+    val configuredTreeValid = OutputPublisher.isDestinationValid(context, settings.outputTreeUri)
+    val needsLocation = !configuredTreeValid || settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME
     var locationUri by remember(link.id) {
-        mutableStateOf(if (needsLocation && !treeInvalid) settings.outputTreeUri else "")
+        mutableStateOf(if (needsLocation && configuredTreeValid) settings.outputTreeUri else "")
     }
     var rememberLocation by remember(link.id) { mutableStateOf(true) }
 
@@ -161,6 +160,7 @@ internal fun ShareConfigSheet(
 
     val estimateGate = remember(link.id) { SizeEstimateGate() }
     var estimate by remember(link.id) { mutableStateOf<SizeEstimate?>(null) }
+    var estimateFor by remember(link.id) { mutableStateOf<DownloadRequest?>(null) }
     var estimating by remember(link.id) { mutableStateOf(settings.showDownloadSizeConfirmation) }
     var estimateRetryToken by remember(link.id) { mutableStateOf(0) }
     var firstPreflight by remember(link.id) { mutableStateOf(true) }
@@ -169,11 +169,13 @@ internal fun ShareConfigSheet(
         estimateGate.invalidate()
         if (!settings.showDownloadSizeConfirmation) {
             estimate = null
+            estimateFor = null
             estimating = false
             return@LaunchedEffect
         }
         estimating = true
         estimate = null
+        estimateFor = null
         val token = estimateGate.begin()
         // The sheet appears immediately. Only selection changes are debounced; the first
         // preflight and explicit retries start at once.
@@ -184,13 +186,21 @@ internal fun ShareConfigSheet(
             .getOrElse { SizeEstimate.unavailable("error") }
         if (!estimateGate.accepts(token)) return@LaunchedEffect
         estimate = result
+        estimateFor = previewRequest
         estimating = false
     }
     DisposableEffect(link.id) {
         onDispose { estimateGate.invalidate() }
     }
 
-    val locationReady = !needsLocation || locationUri.isNotBlank()
+    // A result is only valid for the exact request that produced it. This closes the
+    // composition window between a selection change and its LaunchedEffect restart.
+    val validEstimate = estimate.takeIf { estimateFor == previewRequest }
+    val effectiveEstimating = estimating ||
+        (settings.showDownloadSizeConfirmation && estimateFor != previewRequest)
+
+    val locationReady = !needsLocation ||
+        (locationUri.isNotBlank() && OutputPublisher.isDestinationValid(context, locationUri))
     // Size metadata is informational; a slow or failed preflight must not block the download.
     val canDownload = locationReady && !submitted
 
@@ -216,7 +226,7 @@ internal fun ShareConfigSheet(
         }
         onEnqueue(
             previewRequest.copy(destinationTreeUri = destination),
-            estimate,
+            validEstimate,
         )
         onDismiss()
     }
@@ -389,8 +399,8 @@ internal fun ShareConfigSheet(
                             if (settings.showDownloadSizeConfirmation) {
                                 Spacer(Modifier.height(14.dp))
                                 ShareEstimateCard(
-                                    estimate = estimate,
-                                    pending = estimating,
+                                    estimate = validEstimate,
+                                    pending = effectiveEstimating,
                                     selectionLabel = selectionLabel,
                                     onRetry = { estimateRetryToken++ },
                                 )

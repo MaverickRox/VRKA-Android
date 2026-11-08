@@ -8,10 +8,15 @@ import kotlinx.coroutines.withContext
  * Shared metadata store for the download screen, the share card and the format selector.
  *
  * One yt-dlp extraction produces the complete document (every video and audio format plus
- * manual and automatic subtitles). Sizes for each selection are calculated locally from that
- * document, so changing quality never launches another process. Concurrent callers for the
- * same source join a single in-flight extraction, and the document is keyed by source,
- * playlist range, runtime version and a digest of the effective headers.
+ * manual and automatic subtitles) for the request's exact `-f` selector. The document's
+ * `requested_formats` are therefore the streams the transfer will fetch, and the size is
+ * calculated from those same streams. The snapshot view still reads the full format table,
+ * so every resolution chip is populated from the same extraction.
+ *
+ * Concurrent callers for the same source *and* selection join a single in-flight extraction.
+ * The document is keyed by source, format selection, playlist range, runtime version and a
+ * digest of the effective headers; changing resolution or mode starts a new extraction while
+ * returning to a previous selection reuses its cached document.
  *
  * The repository holds everything in memory. Signed media URLs, cookies and authentication
  * headers are never written to disk; header values only participate as a digest in the cache
@@ -59,7 +64,9 @@ class MetadataRepository(
                 SizeEstimateCalculator.fromMetadataJson(
                     it.json,
                     request,
-                    recalculateSelection = true,
+                    // A document extracted for another selector is only a fallback; the
+                    // primary path is yt-dlp's own requested_formats.
+                    recalculateSelection = it.sourceFormatKey != MetadataEstimateCache.formatKeyFor(request),
                 )
             }
             ?: load.failure

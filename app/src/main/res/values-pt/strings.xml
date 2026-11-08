@@ -370,4 +370,15 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">Melhor disponível</string>
+    <string name="error_destination_required">Escolha uma pasta de download. O Android 9 e versões anteriores exigem uma pasta selecionada pelo usuário.</string>
+    <string name="progress_accessibility_label">Progresso do download</string>
+    <string name="status_downloading_video">Baixando vídeo</string>
+    <string name="status_downloading_audio">Baixando áudio</string>
+    <string name="download_playlist_item">Item %1$d de %2$d</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">Validando saída</string>
+    <string name="status_downloading_media">Baixando mídia</string>
+    <string name="diagnostics_export_title">Exportar diagnósticos</string>
+    <string name="diagnostics_export_warning">Esta exportação pode revelar links de origem e atividade de visualização ou download. Credenciais sensíveis permanecem ocultas.</string>
+    <string name="diagnostics_export_include_source">Incluir o URL de origem original completo</string>
 </resources>

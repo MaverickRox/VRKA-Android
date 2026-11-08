@@ -28,7 +28,8 @@ class PackagingConfigurationTest {
 
     @Test
     fun releaseVersionConfigurationIsPreserved() {
-        assertTrue(buildFile.contains("versionCode = 50100"))
-        assertTrue(buildFile.contains("versionName = \"5.1.0\""))
+        assertTrue(buildFile.contains("versionCode = 50101"))
+        assertTrue(buildFile.contains("versionName = \"5.1.1\""))
+        assertTrue(buildFile.contains("applicationId = \"com.mvrk.vrka\""))
     }
 }

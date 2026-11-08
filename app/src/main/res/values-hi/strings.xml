@@ -370,4 +370,15 @@
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">सर्वोत्तम उपलब्ध</string>
+    <string name="error_destination_required">डाउनलोड फ़ोल्डर चुनें. Android 9 और पुराने संस्करणों में उपयोगकर्ता द्वारा चुना गया फ़ोल्डर आवश्यक है.</string>
+    <string name="progress_accessibility_label">डाउनलोड प्रगति</string>
+    <string name="status_downloading_video">वीडियो डाउनलोड हो रहा है</string>
+    <string name="status_downloading_audio">ऑडियो डाउनलोड हो रहा है</string>
+    <string name="download_playlist_item">आइटम %1$d / %2$d</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">आउटपुट सत्यापित हो रहा है</string>
+    <string name="status_downloading_media">मीडिया डाउनलोड हो रहा है</string>
+    <string name="diagnostics_export_title">डायग्नोस्टिक्स निर्यात करें</string>
+    <string name="diagnostics_export_warning">यह निर्यात स्रोत लिंक और देखने या डाउनलोड गतिविधि प्रकट कर सकता है। संवेदनशील क्रेडेंशियल्स छिपे रहते हैं।</string>
+    <string name="diagnostics_export_include_source">पूरा मूल स्रोत URL शामिल करें</string>
 </resources>

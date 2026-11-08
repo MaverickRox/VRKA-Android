@@ -11,6 +11,12 @@ import android.provider.OpenableColumns
 import java.io.File
 import java.net.URLConnection
 
+internal data class PublishedOutput(
+    val uri: Uri,
+    val bytes: Long,
+    val extension: String,
+)
+
 internal class OutputPublisher(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
@@ -21,36 +27,38 @@ internal class OutputPublisher(
         file: File,
         requestedName: String = file.name,
         destinationTreeUri: String? = null,
-    ): Uri = synchronized(publishLock) {
-        require(file.isFile) { "Completed output is missing." }
-        val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
+    ): PublishedOutput = publishAll(listOf(file to requestedName), destinationTreeUri).single()
+
+    /**
+     * Publishes a batch while querying a SAF destination folder only once. The previous
+     * one-file-at-a-time path repeated the full child listing for every playlist output.
+     */
+    fun publishAll(
+        files: List<Pair<File, String>>,
+        destinationTreeUri: String? = null,
+        shouldContinue: () -> Boolean = { true },
+        onPublished: (index: Int, total: Int) -> Unit = { _, _ -> },
+    ): List<PublishedOutput> = synchronized(publishLock) {
+        if (files.isEmpty()) return@synchronized emptyList()
+        files.forEach { (file, _) -> require(file.isFile) { "Completed output is missing." } }
         val destination = destinationTreeUri?.takeIf { it.isNotBlank() }
             ?: settingsRepository.settings.value.outputTreeUri.takeIf { it.isNotBlank() }
-        val uri = if (destination != null) {
-            publishToTree(file, Uri.parse(destination), safeName)
+        require(
+            destination != null || !DestinationPolicy.requiresSafDestination(Build.VERSION.SDK_INT),
+        ) { context.getString(R.string.error_destination_required) }
+
+        val published = if (destination != null) {
+            publishToTreeBatch(files, Uri.parse(destination), shouldContinue, onPublished)
         } else {
-            publishToDownloads(file, safeName)
+            publishToDownloadsBatch(files, shouldContinue, onPublished)
         }
-        if (!file.delete()) file.deleteOnExit()
-        uri
+        files.forEach { (file, _) -> if (!file.delete()) file.deleteOnExit() }
+        published
     }
 
     fun delete(uriText: String): Boolean = runCatching {
         context.contentResolver.delete(Uri.parse(uriText), null, null) > 0
     }.getOrDefault(false)
-
-    /** Byte size of a published document, as the provider itself reports it. */
-    fun sizeOf(uriText: String): Long? = runCatching {
-        context.contentResolver.query(
-            Uri.parse(uriText),
-            arrayOf(OpenableColumns.SIZE),
-            null,
-            null,
-            null,
-        )?.use { cursor ->
-            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
-        }
-    }.getOrNull()?.takeIf { it > 0L }
 
     fun nodeName(uriText: String): String? = runCatching {
         context.contentResolver.query(
@@ -73,7 +81,7 @@ internal class OutputPublisher(
         context.contentResolver.openInputStream(uri)?.use { true } ?: false
     }.getOrDefault(false)
 
-    private fun publishToDownloads(file: File, name: String): Uri {
+    private fun publishToDownloads(file: File, name: String): PublishedOutput {
         val resolver = context.contentResolver
         val mime = mimeType(name)
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -96,7 +104,7 @@ internal class OutputPublisher(
             "Android could not create the Downloads entry."
         }
         try {
-            resolver.openOutputStream(uri, "w").use { output ->
+            val bytes = resolver.openOutputStream(uri, "w").use { output ->
                 checkNotNull(output) { "Android could not open the Downloads entry." }
                 file.inputStream().buffered().use { input -> input.copyTo(output) }
             }
@@ -108,34 +116,76 @@ internal class OutputPublisher(
                     null,
                 )
             }
-            return uri
+            return PublishedOutput(uri, bytes, file.extension)
         } catch (error: Throwable) {
             resolver.delete(uri, null, null)
             throw error
         }
     }
 
-    private fun publishToTree(file: File, tree: Uri, requestedName: String): Uri {
-        val resolver = context.contentResolver
-        val parentId = DocumentsContract.getTreeDocumentId(tree)
-        val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
-        val name = availableName(tree, requestedName)
-        val uri = checkNotNull(
-            DocumentsContract.createDocument(resolver, parent, mimeType(name), name),
-        ) { "The selected folder refused the new file." }
+    private fun publishToDownloadsBatch(
+        files: List<Pair<File, String>>,
+        shouldContinue: () -> Boolean,
+        onPublished: (index: Int, total: Int) -> Unit,
+    ): List<PublishedOutput> {
+        val created = mutableListOf<Uri>()
         try {
-            resolver.openOutputStream(uri, "w").use { output ->
-                checkNotNull(output) { "The selected folder could not be written." }
-                file.inputStream().buffered().use { input -> input.copyTo(output) }
+            return files.mapIndexed { index, (file, requestedName) ->
+                if (!shouldContinue()) throw java.util.concurrent.CancellationException("Publication cancelled")
+                val result = publishToDownloads(
+                    file,
+                    SafeOutputNames.sanitize(requestedName, file.extension),
+                )
+                created += result.uri
+                onPublished(index, files.size)
+                result
             }
-            return uri
         } catch (error: Throwable) {
-            DocumentsContract.deleteDocument(resolver, uri)
+            created.forEach { uri -> runCatching { context.contentResolver.delete(uri, null, null) } }
             throw error
         }
     }
 
-    private fun availableName(tree: Uri, requested: String): String {
+    private fun publishToTreeBatch(
+        files: List<Pair<File, String>>,
+        tree: Uri,
+        shouldContinue: () -> Boolean,
+        onPublished: (index: Int, total: Int) -> Unit,
+    ): List<PublishedOutput> {
+        val resolver = context.contentResolver
+        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
+        val existing = existingNames(tree)
+        val created = mutableListOf<Uri>()
+        try {
+            return files.mapIndexed { index, (file, requestedName) ->
+                if (!shouldContinue()) throw java.util.concurrent.CancellationException("Publication cancelled")
+                val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
+                val name = OutputNameAllocator.next(existing, safeName)
+                existing += name
+                val uri = checkNotNull(
+                    DocumentsContract.createDocument(resolver, parent, mimeType(name), name),
+                ) { "The selected folder refused the new file." }
+                created += uri
+                val bytes = try {
+                    resolver.openOutputStream(uri, "w").use { output ->
+                        checkNotNull(output) { "The selected folder could not be written." }
+                        file.inputStream().buffered().use { input -> input.copyTo(output) }
+                    }
+                } catch (error: Throwable) {
+                    DocumentsContract.deleteDocument(resolver, uri)
+                    throw error
+                }
+                onPublished(index, files.size)
+                PublishedOutput(uri, bytes, file.extension)
+            }
+        } catch (error: Throwable) {
+            created.forEach { uri -> runCatching { DocumentsContract.deleteDocument(resolver, uri) } }
+            throw error
+        }
+    }
+
+    private fun existingNames(tree: Uri): MutableSet<String> {
         val resolver = context.contentResolver
         val parentId = DocumentsContract.getTreeDocumentId(tree)
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
@@ -150,24 +200,18 @@ internal class OutputPublisher(
             val column = cursor.getColumnIndex(
                 DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             )
-            while (cursor.moveToNext() && existing.size < 10_000) {
-                if (column >= 0) existing += cursor.getString(column)
+            while (cursor.moveToNext() && existing.size < MAX_EXISTING_NAMES) {
+                if (column >= 0) cursor.getString(column)?.let(existing::add)
             }
         }
-        if (requested !in existing) return requested
-        val dot = requested.lastIndexOf('.')
-        val stem = if (dot > 0) requested.substring(0, dot) else requested
-        val extension = if (dot > 0) requested.substring(dot) else ""
-        for (index in 2..999) {
-            val candidate = "$stem ($index)$extension"
-            if (candidate !in existing) return candidate
-        }
-        return "$stem-${System.currentTimeMillis().toString(36).takeLast(8)}$extension"
+        return existing
     }
 
     private fun mimeType(name: String): String = guessMimeType(name)
 
     companion object {
+        private const val MAX_EXISTING_NAMES = 10_000
+
         fun guessMimeType(name: String?): String {
             if (name.isNullOrBlank()) return "application/octet-stream"
             return URLConnection.guessContentTypeFromName(name)
@@ -195,6 +239,19 @@ internal class OutputPublisher(
             }.getOrDefault(false)
         }
 
+        fun requiresSafDestination(sdkInt: Int = Build.VERSION.SDK_INT): Boolean =
+            DestinationPolicy.requiresSafDestination(sdkInt)
+
+        /** A blank destination is valid only on API 29+, where MediaStore.Downloads applies. */
+        fun isDestinationValid(
+            context: Context,
+            treeUriString: String?,
+            sdkInt: Int = Build.VERSION.SDK_INT,
+        ): Boolean {
+            if (treeUriString.isNullOrBlank()) return !DestinationPolicy.requiresSafDestination(sdkInt)
+            return isTreePermissionValid(context, treeUriString)
+        }
+
         fun formatDisplayPath(treeUriString: String?): String {
             if (treeUriString.isNullOrBlank()) return "Downloads/VRKA"
             return runCatching {
@@ -219,6 +276,20 @@ internal class OutputPublisher(
                 cleanPath.ifBlank { "Downloads/VRKA" }
             }.getOrDefault("Downloads/VRKA")
         }
+    }
+}
+
+internal object OutputNameAllocator {
+    fun next(existing: MutableSet<String>, requested: String): String {
+        if (requested !in existing) return requested
+        val dot = requested.lastIndexOf('.')
+        val stem = if (dot > 0) requested.substring(0, dot) else requested
+        val extension = if (dot > 0) requested.substring(dot) else ""
+        for (index in 2..999) {
+            val candidate = "$stem ($index)$extension"
+            if (candidate !in existing) return candidate
+        }
+        return "$stem-${System.currentTimeMillis().toString(36).takeLast(8)}$extension"
     }
 }
 

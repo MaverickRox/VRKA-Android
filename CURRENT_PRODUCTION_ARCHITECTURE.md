@@ -1,6 +1,6 @@
-# VRKA Android 5.1.0 — Current Production Architecture
+# VRKA Android 5.1.1 — Current Production Architecture
 
-This document defines the current production architecture for VRKA Android 5.1.0. It is grounded in the verified source code and build artifacts on the `main` branch. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+This document defines the current architecture for VRKA Android 5.1.1 (local candidate). It is grounded in the source code on the `main` branch plus the local v5.1.1 working-tree changes. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Sections that describe v5.1.0 behavior remain accurate except where the v5.1.1 reliability notes below supersede them.
 
 ---
 
@@ -8,7 +8,7 @@ This document defines the current production architecture for VRKA Android 5.1.0
 
 VRKA Android is a native Android media downloader and passive web stream discovery application built with **Jetpack Compose** and **Kotlin Coroutines**. It operates strictly on-device with zero application telemetry or cloud tracking.
 
-The 5.1.0 release establishes the following core architectural pillars:
+The 5.1.0 release established the following core architectural pillars, retained by 5.1.1:
 - **Primary Transfer Engine**: `yt-dlp` is the primary and sole transfer engine for both direct downloads and Browser Fallback acquisitions.
 - **Browser Fallback Engine**: Mozilla `GeckoView` operates in a task-scoped private session to load protected pages and observe media streams.
 - **Media Candidate Discovery**: An internal first-party `VRKA Media Detector` WebExtension passively intercepts media requests and DOM elements, passing candidates to native Kotlin via `GeckoMediaBridge`.
@@ -22,7 +22,7 @@ The 5.1.0 release establishes the following core architectural pillars:
 
 ## 2. Interface Localization & Multilingual Architecture
 
-VRKA Android 5.1.0 provides complete interface localization across **14 distinct languages** plus **System Default**:
+VRKA Android 5.1.1 retains complete interface localization across **14 distinct languages** plus **System Default**:
 
 | Locale Tag | Language | Native Name | Layout Direction | Resource Directory |
 |---|---|---|---|---|
@@ -159,7 +159,7 @@ When direct `yt-dlp` extraction fails due to anti-bot challenges (e.g., Cloudfla
 
 ## 6. Application Self-Updater Subsystem
 
-VRKA Android 5.1.0 includes an independent, cryptographically authenticated self-updater targeting official GitHub releases.
+VRKA Android 5.1.1 retains the independent, cryptographically authenticated self-updater targeting official GitHub releases.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -223,5 +223,7 @@ The UI is built with **Jetpack Compose** using design tokens (`VrkaTokens`):
 - **Liquid Glass Navigation**: Two independently rendered layers. The outer capsule applies a 0.75× blur and translucent veil. The active pill samples `LocalAppBackdrop` directly at full resolution.
 - **AGSL RuntimeShader (API 33+)**: High-performance lens transform with 1.35× center magnification, 20-dp refraction height, 14-dp displacement, normal-map edge curvature, and chromatic aberration channel splitting. Fallback glass rendering is provided on API 26–32.
 - **Directional Luminous Wake Progress**: 18-track directional streak with cached analytic teardrop glow optimized for AMOLED black backgrounds.
-- **Preflight Download Size Estimation**: Calculates anticipated download size based on format plans prior to queueing.
+- **Resolution-Aware Size Estimation**: `SizeEstimator` runs a metadata-only yt-dlp preflight with the same `-f` selector and 60 fps sort as the transfer. `requested_formats` from that document are authoritative; the complete `formats` table still supplies every resolution chip. `MetadataRepository` caches each document by source, format selection, playlist range, runtime version, and a header digest. Browser Fallback clears the page-level estimate, estimates the selected candidate independently, and never blocks the transfer. Estimates that cannot be supported by metadata are shown as unavailable.
+- **Recoverable Job Storage**: `JobStore` writes a versioned JSON object through a temporary file and atomic move, returns explicit save results, and on malformed input preserves a bounded recovery copy while salvaging valid records. In-flight recovery and terminal-state handling are unchanged.
+- **API-Range Destination Policy**: API 29+ publishes through `MediaStore.Downloads` (`Downloads/VRKA`); API 26–28 require a granted SAF tree before a job starts and return to the folder prompt if permission is revoked.
 - **Dynamic Typography**: Monospace Space Mono (`VRKA Font`) and clean System (`Roboto`) font switching.

@@ -74,7 +74,6 @@ internal fun HomeScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var url by remember { mutableStateOf("") }
-    val streamCoordinator = remember { StreamSelectionCoordinator() }
 
     var mode by remember { mutableStateOf(settings.defaultMode) }
     var quality by remember { mutableStateOf(settings.defaultQuality) }
@@ -103,12 +102,18 @@ internal fun HomeScreen(
     var confirmationNeedsLocation by remember { mutableStateOf(false) }
     var showConfirmationDialog by remember { mutableStateOf(false) }
     var sizeEstimate by remember { mutableStateOf<SizeEstimate?>(null) }
+    var sizeEstimateFor by remember { mutableStateOf<DownloadRequest?>(null) }
     var metadata by remember { mutableStateOf<MetadataSnapshot?>(null) }
     var estimatePending by remember { mutableStateOf(false) }
     var skipFutureEstimates by remember { mutableStateOf(false) }
     val estimateGate = remember { SizeEstimateGate() }
     var dialogSelectedUri by remember { mutableStateOf("") }
     var setAsDefaultChecked by remember { mutableStateOf(true) }
+
+    // An estimate is only valid for the exact request that produced it. This prevents an
+    // old 2160p callback from appearing after the user selects 1440p, and keeps the
+    // confirmation dialog and the queued job on the same estimate identity.
+    val validEstimate = sizeEstimate.takeIf { sizeEstimateFor == confirmationRequest }
 
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -129,19 +134,22 @@ internal fun HomeScreen(
         showConfirmationDialog = false
         confirmationRequest = null
         sizeEstimate = null
+        sizeEstimateFor = null
         estimatePending = false
         skipFutureEstimates = false
     }
 
     fun requestSizeEstimate(request: DownloadRequest, forceRefresh: Boolean) {
         sizeEstimate = null
+        sizeEstimateFor = null
         estimatePending = true
         val token = estimateGate.begin()
         scope.launch {
             val result = runCatching { onEstimateSize(request, forceRefresh) }
                 .getOrElse { SizeEstimate.unavailable("error") }
-            // Reject metadata that belongs to an older selection or a dismissed sheet.
+            // Reject metadata that belongs to an older selection or a dismissed dialog.
             if (!estimateGate.accepts(token)) return@launch
+            sizeEstimateFor = request
             sizeEstimate = result
             estimatePending = false
         }
@@ -167,6 +175,7 @@ internal fun HomeScreen(
         }
         if (!settings.showDownloadSizeConfirmation) {
             sizeEstimate = SizeEstimate.unavailable("disabled")
+            sizeEstimateFor = request
             estimatePending = false
             return
         }
@@ -197,6 +206,9 @@ internal fun HomeScreen(
             metadata = null
             return@LaunchedEffect
         }
+        // Hide the previous selection's chip metadata immediately; it must never remain
+        // visible after the source URL or a format-affecting option changes.
+        metadata = null
         delay(PREFLIGHT_DEBOUNCE_MS)
         val preview = DownloadRequest(
             url = normalized,
@@ -222,6 +234,13 @@ internal fun HomeScreen(
 
     fun confirmDownload() {
         val request = confirmationRequest ?: return
+        if (confirmationNeedsLocation &&
+            !OutputPublisher.isDestinationValid(context, dialogSelectedUri)
+        ) {
+            // The picker may have been cancelled, or the API 26-28 folder is still missing.
+            // Do not enqueue a job that could only fail after a full transfer.
+            return
+        }
         if (skipFutureEstimates) {
             scope.launch { repository.setShowDownloadSizeConfirmation(false) }
         }
@@ -236,9 +255,9 @@ internal fun HomeScreen(
             } else {
                 onUpdateDownloadLocation(settings.outputTreeUri, saveMode, true)
             }
-            onEnqueue(request.copy(destinationTreeUri = dialogSelectedUri), sizeEstimate)
+            onEnqueue(request.copy(destinationTreeUri = dialogSelectedUri), validEstimate)
         } else {
-            onEnqueue(request.copy(destinationTreeUri = settings.outputTreeUri), sizeEstimate)
+            onEnqueue(request.copy(destinationTreeUri = settings.outputTreeUri), validEstimate)
         }
         url = ""
         validation = ""
@@ -430,9 +449,10 @@ internal fun HomeScreen(
                         // therefore always shown with the approximate marker.
                         val chipLabel = when (item) {
                             VideoQuality.BEST -> {
-                                val bytes = sizeEstimate?.bytes?.takeIf { it > 0 }
-                                val approximate = sizeEstimate?.kind != SizeEstimateKind.EXACT
-                                baseLabel + formatSizeSuffix(context, bytes, approximate)
+                                // Never reuse the selected quality's estimate for the Best
+                                // chip; resolve Best independently from the same document.
+                                val bytes = metadata?.bestOption?.bytes
+                                baseLabel + formatSizeSuffix(context, bytes, approximate = true)
                             }
                             else -> {
                                 val option = metadata?.sizeFor(item.height)
@@ -444,7 +464,6 @@ internal fun HomeScreen(
                             onClick = {
                                 quality = item
                                 scope.launch { repository.setDefaults(mode, item, audioFormat, bitrate) }
-                                streamCoordinator.requestQuality(item)
                             },
                             label = chipLabel,
                             isMonospace = true,
@@ -921,8 +940,8 @@ internal fun HomeScreen(
                     origin = origin.trim(),
                     customHeaders = customHeadersMap,
                 )
-                val req = streamCoordinator.commit(rawReq)
-                val isLocationValid = OutputPublisher.isTreePermissionValid(context, settings.outputTreeUri)
+                val req = rawReq
+                val isLocationValid = OutputPublisher.isDestinationValid(context, settings.outputTreeUri)
                 val needsLocationPrompt = !settings.isDownloadLocationConfigured ||
                     settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME ||
                     !isLocationValid
@@ -943,8 +962,9 @@ internal fun HomeScreen(
         if (showConfirmationDialog && confirmationRequest != null) {
             DownloadConfirmationDialog(
                 request = confirmationRequest!!,
-                estimate = sizeEstimate,
-                estimatePending = estimatePending,
+                estimate = validEstimate,
+                estimatePending = estimatePending ||
+                    (settings.showDownloadSizeConfirmation && sizeEstimateFor != confirmationRequest),
                 showEstimate = settings.showDownloadSizeConfirmation,
                 needsLocation = confirmationNeedsLocation,
                 destinationUri = dialogSelectedUri,
@@ -1292,10 +1312,11 @@ private fun DownloadConfirmationDialog(
         },
         confirmButton = {
             Button(
-                // A pending or failed estimate never blocks the download; the dialog keeps
-                // updating the size in place while the preflight completes.
+                // A pending or failed estimate never blocks the download; only a required
+                // destination that is missing or unreadable does.
                 onClick = onConfirm,
-                enabled = true,
+                enabled = !needsLocation ||
+                    OutputPublisher.isDestinationValid(context, destinationUri),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = VrkaTokens.Accent,
                     contentColor = Color.White,
