@@ -38,13 +38,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run unit tests, lint, androidTest compilation and debug builds
-        run: >
-          ./gradlew --no-daemon
-          testDebugUnitTest
-          lintDebug
-          compileDebugAndroidTestKotlin
-          assembleDebug
-          assembleDevRelease
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon \
+            testDebugUnitTest \
+            lintDebug \
+            compileDebugAndroidTestKotlin \
+            assembleDebug \
+            assembleDevRelease
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8"
           # No production signing credentials are configured in CI. The devRelease variant
