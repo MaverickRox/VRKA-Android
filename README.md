@@ -23,7 +23,7 @@
 <br />
 
 > [!IMPORTANT]
-> **USERS UPGRADING FROM VRKA v5.0.2 MUST DOWNLOAD AND INSTALL v5.1.0 DIRECTLY FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON.**
+> **USERS UPGRADING FROM VRKA v5.0.2 MUST DOWNLOAD AND INSTALL v5.1.1 DIRECTLY FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON.**
 > 
 > **OFFICIAL DOWNLOAD PAGE:**
 > https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.1
@@ -31,7 +31,7 @@
 > **INSTALLATION:** Download `VRKA-Android-v5.1.1.apk` from the Assets section and install it over your existing VRKA installation. NO NEED TO UNINSTALL v5.0.2 FIRST.
 
 <div align="center">
-  <img src="docs/assets/social-preview.png" alt="VRKA Android Social Preview" width="900" />
+  <img src="docs/screenshots/v5.1.1/vrka-v5.1.1-showcase.png" alt="VRKA Android v5.1.1 Product Showcase" width="900" />
 </div>
 
 ---
@@ -62,31 +62,40 @@ Core capabilities:
 ## Screenshots
 
 <div align="center">
-  <img src="docs/screenshots/v5.1.1/vrka-v5.1.1-showcase.png" alt="VRKA Android v5.1.1 Product Showcase" width="900" /><br /><br />
 
 <table>
   <tr>
     <td align="center" width="33%">
-      <img src="docs/screenshots/download-dark.png" width="220" alt="Download Screen (Dark Mode)" /><br />
-      <b>Download Interface</b><br />
-      <sub>Format, resolution & codec selection</sub>
+      <img src="docs/screenshots/v5.1.1/download-v5.1.1.png" width="230" alt="Format Preflight & Estimation" /><br />
+      <b>Preflight & Resolution Chips</b><br />
+      <sub>Synchronized 4K / 2K download size estimation</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/queue-dark.png" width="220" alt="Queue Screen" /><br />
-      <b>Task Queue</b><br />
-      <sub>Persistent queue with optional concurrency</sub>
+      <img src="docs/screenshots/v5.1.1/confirmation-v5.1.1.png" width="230" alt="Destination Confirmation" /><br />
+      <b>Confirmation Modal</b><br />
+      <sub>Destination folder & stream pre-allocation</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/history-dark.png" width="220" alt="History Screen" /><br />
-      <b>Download History</b><br />
-      <sub>Archived tasks & media files</sub>
+      <img src="docs/screenshots/v5.1.1/queue-v5.1.1.png" width="230" alt="Active Queue" /><br />
+      <b>Active Task Queue</b><br />
+      <sub>18-track Comet glow wake & live transfer speed</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <img src="docs/screenshots/download-light.png" width="220" alt="Download Screen (Light Mode)" /><br />
-      <b>Light Mode</b><br />
-      <sub>Adaptive high-contrast light theme</sub>
+      <img src="docs/screenshots/v5.1.1/history-v5.1.1.png" width="230" alt="Completed History" /><br />
+      <b>Download History</b><br />
+      <sub>Verified 709 MiB published media output</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/v5.1.1/browser-fallback-v5.1.1.png" width="230" alt="GeckoView Fallback" /><br />
+      <b>Browser Fallback</b><br />
+      <sub>Passive stream detection & uBlock Origin filtering</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/v5.1.1/settings-v5.1.1.png" width="230" alt="Settings & Preferences" /><br />
+      <b>Settings & Storage</b><br />
+      <sub>Concurrency limits, typography & destination policies</sub>
     </td>
   </tr>
 </table>
@@ -139,7 +148,7 @@ VRKA Android includes a hardened, cryptographically verified in-app update engin
 - **24-Hour Automatic Gate**: Automatic startup checks run at most once every 24 hours to reduce network traffic.
 - **Manual Check Bypass**: The `[Check for Updates]` button in Settings bypasses the 24-hour interval to check immediately.
 - **Non-Blocking Startup**: Checks run asynchronously without slowing down app startup.
-- **Canonical Stable Releases**: Accepts stable three-part tags such as `v5.1.0`, compares numeric version segments, and requires the exact matching asset `VRKA-Android-v5.1.0.apk`.
+- **Canonical Stable Releases**: Accepts stable three-part tags such as `v5.1.1`, compares numeric version segments, and requires the exact matching asset `VRKA-Android-v5.1.1.apk`.
 - **HTTPS-Only Networking & Host Validation**: Streams metadata and APK files over HTTPS from approved GitHub release hosts, rejecting user-info, nonstandard ports, and unapproved hosts.
 - **Redirect Validation**: Validates every redirect target and limits redirect hops to at most 5.
 - **Two-Stage Install Verification**: Verifies archive integrity, package identity, version code, and signer certificate on temporary downloads, followed by canonical filename verification on staged files before launching Android's `PackageInstaller`.
@@ -310,43 +319,45 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-The official v5.1.0 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate. The local v5.1.1 candidate is only built with the debug keystore for development validation; no production-signed v5.1.1 APK exists.
+The official v5.1.1 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
 
 ---
 
 ## Release Signing
 
-The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Verify the v5.1.0 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation. The v5.1.1 local candidate has no published artifact to verify.
+The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Verify the v5.1.1 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
 
 ---
 
 ## Installation
 
 > [!NOTE]
-> **Upgrading from v5.0.2**: Due to a known client-side verification check on temporary download files in the v5.0.2 binary, the in-app updater cannot self-execute the upgrade. Existing v5.0.2 users should download `VRKA-Android-v5.1.0.apk` directly and install it over v5.0.2. Because both versions share the identical production signing key, all app data, settings, and download histories are preserved.
+> **Upgrading from v5.0.2**: Due to a known client-side verification check on temporary download files in the v5.0.2 binary, the in-app updater cannot self-execute the upgrade. Existing v5.0.2 users should download `VRKA-Android-v5.1.1.apk` directly and install it over v5.0.2. Because both versions share the identical production signing key, all app data, settings, and download histories are preserved.
 
-1. Download the official `VRKA-Android-v5.1.0.apk` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
+1. Download the official `VRKA-Android-v5.1.1.apk` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
-   (Get-FileHash .\VRKA-Android-v5.1.0.apk -Algorithm SHA256).Hash
+   (Get-FileHash .\VRKA-Android-v5.1.1.apk -Algorithm SHA256).Hash
    ```
-   Expected: `5051ecfd6319ca2cafdd4287904006fbc54b06faac5444d3a3c73df5cdc848aa`. The same value is recorded in `SHA256SUMS` and the official release page.
+   Expected: `781d7910d9b5855d4060c247c09ac3f89156ebfd202c8af5385eea816380f4f8`. The same value is recorded in `SHA256SUMS` and the official release page.
 3. Install on your Android device:
    ```bash
-   adb install -r .\VRKA-Android-v5.1.0.apk
+   adb install -r .\VRKA-Android-v5.1.1.apk
    ```
 
 ---
 
 ## Third-Party Notices & Attribution
 
-VRKA Android integrates the following open-source software:
+VRKA Android integrates and references the following open-source software and creative assets:
 - **yt-dlp**: The Unlicense ([yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp))
 - **Mozilla GeckoView**: Mozilla Public License 2.0 ([GeckoView](https://wiki.mozilla.org/Mobile/GeckoView))
 - **uBlock Origin**: GNU General Public License v3.0 ([gorhill/uBlock](https://github.com/gorhill/uBlock))
 - **FFmpeg**: LGPL / GPL licensed components ([FFmpeg](https://ffmpeg.org/))
 - **Space Mono Font**: SIL Open Font License 1.1 ([Space Mono](https://github.com/googlefonts/spacemono))
 - **Mornye Switch Component**: LGPL-3.0 / GPL-3.0 ([Mornye](https://github.com/MaverickRox/Mornye))
+- **Big Buck Bunny**: © 2008, Blender Foundation / [www.bigbuckbunny.org](https://www.bigbuckbunny.org), licensed under Creative Commons Attribution 3.0 ([CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)).
+- **Shaka Player Demo**: Google LLC, licensed under Apache License 2.0 ([Shaka Player](https://github.com/shaka-project/shaka-player)).
 
 ---
 

@@ -2,12 +2,11 @@
 
 ## Supported Versions
 
-| Version | Supported |
-| :--- | :--- |
-| 5.1.1 (local candidate, unpublished) | :construction: |
-| 5.1.0 | :white_check_mark: |
-| 5.0.2 | :white_check_mark: |
-| 5.0.1 and older | :x: |
+| Version | Supported | Notes |
+| :--- | :--- | :--- |
+| 5.1.1 | :white_check_mark: | Current official stable release |
+| 5.1.0 | :white_check_mark: | Prior stable release |
+| 5.0.2 and older | :x: | Unsupported; upgrade to v5.1.1 directly |
 
 ## Reporting a Vulnerability
 
@@ -15,9 +14,11 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 
 ## Release Integrity
 
-The official v5.1.0 release APK is production-signed. Verify its signature and SHA-256 against `RELEASE_EVIDENCE.md` or official GitHub release checksums before installation.
+The official v5.1.1 and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation.
 
-The v5.1.1 local candidate has no production-signed APK, manifest, or detached signature. Its development APK is debug-signed only. Production signing, manifest signing, tagging, and publication must be performed separately with the release credentials.
+- **v5.1.1 Release APK:** `VRKA-Android-v5.1.1.apk`
+- **v5.1.1 SHA-256:** `781d7910d9b5855d4060c247c09ac3f89156ebfd202c8af5385eea816380f4f8`
+- **Android Signing Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
 
 The `release` build type requires explicit signing properties; it has no debug-key fallback. Never publish signing properties, keystores, passwords, or private signing keys in this repository or artifact package.
 
