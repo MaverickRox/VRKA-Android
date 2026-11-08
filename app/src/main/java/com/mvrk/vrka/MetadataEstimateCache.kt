@@ -67,6 +67,11 @@ class MetadataEstimateCache(
             append('|').append(request.mp3Bitrate)
             append('|').append(request.h264CompatibilityMode)
             append('|').append(request.commandTemplateId.orEmpty())
+            // Safe custom arguments are appended to the preflight exactly as to the transfer,
+            // so they can change the selected streams and belong in the key.
+            append('|').append(
+                DownloadRequestFactory.safeCustomArguments(request).joinToString("\u001f"),
+            )
         }
 
         fun keyFor(request: DownloadRequest, runtimeVersion: String): String = buildString {
@@ -111,11 +116,11 @@ class MetadataEstimateCache(
 /**
  * Bounded, in-memory cache of raw yt-dlp metadata documents.
  *
- * A document describes every available stream for a source, so it can answer size questions
- * for any quality or format selection without another network extraction. The key therefore
- * omits the format selector and trim range and stays stable across those UI changes; the
- * format key that produced the document is stored alongside it so callers know whether
- * `requested_formats` is trustworthy or the selection must be recalculated locally.
+ * A document describes every available stream for a source, but the extraction is executed
+ * with the request's `-f` selector, so its `requested_formats` are only authoritative for
+ * that selector. The key therefore includes [MetadataEstimateCache.formatKeyFor] alongside
+ * the source; a quality or mode change starts a new extraction, while the full `formats`
+ * table in each document still answers the resolution/snapshot view.
  *
  * Documents are never persisted, so signed media URLs and session data stay in memory only.
  * Header values are reduced to a digest inside the key and are never stored.
@@ -167,6 +172,7 @@ class MetadataDocumentCache(
 
         fun keyFor(request: DownloadRequest, runtimeVersion: String): String = buildString {
             append(request.resolvedMediaUrl ?: request.url)
+            append('|').append(MetadataEstimateCache.formatKeyFor(request))
             append('|').append(request.isPlaylist)
             append('|').append(request.playlistStart ?: "")
             append('|').append(request.playlistEnd ?: "")

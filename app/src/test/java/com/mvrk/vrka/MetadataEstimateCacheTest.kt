@@ -79,6 +79,13 @@ class MetadataEstimateCacheTest {
                 "2026.01.01",
             ),
         )
+        assertNotEquals(
+            baseKey,
+            MetadataEstimateCache.keyFor(
+                base.copy(customArguments = listOf("--extractor-args", "youtube:player_client=web_safari")),
+                "2026.01.01",
+            ),
+        )
     }
 
     @Test
@@ -113,21 +120,23 @@ class MetadataEstimateCacheTest {
     }
 
     @Test
-    fun documentKeyIgnoresFormatSelectionAndTrim() {
+    fun documentKeyTracksTheFormatSelection() {
         val base = DownloadRequest(url = URL)
         val key = MetadataDocumentCache.keyFor(base, "2026.01.01")
 
-        // The cached document contains every stream, so these changes only affect the local
-        // recalculation and must not trigger another extraction.
-        assertEquals(key, MetadataDocumentCache.keyFor(base.copy(quality = VideoQuality.P720), "2026.01.01"))
-        assertEquals(key, MetadataDocumentCache.keyFor(base.copy(prefer60Fps = true), "2026.01.01"))
-        assertEquals(
+        // The extraction runs with the request's `-f`, so requested_formats are only
+        // authoritative for that selection. A change of selection must not reuse the
+        // previous document.
+        assertNotEquals(key, MetadataDocumentCache.keyFor(base.copy(quality = VideoQuality.P720), "2026.01.01"))
+        assertNotEquals(key, MetadataDocumentCache.keyFor(base.copy(prefer60Fps = true), "2026.01.01"))
+        assertNotEquals(
             key,
             MetadataDocumentCache.keyFor(
                 base.copy(mode = MediaMode.AUDIO, audioFormat = AudioFormat.MP3, mp3Bitrate = 320),
                 "2026.01.01",
             ),
         )
+        // Trim is a local scale of the same selected streams and must not re-extract.
         assertEquals(key, MetadataDocumentCache.keyFor(base.copy(trimStart = "00:01:00"), "2026.01.01"))
     }
 

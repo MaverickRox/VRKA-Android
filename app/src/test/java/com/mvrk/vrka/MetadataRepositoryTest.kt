@@ -15,7 +15,7 @@ class MetadataRepositoryTest {
     private val request = DownloadRequest(url = URL)
 
     @Test
-    fun oneExtractionAnswersEverySelection() = runBlocking {
+    fun everySelectionExtractsOnceAndReturnsToItsCachedDocument() = runBlocking {
         val probes = AtomicInteger()
         val repository = repository(probes)
 
@@ -26,16 +26,21 @@ class MetadataRepositoryTest {
             VERSION,
         )
         val snapshot = repository.snapshot(request, VERSION)
+        val p1080Again = repository.estimate(request.copy(quality = VideoQuality.P1080), VERSION)
 
-        assertEquals(1, probes.get())
+        // Each distinct selector needs its own yt-dlp requested_formats; returning to a
+        // previous selector is answered from its cached document without a new process.
+        assertEquals(4, probes.get())
         assertEquals(53_000_000L, p1080.bytes)
         assertEquals(21_000_000L, p720.bytes)
         assertEquals(3_000_000L, audio.bytes)
+        assertEquals(53_000_000L, p1080Again.bytes)
         assertEquals(listOf(1080, 720), snapshot?.videoOptions?.map { it.height })
+        assertEquals(53_000_000L, snapshot?.bestOption?.bytes)
     }
 
     @Test
-    fun concurrentCallersShareOneExtraction() = runBlocking {
+    fun concurrentCallersShareOneExtractionPerSelection() = runBlocking {
         val probes = AtomicInteger()
         val repository = repository(probes, probeDelayMs = 100)
 
@@ -50,9 +55,11 @@ class MetadataRepositoryTest {
             }.awaitAll()
         }
 
-        assertEquals(1, probes.get())
+        assertEquals(2, probes.get())
         assertEquals(53_000_000L, results[0].bytes)
         assertEquals(21_000_000L, results[1].bytes)
+        assertEquals(53_000_000L, results[2].bytes)
+        assertEquals(21_000_000L, results[3].bytes)
     }
 
     @Test

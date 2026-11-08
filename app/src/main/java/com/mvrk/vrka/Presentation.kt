@@ -80,21 +80,31 @@ internal fun jobMediaSummary(context: Context, job: DownloadJob): String = when 
 
 internal fun jobStatusLabel(job: DownloadJob): String = when {
     job.state == JobState.PREPARING && job.detail.contains("runtime", true) -> "Analysing"
+    job.state == JobState.POSTPROCESSING && job.detail.contains("Validating", true) -> "Validating output"
     job.state == JobState.POSTPROCESSING && job.detail.contains("Publishing", true) -> "Publishing"
+    job.state == JobState.POSTPROCESSING && job.detail.contains("Converting", true) -> "Converting"
     job.state == JobState.POSTPROCESSING &&
         (job.request.trimStart.isNotBlank() || job.request.trimEnd.isNotBlank()) -> "Trimming"
     job.state == JobState.POSTPROCESSING && job.request.mode == MediaMode.AUDIO -> "Converting"
     job.state == JobState.POSTPROCESSING -> "Merging"
+    job.state == JobState.DOWNLOADING && job.activeStream == ActiveStream.VIDEO -> "Downloading video"
+    job.state == JobState.DOWNLOADING && job.activeStream == ActiveStream.AUDIO -> "Downloading audio"
+    job.state == JobState.DOWNLOADING && job.activeStream == ActiveStream.MEDIA -> "Downloading media"
     else -> job.state.label
 }
 
 internal fun jobStatusLabel(context: Context, job: DownloadJob): String = when {
     job.state == JobState.PREPARING && job.detail.contains("runtime", true) -> context.getString(R.string.status_analysing)
+    job.state == JobState.POSTPROCESSING && job.detail.contains("Validating", true) -> context.getString(R.string.status_validating)
     job.state == JobState.POSTPROCESSING && job.detail.contains("Publishing", true) -> context.getString(R.string.status_publishing)
+    job.state == JobState.POSTPROCESSING && job.detail.contains("Converting", true) -> context.getString(R.string.status_converting)
     job.state == JobState.POSTPROCESSING &&
         (job.request.trimStart.isNotBlank() || job.request.trimEnd.isNotBlank()) -> context.getString(R.string.status_trimming)
     job.state == JobState.POSTPROCESSING && job.request.mode == MediaMode.AUDIO -> context.getString(R.string.status_converting)
     job.state == JobState.POSTPROCESSING -> context.getString(R.string.status_merging)
+    job.state == JobState.DOWNLOADING && job.activeStream == ActiveStream.VIDEO -> context.getString(R.string.status_downloading_video)
+    job.state == JobState.DOWNLOADING && job.activeStream == ActiveStream.AUDIO -> context.getString(R.string.status_downloading_audio)
+    job.state == JobState.DOWNLOADING && job.activeStream == ActiveStream.MEDIA -> context.getString(R.string.status_downloading_media)
     else -> localizedJobStateLabel(context, job.state)
 }
 

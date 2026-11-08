@@ -1,11 +1,11 @@
-# VRKA Android 5.1.0 — Configured Android Compatibility
+# VRKA Android 5.1.1 — Configured Android Compatibility
 
-This file records the current Gradle build configuration. It does not claim full physical device validation.
+This file records the current Gradle build configuration for the local v5.1.1 candidate. It does not claim physical device validation.
 
 | Setting | Value from app/build.gradle.kts |
 | --- | --- |
 | Application ID | com.mvrk.vrka |
-| VersionName / VersionCode | 5.1.0 / 50100 |
+| VersionName / VersionCode | 5.1.1 / 50101 |
 | Minimum API | 26 (Android 8.0) |
 | Target API | 36 (Android 16) |
 | Compile SDK | API 37, minor API level 2 |
@@ -14,12 +14,18 @@ This file records the current Gradle build configuration. It does not claim full
 | Java source / target | 17 |
 | Interface Locales | 14 languages + System Default (full RTL support) |
 
-The project does not configure armeabi-v7a or x86_64 APK support. The 5.1.0 artifact metadata and packaged ABI are recorded in RELEASE_EVIDENCE.md after build verification.
+The project does not configure armeabi-v7a or x86_64 APK support. The local 5.1.1 development artifact metadata and packaged ABI are recorded in RELEASE_EVIDENCE.md. It is debug-signed; no production v5.1.1 artifact exists.
+
+## Destination behavior by API
+
+- **API 29+:** Sizes and downloads publish through scoped `MediaStore.Downloads` under `Downloads/VRKA`; no broad storage permission is requested.
+- **API 26–28:** A user-selected SAF tree with persisted write permission is mandatory before a download starts. This avoids the legacy `MediaStore.Files` path that would require `WRITE_EXTERNAL_STORAGE`.
+- **Revoked permission:** The job returns to `WAITING_FOR_USER` and re-opens the folder prompt.
 
 ## Platform behavior to validate on-device
 
-The source targets Android API 36 and declares API 26 as its minimum. The 5.0 release had a separate physical validation report; 5.1.0 was validated using automated test suites, release lint, production release packaging, and emulator-based testing. Physical OnePlus 11 hardware was unavailable for this release.
+The source targets Android API 36 and declares API 26 as its minimum. No compatible ARM64 physical device or emulator was available for v5.1.1; the installed AVDs are x86_64 and cannot run the arm64-only APK. API 26–28 runtime behavior, scoped-storage publication, revoked-permission recovery, and TalkBack progress announcements remain unverified on hardware.
 
 ## Release artifact checks
 
-The final APK check covers package/version metadata, native library ABI directories, and Android signature verification. Those artifact checks confirm packaging and signing; they do not prove runtime compatibility or a complete inventory of native behavior.
+The local check covers package/version metadata, native library ABI directories, debug signing, and build success. Those checks confirm packaging, not runtime compatibility or a complete inventory of native behavior.

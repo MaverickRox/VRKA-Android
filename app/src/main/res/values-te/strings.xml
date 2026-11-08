@@ -370,4 +370,15 @@
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">అత్యుత్తమ అందుబాటు</string>
+    <string name="error_destination_required">డౌన్‌లోడ్ ఫోల్డర్‌ను ఎంచుకోండి. Android 9 మరియు పాత వెర్షన్‌లకు వినియోగదారు ఎంచుకున్న ఫోల్డర్ అవసరం.</string>
+    <string name="progress_accessibility_label">డౌన్‌లోడ్ పురోగతి</string>
+    <string name="status_downloading_video">వీడియో డౌన్‌లోడ్ అవుతోంది</string>
+    <string name="status_downloading_audio">ఆడియో డౌన్‌లోడ్ అవుతోంది</string>
+    <string name="download_playlist_item">అంశం %1$d / %2$d</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">అవుట్‌పుట్ ధృవీకరించబడుతోంది</string>
+    <string name="status_downloading_media">మీడియా డౌన్‌లోడ్ అవుతోంది</string>
+    <string name="diagnostics_export_title">డయాగ్నస్టిక్స్ ఎగుమతి</string>
+    <string name="diagnostics_export_warning">ఈ ఎగుమతి మూల లింక్‌లు మరియు వీక్షణ లేదా డౌన్‌లోడ్ కార్యకలాపాన్ని వెల్లడించవచ్చు. సున్నితమైన ఆధారాలు దాచబడతాయి.</string>
+    <string name="diagnostics_export_include_source">పూర్తి అసలు మూల URL చేర్చు</string>
 </resources>

@@ -370,4 +370,15 @@
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">الأفضل متاحاً</string>
+    <string name="error_destination_required">اختر مجلد التنزيل. تتطلب Android 9 والإصدارات الأقدم مجلدًا يختاره المستخدم.</string>
+    <string name="progress_accessibility_label">تقدم التنزيل</string>
+    <string name="status_downloading_video">جارٍ تنزيل الفيديو</string>
+    <string name="status_downloading_audio">جارٍ تنزيل الصوت</string>
+    <string name="download_playlist_item">العنصر %1$d من %2$d</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">جارٍ التحقق من المخرجات</string>
+    <string name="status_downloading_media">جارٍ تنزيل الوسائط</string>
+    <string name="diagnostics_export_title">تصدير التشخيصات</string>
+    <string name="diagnostics_export_warning">قد يكشف هذا التصدير روابط المصدر ونشاط المشاهدة أو التنزيل. تبقى بيانات الاعتماد الحساسة محجوبة.</string>
+    <string name="diagnostics_export_include_source">تضمين رابط المصدر الأصلي الكامل</string>
 </resources>

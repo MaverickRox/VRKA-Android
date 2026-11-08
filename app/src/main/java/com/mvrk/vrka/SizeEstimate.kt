@@ -92,6 +92,8 @@ data class MetadataSnapshot(
     val title: String = "",
     val durationSeconds: Double? = null,
     val videoOptions: List<FormatSizeOption> = emptyList(),
+    /** Local re-selection of the "Best available" option, independent of the current chip. */
+    val bestOption: FormatSizeOption? = null,
     val subtitleLanguages: List<String> = emptyList(),
     val automaticCaptionLanguages: List<String> = emptyList(),
     val isPlaylist: Boolean = false,
@@ -195,10 +197,12 @@ object SizeEstimateCalculator {
         }
         val duration = root.optDouble("duration", Double.NaN)
             .takeIf { it.isFinite() && it > 0 }
+        val options = videoSizeOptions(root, request, duration)
         return MetadataSnapshot(
             title = title,
             durationSeconds = duration,
-            videoOptions = videoSizeOptions(root, request, duration),
+            videoOptions = options,
+            bestOption = bestVideoOption(root, request, duration) ?: options.firstOrNull(),
             subtitleLanguages = subtitles,
             automaticCaptionLanguages = automaticCaptions,
         )
@@ -275,7 +279,8 @@ object SizeEstimateCalculator {
             .distinct()
             .sortedDescending()
         if (heights.isEmpty()) return emptyList()
-        val audio = bestAudioStream(formats.filter { it.isAudioOnly() })
+        val audio = requestedAudioStream(json, formatsById)
+            ?: bestAudioStream(formats.filter { it.isAudioOnly() })
         val effectiveDuration = effectiveDuration(request, duration)
         return heights.mapNotNull { height ->
             // A dedicated video stream is preferred; a progressive stream is the fallback
@@ -284,22 +289,24 @@ object SizeEstimateCalculator {
             val atHeight = dedicated.ifEmpty {
                 progressive.filter { it.optInt("height", 0) == height }
             }
-            val sixtyFps = if (request.prefer60Fps) {
-                atHeight.filter { it.optDouble("fps", 0.0) >= 60.0 }
+            // Use the same resolved preference as the canonical plan. When the preflight
+            // revealed which codec yt-dlp selected, keep that codec preference at every
+            // height instead of inventing a new ranking from bitrate alone.
+            val preferred = preferredVideoCandidates(atHeight, json, formatsById)
+            val fpsCandidates = if (request.prefer60Fps) {
+                preferred.filter { it.optDouble("fps", 0.0) >= 60.0 }
             } else {
                 emptyList()
             }
-            val video = (sixtyFps.ifEmpty { atHeight }).maxWithOrNull(
-                compareBy<JSONObject>({ it.optDouble("fps", 0.0) })
-                    .thenBy { it.optDouble("tbr", 0.0) },
-            ) ?: return@mapNotNull null
+            val video = (fpsCandidates.ifEmpty { preferred }).maxWithOrNull(videoPreference)
+                ?: return@mapNotNull null
             val videoSize = resolveSize(video, formatsById, duration) ?: return@mapNotNull null
             val audioSize = if (video.isProgressive()) {
                 null
             } else {
                 audio?.let { resolveSize(it, formatsById, duration) } ?: return@mapNotNull null
             }
-            var total = videoSize.bytes + (audioSize?.bytes ?: 0L)
+            var total = safeAdd(videoSize.bytes, audioSize?.bytes ?: 0L) ?: return@mapNotNull null
             if (isTrimmed(request)) {
                 total = scaleForTrim(total, duration, effectiveDuration) ?: return@mapNotNull null
             }
@@ -309,6 +316,93 @@ object SizeEstimateCalculator {
                 bytes = total.takeIf { it > 0 },
             )
         }
+    }
+
+    /**
+     * Size of the locally resolved "Best available" pick. The chip view must not borrow the
+     * estimate of whichever resolution happens to be selected, so this is resolved from the
+     * complete format table with a dedicated Best request.
+     */
+    private fun bestVideoOption(
+        json: JSONObject,
+        request: DownloadRequest,
+        duration: Double?,
+    ): FormatSizeOption? {
+        if (request.mode == MediaMode.AUDIO) return null
+        val streams = selectLocalVideo(json, request.copy(quality = VideoQuality.BEST))
+            ?: return null
+        val formats = indexFormats(json)
+        val authoritativeAudio = requestedAudioStream(json, formats)
+        val effectiveStreams = if (streams.size > 1 && authoritativeAudio != null) {
+            listOf(streams.first(), authoritativeAudio)
+        } else {
+            streams
+        }
+        var total = 0L
+        for (stream in effectiveStreams) {
+            val resolved = resolveSize(stream, formats, duration) ?: return null
+            total = safeAdd(total, resolved.bytes) ?: return null
+        }
+        val effectiveDuration = effectiveDuration(request, duration)
+        if (isTrimmed(request)) {
+            total = scaleForTrim(total, duration, effectiveDuration) ?: return null
+        }
+        val video = effectiveStreams.firstOrNull() ?: return null
+        return FormatSizeOption(
+            height = video.optInt("height", 0).takeIf { it > 0 } ?: 0,
+            fps = video.optDouble("fps", Double.NaN).takeIf { it.isFinite() && it > 0 },
+            bytes = total.takeIf { it > 0 },
+        )
+    }
+
+    private fun requestedVideoStream(
+        json: JSONObject,
+        formats: Map<String, JSONObject>,
+    ): JSONObject? {
+        val requested = requestedFormats(json) ?: return null
+        for (index in 0 until requested.length()) {
+            val entry = requested.optJSONObject(index) ?: continue
+            val id = entry.optString("format_id").takeIf(String::isNotBlank) ?: continue
+            val format = formats[id] ?: continue
+            if (format.isVideoOnly() || format.isProgressive()) return format
+        }
+        return null
+    }
+
+    /**
+     * When yt-dlp revealed its video codec in `requested_formats`, restrict the chip
+     * candidates to that codec family if the height offers it. This keeps a VP9 choice from
+     * being replaced by a locally-preferred AV1 (or vice versa) at other heights.
+     */
+    private fun preferredVideoCandidates(
+        candidates: List<JSONObject>,
+        json: JSONObject,
+        formats: Map<String, JSONObject>,
+    ): List<JSONObject> {
+        val authoritative = requestedVideoStream(json, formats) ?: return candidates
+        val family = authoritative.vcodec().substringBefore('.')
+        if (family == "none" || family.isBlank()) return candidates
+        val matching = candidates.filter { it.vcodec().substringBefore('.') == family }
+        return matching.ifEmpty { candidates }
+    }
+
+    /**
+     * The audio stream yt-dlp actually selected for this preflight, when the document has
+     * one. Resolution chips should use the same audio rendition as the transfer rather than
+     * a second local ranking that can prefer a different codec or bitrate.
+     */
+    private fun requestedAudioStream(
+        json: JSONObject,
+        formats: Map<String, JSONObject>,
+    ): JSONObject? {
+        val requested = requestedFormats(json) ?: return null
+        for (index in 0 until requested.length()) {
+            val entry = requested.optJSONObject(index) ?: continue
+            val id = entry.optString("format_id").takeIf(String::isNotBlank) ?: continue
+            val format = formats[id] ?: continue
+            if (format.isAudioOnly()) return format
+        }
+        return null
     }
 
     /**
@@ -351,6 +445,9 @@ object SizeEstimateCalculator {
                 ).copy(title = title)
             }
             total += bytes
+            if (total < 0L) {
+                return SizeEstimate.unavailable("overflow").copy(title = title)
+            }
             if (item.kind != SizeEstimateKind.EXACT) exact = false
         }
         if (total <= 0) return SizeEstimate.unavailable("playlist-empty").copy(title = title)
@@ -395,6 +492,7 @@ object SizeEstimateCalculator {
         var exact = true
         var merged = false
         val missing = mutableListOf<String>()
+        val selectedIds = mutableListOf<String>()
         if (requested != null && requested.length() > 0) {
             merged = requested.length() > 1
             for (index in 0 until requested.length()) {
@@ -405,38 +503,67 @@ object SizeEstimateCalculator {
                     missing += format.optString("format_id").ifBlank { "stream-$index" }
                     continue
                 }
-                total += resolved.bytes
+                format.optString("format_id").takeIf(String::isNotBlank)?.let(selectedIds::add)
+                total = safeAdd(total, resolved.bytes)
+                    ?: return SizeEstimate.unavailable("overflow").copy(title = title)
                 if (!resolved.exact) exact = false
             }
         } else {
             val resolved = resolveSize(json, formats, rawDuration)
-                ?: return unavailableMissing(title, listOf("selected"))
-            total = resolved.bytes
-            exact = resolved.exact
+            if (resolved != null) {
+                total = resolved.bytes
+                exact = resolved.exact
+                json.optString("format_id").takeIf(String::isNotBlank)?.let(selectedIds::add)
+            } else if (formats.isNotEmpty()) {
+                // Some extractors (notably playlist entries) omit requested_formats even
+                // when a selector was supplied. Re-select locally from the full table so
+                // the entry still gets an honest approximate size instead of unavailable.
+                return locallySelectedVideo(json, request, rawDuration, effectiveDuration, title)
+            } else {
+                return unavailableMissing(title, listOf("selected"))
+            }
         }
         if (missing.isNotEmpty() || total <= 0) {
             return unavailableMissing(title, missing.ifEmpty { listOf("selected") })
         }
+        val selectedVideoId = if (request.mode == MediaMode.AUDIO) null else selectedIds.getOrNull(0)
+        val selectedAudioId = if (request.mode == MediaMode.AUDIO) {
+            selectedIds.getOrNull(0)
+        } else {
+            selectedIds.getOrNull(1)
+        }
 
-        // A merged container is never byte-identical to the sum of its source streams, so the
-        // total is an estimate even when every component reports an exact filesize.
-        val isExact = exact && !merged
+        // A merged container is never byte-identical to the sum of its source streams, and
+        // any post-processing (re-encoding, metadata, embedded subtitles, sponsor cuts)
+        // changes the produced file. Only an untouched single stream can be called exact.
+        val isExact = exact && !merged && !hasVideoPostProcessing(request)
         val detail = when {
             isTrimmed(request) -> "trim"
             merged -> "merged"
+            request.h264CompatibilityMode -> "h264"
+            hasVideoPostProcessing(request) -> "postprocessed"
             exact -> ""
             else -> "approx"
         }
         if (isTrimmed(request)) {
             val scaled = scaleForTrim(total, rawDuration, effectiveDuration)
                 ?: return SizeEstimate.unavailable("trim-unknown").copy(title = title)
-            return SizeEstimate(SizeEstimateKind.APPROXIMATE, scaled, title, "trim")
+            return SizeEstimate(
+                SizeEstimateKind.APPROXIMATE,
+                scaled,
+                title,
+                "trim",
+                videoFormatId = selectedVideoId,
+                audioFormatId = selectedAudioId,
+            )
         }
         return SizeEstimate(
             kind = if (isExact) SizeEstimateKind.EXACT else SizeEstimateKind.APPROXIMATE,
             bytes = total,
             title = title,
             detail = detail,
+            videoFormatId = selectedVideoId,
+            audioFormatId = selectedAudioId,
         )
     }
 
@@ -467,7 +594,8 @@ object SizeEstimateCalculator {
             if (resolved == null) {
                 missing += stream.optString("format_id").ifBlank { "stream-$index" }
             } else {
-                total += resolved.bytes
+                total = safeAdd(total, resolved.bytes)
+                    ?: return SizeEstimate.unavailable("overflow").copy(title = title)
             }
         }
         if (missing.isNotEmpty() || total <= 0) return unavailableMissing(title, missing)
@@ -517,15 +645,16 @@ object SizeEstimateCalculator {
         val videoOnly = formats.filter { it.isVideoOnly() }
         val audioOnly = formats.filter { it.isAudioOnly() }
         val progressive = formats.filter { it.isProgressive() }
+        val preferredVideoOnly = preferredVideoCandidates(videoOnly, json, indexFormats(json))
         val bestAudio = bestAudioStream(audioOnly)
 
         if (bestAudio != null) {
             if (request.prefer60Fps) {
-                bestVideoStream(videoOnly, heightLimit, minFps = 60.0)?.let {
+                bestVideoStream(preferredVideoOnly, heightLimit, minFps = 60.0)?.let {
                     return listOf(it, bestAudio)
                 }
             }
-            bestVideoStream(videoOnly, heightLimit, minFps = null)?.let {
+            bestVideoStream(preferredVideoOnly, heightLimit, minFps = null)?.let {
                 return listOf(it, bestAudio)
             }
         }
@@ -612,9 +741,13 @@ object SizeEstimateCalculator {
         return result
     }
 
-    private fun JSONObject.vcodec(): String = optString("vcodec", "none")
+    private fun JSONObject.vcodec(): String = codecOrNone(optString("vcodec"))
 
-    private fun JSONObject.acodec(): String = optString("acodec", "none")
+    private fun JSONObject.acodec(): String = codecOrNone(optString("acodec"))
+
+    /** yt-dlp uses the literal string "none"; tolerate missing/null fields from wrappers. */
+    private fun codecOrNone(raw: String?): String =
+        raw?.trim()?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) } ?: "none"
 
     private fun JSONObject.isVideoOnly(): Boolean = vcodec() != "none" && acodec() == "none"
 
@@ -622,10 +755,13 @@ object SizeEstimateCalculator {
 
     private fun JSONObject.isProgressive(): Boolean = vcodec() != "none" && acodec() != "none"
 
+    private fun safeAdd(left: Long, right: Long): Long? =
+        if (right > 0 && left > Long.MAX_VALUE - right) null else left + right
+
     private fun unavailableMissing(title: String, missing: List<String>): SizeEstimate =
         SizeEstimate.unavailable(
             detail = "size-missing",
-            diagnostic = "no filesize/filesize_approx/bitrate for ${missing.joinToString(",")}",
+            diagnostic = "no filesize/filesize_approx/tbr/abr/vbr for ${missing.joinToString(",")}",
         ).copy(title = title)
 
     private fun audio(
@@ -641,8 +777,10 @@ object SizeEstimateCalculator {
             AudioFormat.MP3 -> {
                 if (effectiveDuration != null) {
                     val bitrate = request.mp3Bitrate.coerceIn(128, 320)
-                    val bytes = (bitrate * 125.0 * effectiveDuration).toLong()
-                    if (bytes > 0) return SizeEstimate(SizeEstimateKind.APPROXIMATE, bytes, title, "mp3-bitrate")
+                    val bytes = bitrate * 125.0 * effectiveDuration
+                    if (bytes.isFinite() && bytes > 0.0 && bytes <= Long.MAX_VALUE.toDouble()) {
+                        return SizeEstimate(SizeEstimateKind.APPROXIMATE, bytes.toLong(), title, "mp3-bitrate")
+                    }
                 }
             }
             AudioFormat.WAV -> {
@@ -650,8 +788,10 @@ object SizeEstimateCalculator {
                     val sampleRate = json.optInt("asr", DEFAULT_SAMPLE_RATE)
                         .takeIf { it in 8_000..384_000 } ?: DEFAULT_SAMPLE_RATE
                     val channels = json.optInt("audio_channels", DEFAULT_CHANNELS).coerceIn(1, 8)
-                    val bytes = (effectiveDuration * sampleRate * channels * 2).toLong()
-                    if (bytes > 0) return SizeEstimate(SizeEstimateKind.APPROXIMATE, bytes, title, "pcm")
+                    val bytes = effectiveDuration * sampleRate * channels * 2
+                    if (bytes.isFinite() && bytes > 0.0 && bytes <= Long.MAX_VALUE.toDouble()) {
+                        return SizeEstimate(SizeEstimateKind.APPROXIMATE, bytes.toLong(), title, "pcm")
+                    }
                 }
             }
             AudioFormat.OPUS -> Unit
@@ -667,7 +807,8 @@ object SizeEstimateCalculator {
             requested != null && requested.length() > 0 ->
                 requested.optJSONObject(0)?.let { resolveSize(it, formats, rawDuration) }
             else -> resolveSize(json, formats, rawDuration)
-        } ?: return unavailableMissing(title, listOf("audio"))
+        } ?: selectLocalAudio(json, request)?.let { resolveSize(it, formats, rawDuration) }
+        ?: return unavailableMissing(title, listOf("audio"))
 
         var bytes = source.bytes
         if (trimmed) {
@@ -687,21 +828,47 @@ object SizeEstimateCalculator {
     ): ResolvedSize? {
         sizeOf(value)?.let { return it }
         val formatId = value.optString("format_id").takeIf { it.isNotBlank() }
-        if (formatId != null) {
-            val match = formats[formatId]
-            if (match != null && match !== value) sizeOf(match)?.let { return it }
-        }
-        val tbr = value.optDouble("tbr", Double.NaN).takeIf { it.isFinite() && it > 0 }
-            ?: formatId?.let { formats[it] }
-                ?.optDouble("tbr", Double.NaN)
-                ?.takeIf { it.isFinite() && it > 0 }
+        val match = formatId?.let { formats[it] }?.takeIf { it !== value }
+        match?.let { sizeOf(it)?.let { resolved -> return resolved } }
+        // Bitrates are kbit/s, so one kbit/s for one second is 125 bytes. `tbr` is the
+        // total bitrate; audio-only and video-only formats may expose only `abr`/`vbr`.
+        val bitrate = bitrateOf(value, match)
         val streamDuration = value.optDouble("duration", Double.NaN)
-            .takeIf { it.isFinite() && it > 0 } ?: duration
-        if (tbr != null && streamDuration != null && streamDuration > 0) {
-            val bytes = (tbr * 125.0 * streamDuration).toLong()
-            if (bytes > 0) return ResolvedSize(bytes, exact = false)
+            .takeIf { it.isFinite() && it > 0 }
+            ?: match?.optDouble("duration", Double.NaN)?.takeIf { it.isFinite() && it > 0 }
+            ?: duration
+        if (bitrate != null && streamDuration != null && streamDuration > 0) {
+            val bytes = bitrate * 125.0 * streamDuration
+            if (bytes.isFinite() && bytes > 0.0 && bytes <= Long.MAX_VALUE.toDouble()) {
+                return ResolvedSize(bytes.toLong(), exact = false)
+            }
         }
         return null
+    }
+
+    private fun bitrateOf(value: JSONObject, match: JSONObject?): Double? {
+        positiveDouble(value, "tbr")?.let { return it }
+        match?.let { candidate -> positiveDouble(candidate, "tbr")?.let { return it } }
+        val audioOnly = value.isAudioOnly() || match?.isAudioOnly() == true
+        val videoOnly = value.isVideoOnly() || match?.isVideoOnly() == true
+        val abr = positiveDouble(value, "abr") ?: match?.let { positiveDouble(it, "abr") }
+        val vbr = positiveDouble(value, "vbr") ?: match?.let { positiveDouble(it, "vbr") }
+        return when {
+            audioOnly -> abr ?: vbr
+            videoOnly -> vbr ?: abr
+            abr != null && vbr != null -> abr + vbr
+            else -> abr ?: vbr
+        }
+    }
+
+    private fun positiveDouble(value: JSONObject, key: String): Double? {
+        val raw = value.opt(key) ?: return null
+        val number = when (raw) {
+            is Number -> raw.toDouble()
+            is String -> raw.toDoubleOrNull() ?: return null
+            else -> return null
+        }
+        return number.takeIf { it.isFinite() && it > 0.0 }
     }
 
     private fun indexFormats(json: JSONObject): Map<String, JSONObject> {
@@ -755,6 +922,12 @@ object SizeEstimateCalculator {
     private fun isTrimmed(request: DownloadRequest): Boolean =
         request.trimStart.isNotBlank() || request.trimEnd.isNotBlank()
 
+    private fun hasVideoPostProcessing(request: DownloadRequest): Boolean =
+        request.h264CompatibilityMode ||
+            request.embedMetadata ||
+            request.sponsorBlock ||
+            (request.downloadSubtitles && request.embedSubtitles)
+
     private fun effectiveDuration(request: DownloadRequest, duration: Double?): Double? {
         if (!isTrimmed(request)) return duration
         if (duration == null || duration <= 0) return null
@@ -765,7 +938,9 @@ object SizeEstimateCalculator {
 
     private fun scaleForTrim(bytes: Long, rawDuration: Double?, effectiveDuration: Double?): Long? {
         if (rawDuration == null || rawDuration <= 0 || effectiveDuration == null) return null
-        return (bytes * (effectiveDuration / rawDuration)).toLong().takeIf { it > 0 }
+        val scaled = bytes * (effectiveDuration / rawDuration)
+        if (!scaled.isFinite() || scaled <= 0.0 || scaled > Long.MAX_VALUE.toDouble()) return null
+        return scaled.toLong().takeIf { it > 0 }
     }
 
     private fun parseTimestampSeconds(value: String): Double? {

@@ -18,10 +18,6 @@ import org.bouncycastle.util.encoders.Hex
 import java.io.InputStream
 import java.security.Provider
 import java.security.Security
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 
 class ReleaseManifestVerifier(
     private val context: Context? = null,
@@ -287,6 +283,9 @@ class ReleaseManifestVerifier(
 
         private const val MAX_CLOCK_SKEW_MS = 60 * 60 * 1000L // 1 hour
         private val SHA256_HEX_PATTERN = Regex("^[a-f0-9]{64}$")
+        private val ISO_8601_PATTERN = Regex(
+            """^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$""",
+        )
 
         private val bundledProvider: Provider by lazy { BouncyCastleProvider() }
 
@@ -321,13 +320,18 @@ class ReleaseManifestVerifier(
             throw ManifestValidationException("Release signing key 0x${java.lang.Long.toHexString(PINNED_RELEASE_KEY_ID).uppercase()} not found in keyring")
         }
 
+        /**
+         * Strict ISO-8601 parsing: UTC (`Z`) and explicit offsets are accepted, fractional
+         * seconds are allowed, impossible calendar dates and trailing text are rejected.
+         * The previous lenient `SimpleDateFormat` accepted dates such as 2026-02-30.
+         */
         fun parseIso8601(isoString: String): Long? {
+            val clean = isoString.trim()
+            if (clean.isEmpty() || !ISO_8601_PATTERN.matches(clean)) return null
             return try {
-                val clean = isoString.trim()
-                val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }
-                format.parse(clean)?.time
+                java.time.OffsetDateTime.parse(clean, java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .toInstant()
+                    .toEpochMilli()
             } catch (_: Exception) {
                 null
             }

@@ -370,4 +370,15 @@ Voulez-vous vraiment activer les téléchargements simultanés ?</string>
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">Meilleure disponible</string>
+    <string name="error_destination_required">Choisissez un dossier de téléchargement. Android 9 et versions antérieures exigent un dossier sélectionné par l’utilisateur.</string>
+    <string name="progress_accessibility_label">Progression du téléchargement</string>
+    <string name="status_downloading_video">Téléchargement de la vidéo</string>
+    <string name="status_downloading_audio">Téléchargement de l’audio</string>
+    <string name="download_playlist_item">Élément %1$d sur %2$d</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">Vérification de la sortie</string>
+    <string name="status_downloading_media">Téléchargement du média</string>
+    <string name="diagnostics_export_title">Exporter les diagnostics</string>
+    <string name="diagnostics_export_warning">Cet export peut révéler des liens sources et une activité de visionnage ou de téléchargement. Les identifiants sensibles restent masqués.</string>
+    <string name="diagnostics_export_include_source">Inclure l’URL source originale complète</string>
 </resources>

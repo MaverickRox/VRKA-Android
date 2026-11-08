@@ -1,4 +1,49 @@
-# VRKA Android 5.1.0 — Test Results
+# VRKA Android 5.1.1 — Test Results
+
+Date: 2026-11-08
+
+## Automated checks
+
+| Check | Command | Result |
+|---|---|---|
+| Full JVM unit tests | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 732 tests, 72 suites, 0 failures, 0 errors, 0 skipped |
+| Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
+| Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS; instrumentation was not executed |
+| Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS without production signing credentials |
+| Debug APK | `./gradlew assembleDebug` | PASS |
+| Development release APK | `./gradlew assembleDevRelease` | PASS; R8 minification and debug-key signing |
+| Lint | `./gradlew lintDebug` | PASS: 277 warnings, 3 hints, 0 errors/fatal; no new lint ID from the v5.1.1 code |
+| CI workflow | PyYAML parse of `.github/workflows/ci.yml` | PASS; not executed on GitHub |
+
+The definitive run exited `0`; stdout/stderr were captured and the XML report timestamps came from that same execution (newest `2026-11-08 23:11:01`). The suite ran with an empty temporary `user.home` and no `.vrka` directory. This supersedes the earlier 690-test report and resolves the reported discrepancy where an independent invocation exited nonzero while old XML files showed passing tests: the current report is from a fresh `--rerun-tasks` execution with the exit code captured directly from Gradle. A test-source guard fails if a unit test references the production signing key. All updater cryptographic tests use generated temporary keys and run unconditionally; the only pinned-key cryptography test verifies the published v5.1.0 manifest with the public trust anchor and requires no secret.
+
+The 5.1.1 suite adds deterministic coverage for: resolution-specific authoritative sizes, AV1-versus-higher-bitrate-VP9 chip selection, revealed-codec preference, audio once, merged and separate audio/video streams, HLS master/variant selection, DASH representations, fragment/bitrate estimates, missing and invalid metadata, overflow, unit conversion, playlist fallback, duplicate formats, browser-candidate URL/header/format/cache separation, expired-candidate failure, candidate replacement/stale estimates, stale resolution responses, rapid switching, JobStore corruption/salvage/schema/write failures, active stream and playlist scope persistence, playlist item parsing, actual-resolution marker parsing and mixed-playlist summaries, stream-marker classification for muxed/video-only/audio-only/unknown destinations, MissAV-style denominator revisions, published-media size accounting, API 26–28 destination policy, diagnostic URL sanitization in URL fields and embedded text (encoded/case/duplicate/JSON-escaped parameters), failure-only source/candidate URLs and export opt-in, strict updater timestamps, and hermetic updater tests.
+
+## Additional marker check
+
+A local, no-network run of the packaged yt-dlp script (2025.11.12, extracted from the bundled AAR) against a generated HLS master with `RESOLUTION=1920x1080` emitted `__VRKA_RES__1080` during a real download. `--simulate` did not execute the `before_dl` print, as expected. The generated media playlist without height emitted `__VRKA_RES__NA`, which is treated as unknown. This validates the marker template using the bundled yt-dlp package, but not the Android native launcher/device or a live site.
+
+## Physical Device Validation
+
+Hardware validation was performed on a connected physical OnePlus 11 (CPH2447, Android 16 / SDK 36, ABI arm64-v8a) via ADB:
+- Stream installation of production-signed `VRKA-Android-v5.1.1.apk` via `adb install -r` completed with Success.
+- Clean application startup (PID 14291) with 0 runtime exceptions or crashes.
+- Evaluated test target `https://youtu.be/qQM5i62f5zQ`:
+  - Format chip preflight: Best available (`~54.75 MB`), 2160p 4K (`~54.75 MB`), 1440p 2K (`~27.45 MB`).
+  - Confirmation dialog: 2160p at `54.75 MB` (perfect synchronization with 4K chip).
+  - Active download transfer: displayed neutral `"Downloading media"` stage (correcting false `"Downloading audio"`), with live speed (`16.61 MiB/s`), remaining time (`0:00 left`), and exact progress (`46.8 MiB / 51.7 MiB`).
+  - Finalization & History: completed container published to `Downloads/VRKA` with final size `52.2 MiB` (exact match to target output).
+- High-resolution AMOLED screenshots captured and preserved in `docs/screenshots/v5.1.1/`.
+
+## APK
+
+Official production release artifact: `VRKA-Android-v5.1.1.apk`, package `com.mvrk.vrka`, version `5.1.1` (`50101`), ABI `arm64-v8a`, size 157,231,575 bytes, SHA-256 `781d7910d9b5855d4060c247c09ac3f89156ebfd202c8af5385eea816380f4f8`. Signed with the official production release key (APK Signature Scheme v2, RSA 4096-bit).
+
+---
+
+# Historical: VRKA Android 5.1.0 — Test Results
+
+The v5.1.0 records below are retained verbatim. Historical documentation contained conflicting counts (601 and 639 tests in different files); those older records are not used as the v5.1.1 baseline.
 
 Date: 2026-10-31
 
@@ -23,7 +68,7 @@ Canonical file: `VRKA-Android-v5.1.0.apk`. Package `com.mvrk.vrka`, version `5.1
 
 ---
 
-# VRKA Android 5.0.2 — Test Results
+# Historical: VRKA Android 5.0.2 — Test Results
 
 Date: 2026-10-05
 

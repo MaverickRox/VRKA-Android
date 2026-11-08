@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -675,6 +676,7 @@ private fun JobCard(
                 if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
                     VrkaGlowProgressBar(
                         progress = job.progress / 100f,
+                        contentDescription = stringResource(R.string.progress_accessibility_label),
                         trackHeight = 4.dp,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -691,6 +693,9 @@ private fun JobCard(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = VrkaTokens.AccentLight,
+                            // The progress bar exposes the same value to TalkBack; hide the
+                            // duplicate visible percentage node from the semantics tree.
+                            modifier = Modifier.clearAndSetSemantics { },
                         )
                         Text(
                             text = listOfNotNull(

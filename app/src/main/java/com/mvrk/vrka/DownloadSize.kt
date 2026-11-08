@@ -11,6 +11,13 @@ internal data class ProgressSizeUpdate(
     val downloadedBytes: Long,
     val totalBytes: Long,
     val totalIsExact: Boolean,
+    /** Current stream only; matches the percentage yt-dlp printed for this line. */
+    val currentDownloadedBytes: Long = downloadedBytes,
+    val currentTotalBytes: Long = totalBytes,
+    val currentIsExact: Boolean = totalIsExact,
+    val streamIndex: Int = 1,
+    val aggregateDownloadedBytes: Long = downloadedBytes,
+    val aggregateTotalBytes: Long = totalBytes,
 )
 
 /**
@@ -79,43 +86,83 @@ internal class DownloadSizeTracker {
     private var currentStreamBytes = 0L
     private var currentStreamExact = true
     private var streamCount = 0
+    private var currentStreamActive = false
+    private var currentTotalChanged = false
 
     fun reset() {
         finishedStreamBytes = 0L
         currentStreamBytes = 0L
         currentStreamExact = true
         streamCount = 0
+        currentStreamActive = false
+        currentTotalChanged = false
+    }
+
+    /**
+     * Called on yt-dlp's `Destination:` line. It closes the previous stream exactly once so
+     * the video and audio totals cannot be double-counted when the next progress line arrives.
+     */
+    fun beginStream() {
+        if (currentStreamActive) {
+            finishedStreamBytes += currentStreamBytes
+            streamCount++
+        } else if (streamCount == 0) {
+            streamCount = 1
+        }
+        currentStreamBytes = 0L
+        currentStreamExact = true
+        currentStreamActive = false
+        currentTotalChanged = false
     }
 
     fun update(sample: ProgressSizeUpdate): ProgressSizeUpdate {
         val total = sample.totalBytes
         if (total <= 0L) return sample
         when {
-            streamCount == 0 -> {
+            !currentStreamActive -> {
                 currentStreamBytes = total
                 currentStreamExact = sample.totalIsExact
-                streamCount = 1
+                currentStreamActive = true
+                currentTotalChanged = false
+                if (streamCount == 0) streamCount = 1
             }
             isSameStream(total) -> {
+                if (total != currentStreamBytes) currentTotalChanged = true
                 currentStreamBytes = maxOf(currentStreamBytes, total)
                 currentStreamExact = currentStreamExact && sample.totalIsExact
             }
             else -> {
-                finishedStreamBytes += currentStreamBytes
+                // yt-dlp may revise an approximate total for the *same* stream as more
+                // fragments are inspected. Stream boundaries come only from a new
+                // Destination event, never from a changing denominator.
+                if (total != currentStreamBytes) currentTotalChanged = true
                 currentStreamBytes = total
                 currentStreamExact = sample.totalIsExact
-                streamCount++
             }
         }
+        val currentIsExact = currentStreamExact && !currentTotalChanged
         val combinedTotal = finishedStreamBytes + currentStreamBytes
         return ProgressSizeUpdate(
             downloadedBytes = (finishedStreamBytes + sample.downloadedBytes)
                 .coerceIn(0L, combinedTotal),
             totalBytes = combinedTotal,
             // A merged container is never byte-identical to its source streams.
-            totalIsExact = currentStreamExact && streamCount == 1,
+            totalIsExact = currentIsExact && streamCount == 1,
+            currentDownloadedBytes = sample.downloadedBytes.coerceIn(0L, currentStreamBytes),
+            currentTotalBytes = currentStreamBytes,
+            currentIsExact = currentIsExact,
+            streamIndex = streamCount,
+            aggregateDownloadedBytes = (finishedStreamBytes + sample.downloadedBytes)
+                .coerceIn(0L, combinedTotal),
+            aggregateTotalBytes = combinedTotal,
         )
     }
+
+    val aggregateTotalBytes: Long
+        get() = finishedStreamBytes + currentStreamBytes
+
+    val currentIndex: Int
+        get() = streamCount
 
     private fun isSameStream(total: Long): Boolean {
         if (currentStreamBytes <= 0L || total == currentStreamBytes) return true
@@ -126,6 +173,22 @@ internal class DownloadSizeTracker {
     private companion object {
         // yt-dlp may adjust a stream's reported total slightly as fragments are probed.
         const val SAME_STREAM_TOLERANCE = 0.05
+    }
+}
+
+/** Parses the playlist item line yt-dlp emits before each entry. */
+internal object PlaylistProgressParser {
+    private val ITEM = Regex(
+        """Downloading(?:\s+playlist)?\s+item\s+(\d+)\s+of\s+(\d+)""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun parse(line: String): Pair<Int, Int>? {
+        val match = ITEM.find(line) ?: return null
+        val index = match.groupValues[1].toIntOrNull() ?: return null
+        val total = match.groupValues[2].toIntOrNull() ?: return null
+        if (index < 1 || total < 1 || index > total) return null
+        return index to total
     }
 }
 
@@ -156,6 +219,9 @@ internal sealed class DownloadSizeDisplay {
         val downloadedBytes: Long,
         val totalBytes: Long,
         val exact: Boolean,
+        val stream: ActiveStream? = null,
+        val playlistItemIndex: Int? = null,
+        val playlistItemCount: Int? = null,
     ) : DownloadSizeDisplay()
     data class Completed(val bytes: Long) : DownloadSizeDisplay()
     data object Hidden : DownloadSizeDisplay()
@@ -193,16 +259,29 @@ internal fun downloadSizeDisplay(job: DownloadJob): DownloadSizeDisplay {
     }
     return when {
         downloaded != null && reported != null ->
-            DownloadSizeDisplay.DownloadedOfTotal(downloaded, reported, job.reportedTotalIsExact)
+            DownloadSizeDisplay.DownloadedOfTotal(
+                downloaded,
+                reported,
+                job.reportedTotalIsExact,
+                stream = job.activeStream,
+                playlistItemIndex = job.playlistItemIndex,
+                playlistItemCount = job.playlistItemCount,
+            )
         downloaded != null && estimated != null ->
-            DownloadSizeDisplay.DownloadedOfTotal(downloaded, estimated, estimateExact)
+            DownloadSizeDisplay.DownloadedOfTotal(
+                downloaded,
+                estimated,
+                estimateExact,
+                stream = job.activeStream,
+                playlistItemIndex = job.playlistItemIndex,
+                playlistItemCount = job.playlistItemCount,
+            )
         downloaded != null -> DownloadSizeDisplay.CalculatingTotal(downloaded)
         reported != null -> DownloadSizeDisplay.Total(reported, job.reportedTotalIsExact)
         estimated != null -> DownloadSizeDisplay.Total(estimated, estimateExact)
         // Only a transfer that is actually running may claim it is calculating a size.
         job.state == JobState.PREPARING ||
-            job.state == JobState.DOWNLOADING ||
-            job.state == JobState.POSTPROCESSING -> DownloadSizeDisplay.Calculating
+            job.state == JobState.DOWNLOADING -> DownloadSizeDisplay.Calculating
         else -> DownloadSizeDisplay.Unavailable
     }
 }
@@ -222,11 +301,37 @@ internal fun downloadSizeLabel(context: Context, job: DownloadJob): String? =
                 R.string.download_size_total,
                 formatDownloadBytes(display.bytes).withApproximateMarker(display.exact),
             )
-        is DownloadSizeDisplay.DownloadedOfTotal -> context.getString(
-            R.string.download_size_downloaded_of,
-            formatDownloadBytes(display.downloadedBytes),
-            formatDownloadBytes(display.totalBytes).withApproximateMarker(display.exact),
-        )
+        is DownloadSizeDisplay.DownloadedOfTotal -> {
+            val scope = buildList {
+                if (display.playlistItemIndex != null && display.playlistItemCount != null) {
+                    add(
+                        context.getString(
+                            R.string.download_playlist_item,
+                            display.playlistItemIndex,
+                            display.playlistItemCount,
+                        ),
+                    )
+                }
+                when (display.stream) {
+                    ActiveStream.VIDEO -> add(context.getString(R.string.media_mode_video))
+                    ActiveStream.AUDIO -> add(context.getString(R.string.media_mode_audio))
+                    ActiveStream.MEDIA, null -> Unit
+                }
+            }.joinToString(" · ")
+            val downloaded = formatDownloadBytes(display.downloadedBytes)
+            val total = formatDownloadBytes(display.totalBytes)
+                .withApproximateMarker(display.exact)
+            if (scope.isBlank()) {
+                context.getString(R.string.download_size_downloaded_of, downloaded, total)
+            } else {
+                context.getString(
+                    R.string.download_size_scoped_downloaded_of,
+                    scope,
+                    downloaded,
+                    total,
+                )
+            }
+        }
         is DownloadSizeDisplay.Completed ->
             context.getString(R.string.download_size_completed, formatDownloadBytes(display.bytes))
         DownloadSizeDisplay.Hidden -> null

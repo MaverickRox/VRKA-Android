@@ -18,11 +18,15 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * End-to-end automated test validating that user-supplied HTTP headers (Referer, Origin,
- * arbitrary custom headers, and resolved session headers) correctly propagate across
- * extraction, direct network, HLS manifest, and HLS segment request paths.
+ * Contract test for the yt-dlp argument layer and the effective-header resolver.
+ *
+ * This does NOT execute yt-dlp and is therefore not an end-to-end network test. The first
+ * test verifies that the production request factory emits `--add-header` options for every
+ * allowed effective header. The second test drives a local HTTP server with the same header
+ * map that production passes to the transport, verifying redirect and manifest/segment
+ * semantics at the HTTP contract level. Live yt-dlp header propagation is device-only.
  */
-class HttpHeaderE2ETest {
+class HttpHeaderArgumentContractTest {
 
     private lateinit var server: HttpServer
     private var serverPort: Int = 0
@@ -95,7 +99,7 @@ class HttpHeaderE2ETest {
     }
 
     @Test
-    fun testDownloadRequestFactoryGeneratesHeaderOptionsForAllEffectiveHeaders() {
+    fun requestFactoryEmitsHeaderArgumentsForEveryEffectiveHeader() {
         val request = DownloadRequest(
             url = "http://127.0.0.1:$serverPort/manifest.m3u8",
             referer = "https://publisher.example.com/stream",
@@ -194,7 +198,7 @@ class HttpHeaderE2ETest {
     }
 
     @Test
-    fun testServerSideHeaderReceptionOnDirectAndHlsRequests() {
+    fun effectiveHeaderMapIsAppliedToManifestAndSegmentHttpContractRequests() {
         val request = DownloadRequest(
             url = "http://127.0.0.1:$serverPort/manifest.m3u8",
             referer = "https://ref.example.org",

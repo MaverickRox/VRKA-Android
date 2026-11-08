@@ -1173,6 +1173,8 @@ internal fun SettingsScreen(
         SettingsHeading(stringResource(R.string.settings_heading_diagnostics))
         val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
         var expandedDiagnosticId by remember { mutableStateOf<String?>(null) }
+        var diagnosticExportEntry by remember { mutableStateOf<DiagnosticEntry?>(null) }
+        var includeSourceUrl by remember { mutableStateOf(false) }
 
         VrkaSectionContainer {
             if (diagnostics.isEmpty()) {
@@ -1287,12 +1289,8 @@ internal fun SettingsScreen(
                             VrkaOutlinedButton(
                                 text = stringResource(R.string.btn_copy_details),
                                 onClick = {
-                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(entry.toFormattedString()))
-                                    Toast.makeText(
-                                        context,
-                                        context.resources.getString(R.string.msg_details_copied),
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
+                                    includeSourceUrl = false
+                                    diagnosticExportEntry = entry
                                 },
                                 height = 30.dp,
                             )
@@ -1349,6 +1347,66 @@ internal fun SettingsScreen(
                     }
                 }
             }
+        }
+
+        diagnosticExportEntry?.let { entry ->
+            AlertDialog(
+                onDismissRequest = { diagnosticExportEntry = null },
+                title = { Text(stringResource(R.string.diagnostics_export_title)) },
+                text = {
+                    Column {
+                        Text(
+                            stringResource(R.string.diagnostics_export_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = VrkaTokens.TextSecondary,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { includeSourceUrl = !includeSourceUrl }
+                                .padding(vertical = 4.dp),
+                        ) {
+                            Checkbox(
+                                checked = includeSourceUrl,
+                                onCheckedChange = { includeSourceUrl = it },
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                stringResource(R.string.diagnostics_export_include_source),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = VrkaTokens.TextPrimary,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            clipboardManager.setText(
+                                androidx.compose.ui.text.AnnotatedString(
+                                    entry.toFormattedString(includeSourceUrl = includeSourceUrl),
+                                ),
+                            )
+                            Toast.makeText(
+                                context,
+                                context.resources.getString(R.string.msg_details_copied),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            diagnosticExportEntry = null
+                        },
+                    ) {
+                        Text(stringResource(R.string.btn_copy_details), color = VrkaTokens.Accent)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { diagnosticExportEntry = null }) {
+                        Text(stringResource(R.string.fallback_cancel), color = VrkaTokens.TextSecondary)
+                    }
+                },
+                containerColor = VrkaTokens.SurfaceElevated,
+            )
         }
 
         SettingsHeading(stringResource(R.string.settings_heading_about))

@@ -7,6 +7,100 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DownloadSizeTest {
+    @Test
+    fun currentStreamScopeNeverMixesWithAggregateBytes() {
+        val tracker = DownloadSizeTracker()
+        val videoTotal = 25_700_000L
+        val audioTotal = 4_200_000L
+
+        tracker.beginStream()
+        val video = tracker.update(ProgressSizeUpdate(videoTotal * 9 / 10, videoTotal, true))
+        assertEquals(videoTotal * 9 / 10, video.currentDownloadedBytes)
+        assertEquals(videoTotal, video.currentTotalBytes)
+        assertEquals(videoTotal, video.aggregateTotalBytes)
+        assertEquals(1, video.streamIndex)
+        assertTrue(video.currentIsExact)
+
+        tracker.beginStream()
+        val audio = tracker.update(ProgressSizeUpdate(audioTotal / 2, audioTotal, true))
+        assertEquals(audioTotal / 2, audio.currentDownloadedBytes)
+        assertEquals(audioTotal, audio.currentTotalBytes)
+        assertEquals(videoTotal + audioTotal, audio.aggregateTotalBytes)
+        assertEquals(2, audio.streamIndex)
+        assertTrue("the active audio stream itself is exact", audio.currentIsExact)
+        assertFalse("the merged job total is not exact", audio.totalIsExact)
+    }
+
+    @Test
+    fun fakeYtDlpProgressStreamResetsAtTheAudioDestination() {
+        val tracker = DownloadSizeTracker()
+        var last: ProgressSizeUpdate? = null
+        val lines = listOf(
+            "[download] Destination: video.f137.mp4",
+            "[download]  90.0% of  25.00MiB at 5.00MiB/s ETA 00:01",
+            "[download] Destination: audio.f140.m4a",
+            "[download]  25.0% of   4.00MiB at 2.00MiB/s ETA 00:02",
+        )
+        for (line in lines) {
+            if (line.contains("Destination:", true)) tracker.beginStream() else {
+                DownloadSizeParser.parseProgressLine(line)?.let { sample ->
+                    last = tracker.update(sample)
+                }
+            }
+        }
+        val audio = requireNotNull(last)
+        assertEquals(2, audio.streamIndex)
+        assertTrue("audio bytes must be current-stream bytes", audio.currentTotalBytes < audio.aggregateTotalBytes)
+    }
+
+    @Test
+    fun playlistItemLinesAreParsed() {
+        assertEquals(1 to 10, PlaylistProgressParser.parse("[download] Downloading item 1 of 10"))
+        assertEquals(9 to 12, PlaylistProgressParser.parse("Downloading item 9 of 12"))
+        assertEquals(2 to 4, PlaylistProgressParser.parse("[download] Downloading playlist item 2 of 4"))
+        assertNull(PlaylistProgressParser.parse("[download] Downloading item"))
+        assertNull(PlaylistProgressParser.parse("[download] Downloading item 0 of 3"))
+    }
+
+    @Test
+    fun activeDisplayCarriesStreamAndPlaylistScope() {
+        val display = downloadSizeDisplay(
+            job(
+                downloaded = 10_000_000,
+                reported = 25_000_000,
+                exact = true,
+            ).copy(
+                state = JobState.DOWNLOADING,
+                activeStream = ActiveStream.AUDIO,
+                playlistItemIndex = 3,
+                playlistItemCount = 10,
+            ),
+        ) as DownloadSizeDisplay.DownloadedOfTotal
+
+        assertEquals(ActiveStream.AUDIO, display.stream)
+        assertEquals(3, display.playlistItemIndex)
+        assertEquals(10, display.playlistItemCount)
+        assertEquals(10_000_000L, display.downloadedBytes)
+        assertEquals(25_000_000L, display.totalBytes)
+    }
+
+    @Test
+    fun playlistItemResetDoesNotCarryPreviousItemBytes() {
+        val tracker = DownloadSizeTracker()
+        tracker.beginStream()
+        tracker.update(ProgressSizeUpdate(10_000_000, 20_000_000, true))
+
+        // A new playlist item starts a new scope; final history size comes from the
+        // published outputs, not from these per-item progress counters.
+        tracker.reset()
+        tracker.beginStream()
+        val secondItem = tracker.update(ProgressSizeUpdate(1_000_000, 4_000_000, true))
+
+        assertEquals(4_000_000L, secondItem.currentTotalBytes)
+        assertEquals(4_000_000L, secondItem.aggregateTotalBytes)
+        assertEquals(1_000_000L, secondItem.currentDownloadedBytes)
+    }
+
     private fun job(
         state: JobState = JobState.DOWNLOADING,
         downloaded: Long? = null,
@@ -213,6 +307,7 @@ class DownloadSizeTest {
         val videoMore = tracker.update(ProgressSizeUpdate(videoTotal, videoTotal, true))
         assertEquals(videoTotal, videoMore.totalBytes)
 
+        tracker.beginStream()
         val audioStart = tracker.update(ProgressSizeUpdate(audioTotal / 2, audioTotal, true))
         assertEquals(videoTotal + audioTotal, audioStart.totalBytes)
         assertEquals(videoTotal + audioTotal / 2, audioStart.downloadedBytes)

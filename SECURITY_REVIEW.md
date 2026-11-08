@@ -1,4 +1,20 @@
-# VRKA Android 5.1.0 — Release Security Review
+# VRKA Android 5.1.1 — Release Security Review (Local Candidate)
+
+**Date:** 2026-11-08
+**Scope:** Local v5.1.1 reliability changes to size-estimation metadata handling, queue/history persistence, Android 8/9 destination policy, Browser Fallback diagnostics, updater timestamp parsing, and updater test isolation. No production artifact was built or signed.
+
+## v5.1.1 security-relevant changes
+
+- **Updater timestamps:** `ReleaseManifestVerifier.parseIso8601` now uses strict `java.time` ISO-8601 parsing. Impossible calendar dates, invalid clock values, incomplete timestamps, and trailing text are rejected. Signature verification, the pinned trust anchor, the one-hour issued-at clock skew, expiry, metadata revision, and version-code anti-rollback checks are unchanged.
+- **Hermetic updater tests:** Unit tests no longer search for `.vrka/vrka_release_signing_key.sec` or any production signing material. Every cryptographic test generates an in-memory temporary OpenPGP key and executes on each run. A source-scan regression test fails if a test references the production key or signing-properties environment variable. The published v5.1.0 manifest signature is verified with the public trust anchor only.
+- **Diagnostic privacy:** Browser Fallback diagnostic entries are sanitized before persistence and again at export. Sensitive query keys are detected case-insensitively and after percent-decoding; duplicates are retained but redacted; credential-like path segments and opaque tokens are replaced. No raw signed URL is stored.
+- **Persistence integrity:** JobStore never overwrites a malformed file during load. It preserves a bounded recovery copy, salvages valid records, reports skipped/unsupported/schema states, and returns explicit save results. A failed publish-marker write aborts publication so a terminal duplicate cannot be created silently.
+- **Destination policy:** API 26–28 cannot reach the legacy `MediaStore.Files` path without a granted SAF tree, because VRKA does not request `WRITE_EXTERNAL_STORAGE`. Revoked permissions return the job to the folder prompt. API 29+ scoped storage behavior is unchanged.
+- **No trust weakening:** The production verifier, pinned certificate constant, package ID, and signing identity were not modified. The local candidate has no production signature.
+
+---
+
+# Historical: VRKA Android 5.1.0 — Release Security Review
 
 **Date:** 2026-10-31
 **Scope:** Source changes for v5.1.0 localization, preflight download size estimation, custom runtime management, secure in-app updater redesign with OpenPGP release manifest verification, and the resulting production-signed APK.

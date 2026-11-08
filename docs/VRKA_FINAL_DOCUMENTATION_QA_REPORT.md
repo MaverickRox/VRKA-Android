@@ -81,6 +81,11 @@ All four linked screenshots:
 - Resolve cleanly on disk with non-zero byte size.
 
 ### B.2 Audit of `docs/screenshots/browser-subsystems-dark.png`
+
+> v5.1.1 note: this retired screenshot was moved to
+> `docs/archive/browser-subsystems-legacy-2026.png` and must not be presented as a current
+> product screenshot. The findings below are retained as historical evidence.
+
 - **File Existence:** File exists at `docs/screenshots/browser-subsystems-dark.png` (250,400 bytes, added in commit `3c69a642` on 2026-09-05).
 - **Reference Check:** Verified via `git grep` that this file is **not referenced** in `README.md`, `CURRENT_PRODUCTION_ARCHITECTURE.md`, or any active documentation file in `docs/`. Its link was removed in commit `ea30c00` during the v5.0 release overhaul.
 - **Image Content:** Depicts legacy settings showing "Puemos HLS Detection v1.0.0" and "GeckoView 153.0".

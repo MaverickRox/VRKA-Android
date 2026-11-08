@@ -2,6 +2,47 @@
 
 All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
 
+## [5.1.1] - 2026-11-08
+
+> [!IMPORTANT]
+> **USERS UPGRADING FROM VRKA v5.0.2 STILL REQUIRE A ONE-TIME MANUAL INSTALL.** The v5.0.2 in-app updater cannot repair the code already installed in that old client. Download and install `VRKA-Android-v5.1.1.apk` from the official GitHub release page over v5.0.2 without uninstalling. Application data and settings are preserved.
+
+### Corrected download size estimation
+- Resolution chips, Best available, the confirmation estimate, and the transfer now share one format-selection contract. Chips no longer choose a stream by maximum bitrate; they use yt-dlp's revealed codec preference and the same resolution/frame-rate ranking as the canonical plan.
+- The metadata preflight now uses the same `-f` format selector and 60 fps sort as the transfer, so yt-dlp's `requested_formats` are authoritative instead of a local approximation of its sort order.
+- Resolution changes request and display the size for the newly selected format; the document cache is keyed by format selection and the UI rejects late results from older selections.
+- Separate video/audio components are summed once, alternate resolutions and unrelated manifest variants are excluded, `filesize_approx` is never labelled exact, invalid bitrates and unknown durations produce an honest unavailable state, and byte overflow is rejected.
+- Browser Fallback no longer keeps the page-level estimate after selecting a candidate. It clears that stale value and performs a best-effort estimate for the actual candidate.
+- Post-processing (merge, trim, H.264 conversion, metadata, embedded subtitles, sponsor cuts) downgrades an otherwise exact source size to approximate.
+
+### Selection, progress and history consistency
+- Removed the disconnected `StreamSelectionCoordinator`; the Home screen's request state is now the single source of truth for URL, mode, quality, audio configuration and confirmation.
+- Home estimates are keyed to the exact request that produced them, so an old 2160p result cannot appear after selecting 1440p or replace a newer result.
+- Added a `before_dl` actual-resolution marker. The manager collects per-item heights and reports an honest mixed-playlist range instead of the last item.
+- Active progress now identifies the current video/audio/media stream and playlist item. A `before_dl` stream marker supplies authoritative format ID, extension, vcodec/acodec and height; destination extension is only a fallback. A revised yt-dlp total no longer creates a false second stream or changes a video transfer into “Downloading audio.”
+- Percentage, numerator and denominator describe the same current stream/item; a revised denominator is marked approximate. Aggregate final size is reported only after all media outputs are known.
+- Playlist final and History sizes are the sum of published media outputs, excluding subtitle sidecars.
+- Diagnostic text sanitizes URLs embedded in titles, summaries, details and error tails, preserving scheme/host/path while redacting query/fragment credentials.
+- Diagnostics retain the original source URL only for failed downloads; successful downloads and successful retries do not keep source URLs. Export shows a warning and requires an explicit opt-in to include the full original source URL.
+
+### Reliability and security
+- JobStore no longer overwrites malformed queue/history files with an empty list. It preserves a bounded recovery copy, salvages valid records, reports skipped/unsupported schema states through diagnostics, uses schema version 2, and returns explicit save results. A failed publish-marker write now aborts publication instead of risking duplicates.
+- Android 8 and Android 9 require a valid user-selected SAF folder before a download is accepted; revoked permissions reopen the folder prompt. API 29+ keeps the default Downloads/VRKA behavior.
+- Browser Fallback diagnostics sanitize URLs before persistence and export, preserving scheme/host/route while redacting sensitive query values, encoded/case-varied parameter names, duplicates, and credential-like path segments.
+- Updater timestamps use strict ISO-8601 parsing. Impossible calendar dates, incomplete values, and trailing text are rejected without weakening signature, skew, or anti-rollback checks.
+- Updater cryptographic tests no longer look for a developer release key. They generate temporary OpenPGP keys and always execute; a regression guard scans test sources for production-key references.
+
+### Accessibility and UI
+- The comet progress bar exposes a determinate progress range, current progress, and a localized label to accessibility services without adding a duplicate percentage announcement.
+- Comet-style download progress glow and the liquid sliding navbar are preserved.
+- New destination and progress labels were added to all 14 language resources. The new translations are functional but still require native-language review.
+
+### Validation
+- 732 JVM unit tests across 72 suites pass with 0 failures, 0 errors, and 0 skipped.
+- Lint reports 277 warnings, 3 hints, and 0 errors/fatal findings.
+- Production release APK (`VRKA-Android-v5.1.1.apk`) built and verified: APK Signature Scheme v2 (RSA 4096-bit, SHA-256 `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`).
+- End-to-end device validation executed on physical OnePlus 11 (Android 16, SDK 36, ARM64) over ADB: verified 4K, 2K, and Best Available estimate synchronization (~54.75 MB), neutral "Downloading media" state during active transfer, speed/ETA calculations, and finalized 52.2 MiB output in Downloads/VRKA.
+
 ## [5.1.0] - 2026-10-31
 
 > [!IMPORTANT]
@@ -25,6 +66,7 @@ All notable changes to VRKA Android are documented here. Release entries describ
 - Enforced strict cryptographic policy rejecting insecure algorithms (MD5, SHA-1, RIPEMD160, DSA).
 - Fixed client-side temporary file staging verification defect (`.download.tmp` filename check) by separating archive structure verification on temporary downloads from final staged APK validation.
 - All future in-app updates starting from v5.1.0 will seamlessly update via the in-app updater without manual intervention.
+  - **v5.1.1 status:** This path has not been tested for v5.1.1 because no signed v5.1.1 manifest or APK exists. Do not treat it as verified until a production-signed candidate is published and the upgrade is exercised.
 
 ### Improvements
 - Added support for validating and selecting custom yt-dlp runtimes in Settings.

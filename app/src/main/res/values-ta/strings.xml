@@ -370,4 +370,15 @@
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">சிறந்த தரம்</string>
+    <string name="error_destination_required">பதிவிறக்க கோப்பகத்தைத் தேர்ந்தெடுக்கவும். Android 9 மற்றும் பழைய பதிப்புகளுக்கு பயனர் தேர்ந்தெடுத்த கோப்பகம் தேவை.</string>
+    <string name="progress_accessibility_label">பதிவிறக்க முன்னேற்றம்</string>
+    <string name="status_downloading_video">வீடியோ பதிவிறக்கப்படுகிறது</string>
+    <string name="status_downloading_audio">ஆடியோ பதிவிறக்கப்படுகிறது</string>
+    <string name="download_playlist_item">உருப்படி %1$d / %2$d</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">வெளியீடு சரிபார்க்கப்படுகிறது</string>
+    <string name="status_downloading_media">மீடியா பதிவிறக்கப்படுகிறது</string>
+    <string name="diagnostics_export_title">டயக்னாஸ்டிக்ஸை ஏற்றுமதி செய்</string>
+    <string name="diagnostics_export_warning">இந்த ஏற்றுமதி மூல இணைப்புகள் மற்றும் பார்வை அல்லது பதிவிறக்க செயல்பாட்டை வெளிப்படுத்தலாம். உணர்வுபூர்வமான சான்றுகள் மறைக்கப்படும்.</string>
+    <string name="diagnostics_export_include_source">முழு அசல் மூல URL ஐச் சேர்</string>
 </resources>

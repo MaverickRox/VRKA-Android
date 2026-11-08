@@ -10,7 +10,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v5.1.0)</b></a> •
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v5.1.1)</b></a> •
     <a href="#screenshots">Screenshots</a> •
     <a href="#features">Features</a> •
     <a href="#architecture">Architecture</a> •
@@ -26,9 +26,9 @@
 > **USERS UPGRADING FROM VRKA v5.0.2 MUST DOWNLOAD AND INSTALL v5.1.0 DIRECTLY FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON.**
 > 
 > **OFFICIAL DOWNLOAD PAGE:**
-> https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.0
+> https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.1
 > 
-> **INSTALLATION:** Download `VRKA-Android-v5.1.0.apk` from the Assets section and install it over your existing VRKA installation. NO NEED TO UNINSTALL v5.0.2 FIRST.
+> **INSTALLATION:** Download `VRKA-Android-v5.1.1.apk` from the Assets section and install it over your existing VRKA installation. NO NEED TO UNINSTALL v5.0.2 FIRST.
 
 <div align="center">
   <img src="docs/assets/social-preview.png" alt="VRKA Android Social Preview" width="900" />
@@ -62,6 +62,8 @@ Core capabilities:
 ## Screenshots
 
 <div align="center">
+  <img src="docs/screenshots/v5.1.1/vrka-v5.1.1-showcase.png" alt="VRKA Android v5.1.1 Product Showcase" width="900" /><br /><br />
+
 <table>
   <tr>
     <td align="center" width="33%">
@@ -111,7 +113,7 @@ Core capabilities:
   - **Telugu** (`తెలుగు`)
   - All 14 locales maintain 100% string resource key parity with verified format-string specifiers. Language selection is customizable in Settings and integrates with Android 13+ (API 33+) per-app language preferences.
 - **Direct Extraction & Download**: Powered by `yt-dlp` and `FFmpeg` (`arm64-v8a`), supporting video and audio stream extraction, resolution selection (Best, 4K, 1440p, 1080p, 720p, 480p, 360p), 60 FPS preference, subtitle embedding, and audio extraction (MP3 with 128–320 kbps selectable bitrate, native Opus stream-copy remuxing with transcode fallback, and uncompressed 16-bit PCM WAV).
-- **Preflight Download Size Estimation**: Displays accurate approximate file size calculations on the download card and Android Share Sheet prior to queueing or downloading.
+- **Resolution-Aware Download Size Estimation**: The metadata preflight uses the same yt-dlp format selector as the transfer, so the displayed size follows the selected resolution and only counts the selected video/audio streams. Browser Fallback estimates the selected candidate rather than the page, and unavailable metadata is reported honestly instead of fabricated. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 - **Directional Luminous Wake Progress Bar**: Redesigned download progress renderer featuring an 18-track streak and cached analytic teardrop glow optimized for AMOLED displays.
 - **Passive Browser Fallback**: When direct `yt-dlp` extraction encounters anti-bot challenges or dynamic player scripts, an embedded Mozilla `GeckoView` private session activates automatically.
 - **First-Party Media Discovery**: Bundled internal `VRKA Media Detector` WebExtension (`media-detector@vrka.mvrk.com`) passively observes network requests and DOM media elements (`<video>`, `<audio>`, HLS `.m3u8`, DASH `.mpd`), passing candidates across `GeckoMediaBridge` to native Kotlin for candidate ranking and standard `yt-dlp` acquisition.
@@ -122,7 +124,7 @@ Core capabilities:
 - **Dynamic Font Preference**: User-toggleable application typography supporting the signature monospace `VRKA Font` (Space Mono) and clean `System Font` (Roboto / device default) with persistent DataStore configuration.
 - **Download Location Modes**: Clear destination control supporting "Use selected" (defaulting to Downloads/VRKA with persistent directory permissions) or "Ask every time" (modal confirmation before queuing).
 - **Background Orchestration**: Foreground `DownloadService` with `JobStore` persistence, notification progress tracking, cancellation, and optional persisted parallel job execution (2–4 workers; sequential by default).
-- **Local On-Device Diagnostics**: On-device diagnostic failure logging in Settings with stage attribution, terminal trace viewer, secret-sanitized reporting, and one-tap clipboard export.
+- **Local On-Device Diagnostics**: On-device failure logging with stage attribution, terminal trace viewer, and one-tap clipboard export. Source URLs are retained only for failed downloads; successful downloads do not add source URLs. Credentials and signed CDN query values are redacted, and export shows a warning with an explicit opt-in for the full original source URL.
 - **H.264 Compatibility Mode**: Optional, off by default. If a downloaded video is not H.264, FFmpeg converts the local staged file, validates the result and preserves supported audio/subtitle streams.
 - **Custom yt-dlp Commands**: Named argument templates for normal jobs. Templates are argv lists, not shell commands; VRKA controls output staging. Eligible failures can still enter Browser Fallback, whose standard yt-dlp request ignores the selected template.
 - **Liquid Glass Design System**: Floating capsule navigation with hardware-accelerated `RenderEffect` backdrop blur across AMOLED Black and Light modes, with AGSL `RuntimeShader` lens refraction on API 33+.
@@ -308,13 +310,13 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-The official v5.1.0 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
+The official v5.1.0 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate. The local v5.1.1 candidate is only built with the debug keystore for development validation; no production-signed v5.1.1 APK exists.
 
 ---
 
 ## Release Signing
 
-The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Verify the v5.1.0 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
+The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Verify the v5.1.0 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation. The v5.1.1 local candidate has no published artifact to verify.
 
 ---
 

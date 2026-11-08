@@ -1,4 +1,49 @@
-# VRKA Android 5.1.0
+# VRKA Android 5.1.1 — Release Notes
+
+> [!IMPORTANT]
+> **USERS UPGRADING FROM VRKA v5.0.2 STILL REQUIRE A ONE-TIME MANUAL UPGRADE.** The v5.0.2 client cannot repair its own updater due to the legacy filename validation defect. Download and install `VRKA-Android-v5.1.1.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.1) over v5.0.2 without uninstalling. Application data, queue, history, and settings are preserved.
+
+VRKA Android 5.1.1 is a focused reliability release. It keeps the two merged UI contributions (Comet progress glow and Liquid sliding navbar) and corrects the download-size estimation architecture across format preflight, resolution selection, active transfer, and final media accounting.
+
+## Highlights
+
+1. **Comet-style progress glow** — preserved from PR #10, with the same visual geometry and reduced-motion behavior.
+2. **Liquid sliding navbar** — preserved from PR #11.
+3. **Corrected resolution-specific size estimation** — the yt-dlp preflight and the transfer now use the same format selector; resolution chips use the same revealed codec preference and ranking; changing resolution changes the displayed size.
+4. **Improved Browser Fallback estimates** — the stale page-level estimate is cleared and the selected candidate is estimated independently with the same URL, headers, referer and format selector as the transfer.
+5. **Queue and History persistence protection** — malformed files are preserved, valid records are salvaged, schema versions are explicit, and failed writes are reported.
+6. **Android 8 and Android 9 destination handling** — a valid user-selected folder is required before downloading; API 29+ keeps Downloads/VRKA.
+7. **Diagnostic URL privacy and failure context** — signed/credential-like query values and path segments are redacted before persistence and export. Failed downloads retain the original source URL locally; successful downloads and successful retries do not. Export shows a warning and requires opt-in for the full original source URL.
+8. **Strict updater timestamps** — impossible dates, incomplete values, and trailing text are rejected while skew, expiry, signature, and anti-rollback policy remain unchanged.
+9. **Hermetic updater tests** — temporary test keys replace all production-key discovery, and the cryptographic tests run on every normal test invocation.
+10. **Progress accessibility** — determinate range, current value, and a localized label are exposed; duplicate visible percentage semantics are removed; the visual glow is unchanged.
+11. **Post-processing honesty** — merge, trim, H.264 conversion, metadata, embedded subtitles, and sponsor cuts make a size approximate rather than "exact".
+12. **Actual resolution, stream stage and playlist accounting** — a `before_dl` marker records per-item heights and stream metadata, mixed playlists are summarized honestly, video/muxed streams are not mislabeled as audio when a denominator changes, active progress identifies the current stream/item, and History reports aggregate published media size.
+
+## Scope boundaries
+
+- No general-purpose browser toolbar, arbitrary browser navigation, batch sharing, native HLS/DASH transfer engine, scheduling system, database migration, or architecture rewrite.
+- yt-dlp remains the extraction/transfer engine; FFmpeg remains the local processing engine.
+- Package ID and production signing identity are unchanged.
+
+## Release Verification
+
+- **Production APK:** `VRKA-Android-v5.1.1.apk`
+- **Package ID:** `com.mvrk.vrka`
+- **Version Code:** `50101`
+- **Version Name:** `5.1.1`
+- **File Size:** `157,231,575` bytes
+- **SHA-256:** `781d7910d9b5855d4060c247c09ac3f89156ebfd202c8af5385eea816380f4f8`
+- **SHA-1:** `acc9b903669158f399a1c93607309cb9d5649fb0`
+- **Signing Scheme:** APK Signature Scheme v2 (RSA 4096-bit)
+- **Signing Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
+- **OpenPGP Trust Anchor:** Key ID `0xD519380BEBA1B9F7`, Fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`
+- **Automated Tests:** 732 JVM unit tests across 72 suites (0 failures, 0 errors, 0 skipped), lint passed (0 errors/fatal).
+- **Physical Device Validation:** Verified on OnePlus 11 (Android 16, SDK 36, arm64-v8a) via ADB: 4K/2K/Best estimate synchronization confirmed (~54.75 MB), neutral "Downloading media" state observed, and final 52.2 MiB output validated in Downloads/VRKA.
+
+---
+
+# Historical: VRKA Android 5.1.0
 
 > [!IMPORTANT]
 > **USERS UPGRADING FROM VRKA v5.0.2 MUST DOWNLOAD AND INSTALL v5.1.0 DIRECTLY FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON.**
@@ -39,7 +84,7 @@ VRKA Android 5.1.0 introduces comprehensive interface localization across 14 lan
 
 ---
 
-# VRKA Android 5.0.2
+# Historical: VRKA Android 5.0.2
 
 ## 5.0.2
 

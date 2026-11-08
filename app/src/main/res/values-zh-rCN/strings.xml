@@ -370,4 +370,15 @@
     <string name="video_quality_480p">480p</string>
     <string name="video_quality_720p">720p HD</string>
     <string name="video_quality_best">最佳可用</string>
+    <string name="error_destination_required">请选择下载文件夹。Android 9 及更早版本需要用户选择的文件夹。</string>
+    <string name="progress_accessibility_label">下载进度</string>
+    <string name="status_downloading_video">正在下载视频</string>
+    <string name="status_downloading_audio">正在下载音频</string>
+    <string name="download_playlist_item">第 %1$d 项，共 %2$d 项</string>
+    <string name="download_size_scoped_downloaded_of">%1$s · %2$s / %3$s</string>
+    <string name="status_validating">正在验证输出</string>
+    <string name="status_downloading_media">正在下载媒体</string>
+    <string name="diagnostics_export_title">导出诊断</string>
+    <string name="diagnostics_export_warning">此导出可能泄露来源链接以及观看或下载活动。敏感凭据仍会被遮挡。</string>
+    <string name="diagnostics_export_include_source">包含完整的原始来源 URL</string>
 </resources>

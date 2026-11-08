@@ -1,0 +1,9 @@
+VRKA 5.1.1 — reliability release
+
+- Accurate resolution-specific download size estimates, including Browser Fallback candidates.
+- Queue and History survive recoverable storage corruption; save failures are reported.
+- Android 8/9 downloads require a valid user-selected folder before starting.
+- Browser Fallback diagnostics redact signed query values and path secrets.
+- Strict updater timestamp parsing and hermetic, production-key-free security tests.
+- Download progress is exposed to screen readers.
+- Comet progress glow and the liquid sliding navbar remain unchanged.

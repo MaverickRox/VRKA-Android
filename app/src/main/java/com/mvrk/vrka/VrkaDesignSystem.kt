@@ -37,6 +37,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -1472,9 +1476,12 @@ internal class GlowProgressRenderer {
 internal fun VrkaGlowProgressBar(
     progress: Float,
     modifier: Modifier = Modifier,
+    contentDescription: String? = null,
     trackHeight: Dp = 4.dp,
 ) {
     val reduceMotion = remember { !android.animation.ValueAnimator.areAnimatorsEnabled() }
+    val resolvedContentDescription = contentDescription
+        ?: stringResource(R.string.progress_accessibility_label)
     val colors = LocalVrkaColors.current
     val trackColor = if (colors.isLight) {
         Color.Black.copy(alpha = 0.08f)
@@ -1511,6 +1518,14 @@ internal fun VrkaGlowProgressBar(
         modifier = modifier
             .fillMaxWidth()
             .height(trackHeight * GLOW_LAYOUT_HEIGHT_RATIO)
+            // Canvas-drawn bars expose no range to accessibility services by default. The
+            // target (not the tweened value) is the progress the job actually reported.
+            .semantics {
+                this.contentDescription = resolvedContentDescription
+                // ProgressBarRangeInfo supplies the determinate progress role/class to
+                // accessibility services; Compose has no separate Role.ProgressBar value.
+                progressBarRangeInfo = ProgressBarRangeInfo(target, 0f..1f, 0)
+            }
             // Not clipped: the cone fades out past these bounds, behind neighbouring text.
             .drawWithCache {
                 val track = size.height / GLOW_LAYOUT_HEIGHT_RATIO
