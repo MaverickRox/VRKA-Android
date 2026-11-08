@@ -67,30 +67,30 @@ Core capabilities:
   <tr>
     <td align="center" width="33%">
       <img src="docs/screenshots/v5.1.1/download-v5.1.1.png" width="230" alt="Format Preflight & Estimation" /><br />
-      <b>Preflight & Resolution Chips</b><br />
+      <b>Resolution Preflight</b><br />
       <sub>Synchronized 4K / 2K download size estimation</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/v5.1.1/confirmation-v5.1.1.png" width="230" alt="Destination Confirmation" /><br />
-      <b>Confirmation Modal</b><br />
-      <sub>Destination folder & stream pre-allocation</sub>
+      <img src="docs/screenshots/v5.1.1/download-audio-v5.1.1.png" width="230" alt="Audio Extraction Mode" /><br />
+      <b>Audio Extraction Mode</b><br />
+      <sub>Direct YouTube audio with selectable MP3 bitrates</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/v5.1.1/queue-v5.1.1.png" width="230" alt="Active Queue" /><br />
-      <b>Active Task Queue</b><br />
-      <sub>18-track Comet glow wake & live transfer speed</sub>
+      <img src="docs/screenshots/v5.1.1/queue-v5.1.1.png" width="230" alt="Multi-Task Active Queue" /><br />
+      <b>Multi-Task Queue</b><br />
+      <sub>Active transfer, live speed, ETA & queued jobs</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
       <img src="docs/screenshots/v5.1.1/history-v5.1.1.png" width="230" alt="Completed History" /><br />
       <b>Download History</b><br />
-      <sub>Verified 709 MiB published media output</sub>
+      <sub>Multiple completed videos and audio with verified sizes</sub>
     </td>
     <td align="center" width="33%">
       <img src="docs/screenshots/v5.1.1/browser-fallback-v5.1.1.png" width="230" alt="GeckoView Fallback" /><br />
       <b>Browser Fallback</b><br />
-      <sub>Passive stream detection & uBlock Origin filtering</sub>
+      <sub>Active stream playback & 11 streams captured</sub>
     </td>
     <td align="center" width="33%">
       <img src="docs/screenshots/v5.1.1/settings-v5.1.1.png" width="230" alt="Settings & Preferences" /><br />
@@ -357,6 +357,8 @@ VRKA Android integrates and references the following open-source software and cr
 - **Space Mono Font**: SIL Open Font License 1.1 ([Space Mono](https://github.com/googlefonts/spacemono))
 - **Mornye Switch Component**: LGPL-3.0 / GPL-3.0 ([Mornye](https://github.com/MaverickRox/Mornye))
 - **Big Buck Bunny**: © 2008, Blender Foundation / [www.bigbuckbunny.org](https://www.bigbuckbunny.org), licensed under Creative Commons Attribution 3.0 ([CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)).
+- **Sintel**: © 2010, Blender Foundation / [durian.blender.org](https://durian.blender.org), licensed under Creative Commons Attribution 3.0 ([CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)).
+- **Tears of Steel**: © 2012, Blender Foundation / [mango.blender.org](https://mango.blender.org), licensed under Creative Commons Attribution 3.0 ([CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)).
 - **Shaka Player Demo**: Google LLC, licensed under Apache License 2.0 ([Shaka Player](https://github.com/shaka-project/shaka-player)).
 
 ---
