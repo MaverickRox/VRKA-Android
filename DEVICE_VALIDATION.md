@@ -12,7 +12,7 @@ This document serves as the authoritative record for validation, emulator bounda
   - **Validation date**: November 9, 2026.
   - **Validation category**: Maintainer-reported physical-device validation.
   - **Distinction of verified scope**: This observation confirms that the v5.1.1-to-v5.1.2 upgrade path and package installation succeed on at least one real Android device without packaging or signature conflicts. It confirms successful installation/update on that device. It does not establish first-launch verification, full data preservation across complex queues, or in-app updater download execution on that specific device, and must not be generalized to every supported Android version or hardware model.
-- **Automated Verification**: Comprehensive JVM test suite with 751 tests across 73 suites passing with 0 failures, 0 errors, and 0 skipped. Full coverage of all 14 publication crash-recovery failure boundaries and in-app updater v5.1.1-to-v5.1.2 cryptographic validation.
+- **Automated Verification**: Comprehensive JVM test suite (747 tests across 73 suites at release time, 758 tests on `main`) passing with 0 failures, 0 errors, and 0 skipped. Full coverage of all 14 publication crash-recovery failure boundaries and in-app updater v5.1.1-to-v5.1.2 cryptographic validation.
 - **Deterministic Publication Failure-Injection Tests**: Verified all 14 crash, interruption, partial copy, journal reconciliation, and corrupted journal snapshot handling boundaries.
 - **Emulator Inspection & Runtime Testing Boundary**:
   - Host emulator environment and WHPX virtualization acceleration were inspected and operational.

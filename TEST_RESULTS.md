@@ -6,7 +6,8 @@ Date: 2026-11-09
 
 | Check | Command | Result |
 |---|---|---|
-| Full JVM unit tests | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 751 tests, 73 suites, 0 failures, 0 errors, 0 skipped |
+| Original v5.1.2 release-time JVM tests | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 747 tests, 73 suites, 0 failures, 0 errors, 0 skipped |
+| Post-release JVM tests on `main` (with updater regressions) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 758 tests, 73 suites, 0 failures, 0 errors, 0 skipped (supersedes initial 751-test post-release check with granular updater upgrade/downgrade/rollback/metadata isolation) |
 | Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
 | Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS; instrumentation was not executed |
 | Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS without production signing credentials |
@@ -31,11 +32,19 @@ The 5.1.2 suite adds deterministic coverage for all 14 publication failure bound
 13. Repeated startup reconciliation idempotence.
 14. Unrelated user files with similar names (guaranteed never deleted).
 
+The post-release test expansion on `main` adds dedicated coverage for updater regression and security invariants:
+- Published v5.1.1 and v5.1.2 release manifest verification with the pinned OpenPGP trust anchor.
+- Valid v5.1.1 (`50101`, revision 4) to v5.1.2 (`50102`, revision 5) upgrade acceptance across both manifest and package metadata layers.
+- Internally consistent same-version installation attempt rejection (`5.1.2` / `50102` over `5.1.2` / `50102`).
+- Lower-version downgrade attempt rejection (`5.1.1` / `50101` over `5.1.2` / `50102`).
+- Manifest revision rollback rejection (stored revision higher than incoming manifest revision).
+- Invalid package ID, version name mismatch, non-canonical filename format, and malformed version metadata rejection.
+
 ## Validation & Platform Boundaries
 
-- **Maintainer-Reported Physical Device Upgrade:** On November 9, 2026, the maintainer personally confirmed that updating an existing v5.1.1 installation to v5.1.2 on a physical Android phone was successful. This verifies that the v5.1.1-to-v5.1.2 upgrade package and signing identity are usable on real hardware. Unverified aspects such as automated instrumentation or comprehensive multi-device testing remain bounded. Historical v5.1.1 OnePlus 11 hardware testing is preserved below as historical evidence.
+- **Maintainer-Reported Physical Device Upgrade:** On November 9, 2026, the maintainer personally confirmed that updating an existing v5.1.1 installation to v5.1.2 on a physical Android phone was successful. This verifies that the v5.1.1-to-v5.1.2 upgrade package and production signing identity install cleanly over v5.1.1 on real hardware. Successful installation/update was confirmed; however, broader functional testing, UI walkthroughs, and automated instrumentation were not performed as part of this validation. Comprehensive multi-device testing was not conducted. Historical v5.1.1 OnePlus 11 hardware testing is preserved below as historical evidence.
 - **Emulator Boundary:** Host emulator environment and WHPX virtualization acceleration were inspected and functional. An API 36 headless emulator was launched, but runtime application testing could not complete due to an ADB authorization boundary on the host machine. The application was **not** successfully tested inside that emulator.
-- **Automated & Failure-Injection Verification:** Comprehensive JVM unit test suite (751 tests in 73 suites, 0 failures) completely exercises format selection, size estimation, URL sanitization, updater cryptography, and all 14 publication failure boundaries.
+- **Automated & Failure-Injection Verification:** Comprehensive JVM unit test suite (747 tests at release time, 758 tests across 73 suites on `main`, 0 failures) completely exercises format selection, size estimation, URL sanitization, updater cryptography, and all 14 publication failure boundaries.
 - **Platform Boundaries:** As documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md), Browser Fallback live-site end-to-end media transfers and physical SAF execution on API 26–28 hardware remain documented platform boundaries.
 
 ## APK
