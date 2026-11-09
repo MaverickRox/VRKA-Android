@@ -1,5 +1,6 @@
 package com.mvrk.vrka
 
+import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -33,6 +34,7 @@ internal enum class PublicationJournalLoadState {
     OK,
     EMPTY,
     CORRUPT,
+    UNSUPPORTED_SCHEMA,
     READ_FAILED,
 }
 
@@ -41,6 +43,11 @@ internal data class PublicationJournalLoadResult(
     val state: PublicationJournalLoadState,
     val recoveryCopy: File? = null,
     val detail: String = "",
+    /**
+     * True only when invalid records were attributable to distinct jobs and every remaining
+     * entry passed full validation. Destructive recovery may then proceed for those jobs.
+     */
+    val isolated: Boolean = false,
 )
 
 internal data class PublicationEntry(
@@ -164,11 +171,17 @@ internal class PublicationJournal(
 
     fun markFailed(transactionId: String, error: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
-            it.copy(
-                status = PublicationTransactionStatus.FAILED,
-                errorMessage = error,
-                updatedAt = System.currentTimeMillis(),
-            )
+            // A failed cleanup must stay cleanup-pending: retiring it as FAILED would let a
+            // broad reconciliation pass drop the retry obligation.
+            if (it.status == PublicationTransactionStatus.CLEANUP_PENDING) {
+                it.copy(errorMessage = error, updatedAt = System.currentTimeMillis())
+            } else {
+                it.copy(
+                    status = PublicationTransactionStatus.FAILED,
+                    errorMessage = error,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            }
         }
     }
 
@@ -192,23 +205,29 @@ internal class PublicationJournal(
         }
     }
 
-    fun markReconciled(jobId: String): Unit = synchronized(lock) {
+    /**
+     * Retires exactly the supplied publication transactions. Job-scoped reconciliation is
+     * deliberately not supported: a retry reuses the logical job ID, so a job-wide sweep
+     * could silently retire failed transactions belonging to an earlier attempt.
+     */
+    fun markReconciled(transactionIds: Collection<String>): Unit = synchronized(lock) {
+        if (transactionIds.isEmpty()) return
+        val targets = transactionIds.toSet()
         val entries = loadEntries().toMutableList()
         var changed = false
         for (i in entries.indices) {
-            if (entries[i].jobId == jobId) {
-                if (entries[i].status == PublicationTransactionStatus.CLEANUP_PENDING) {
-                    continue
-                }
-                entries[i] = entries[i].copy(
-                    status = PublicationTransactionStatus.RECONCILED,
-                    publicationPhase = if (entries[i].status == PublicationTransactionStatus.COMPLETED ||
-                        entries[i].publicationPhase == PublicationPhase.FINALIZED
-                    ) PublicationPhase.RECORDED else entries[i].publicationPhase,
-                    updatedAt = System.currentTimeMillis(),
-                )
-                changed = true
-            }
+            if (entries[i].transactionId !in targets) continue
+            if (entries[i].status == PublicationTransactionStatus.CLEANUP_PENDING) continue
+            entries[i] = entries[i].copy(
+                status = PublicationTransactionStatus.RECONCILED,
+                publicationPhase = if (entries[i].publicationPhase == PublicationPhase.FINALIZED) {
+                    PublicationPhase.RECORDED
+                } else {
+                    entries[i].publicationPhase
+                },
+                updatedAt = System.currentTimeMillis(),
+            )
+            changed = true
         }
         if (changed) saveEntries(entries)
     }
@@ -270,6 +289,23 @@ internal class PublicationJournal(
             lastLoadResult = res
             return res
         }
+        val schemaVersion = when (val raw = root.opt("schemaVersion")) {
+            null, JSONObject.NULL -> null
+            is Number -> raw.toInt()
+            else -> -1
+        }
+        if (schemaVersion != CURRENT_SCHEMA_VERSION) {
+            val res = preserveAndReport(
+                text,
+                PublicationJournalLoadResult(
+                    emptyList(),
+                    PublicationJournalLoadState.UNSUPPORTED_SCHEMA,
+                    detail = "Unsupported journal schema version: ${schemaVersion ?: "missing"}",
+                ),
+            )
+            lastLoadResult = res
+            return res
+        }
         val array = root.optJSONArray("entries")
         if (array == null) {
             val res = preserveAndReport(
@@ -283,33 +319,26 @@ internal class PublicationJournal(
             lastLoadResult = res
             return res
         }
-        val result = mutableListOf<PublicationEntry>()
-        var skipped = 0
-        for (i in 0 until array.length()) {
-            val obj = array.optJSONObject(i)
-            if (obj == null) {
-                skipped++
-                continue
-            }
-            val decoded = decode(obj)
-            if (decoded != null) {
-                result.add(decoded)
-            } else {
-                skipped++
-            }
-        }
-        val state = if (skipped > 0) PublicationJournalLoadState.CORRUPT else PublicationJournalLoadState.OK
-        val res = if (skipped > 0) {
-            preserveAndReport(
+        val decoded = decodeEntries(array)
+        val res = when {
+            decoded.failClosed -> preserveAndReport(
                 text,
                 PublicationJournalLoadResult(
-                    result,
-                    state,
-                    detail = "skipped $skipped invalid entry record(s)",
+                    emptyList(),
+                    PublicationJournalLoadState.CORRUPT,
+                    detail = decoded.detail,
                 ),
             )
-        } else {
-            PublicationJournalLoadResult(result, PublicationJournalLoadState.OK)
+            decoded.invalidRecords > 0 -> preserveAndReport(
+                text,
+                PublicationJournalLoadResult(
+                    entries = decoded.entries,
+                    state = PublicationJournalLoadState.CORRUPT,
+                    detail = decoded.detail,
+                    isolated = decoded.entries.isNotEmpty(),
+                ),
+            )
+            else -> PublicationJournalLoadResult(decoded.entries, PublicationJournalLoadState.OK)
         }
         lastLoadResult = res
         return res
@@ -380,7 +409,7 @@ internal class PublicationJournal(
         val array = JSONArray()
         bounded.forEach { array.put(encode(it)) }
         val payload = JSONObject()
-            .put("schemaVersion", 1)
+            .put("schemaVersion", CURRENT_SCHEMA_VERSION)
             .put("entries", array)
             .toString()
 
@@ -414,67 +443,317 @@ internal class PublicationJournal(
         .put("updatedAt", entry.updatedAt)
         .put("errorMessage", entry.errorMessage)
 
-    private fun decode(obj: JSONObject): PublicationEntry? {
-        val transactionId = obj.optString("transactionId").takeIf { it.isNotBlank() } ?: return null
-        val jobId = obj.optString("jobId").takeIf { it.isNotBlank() } ?: return null
-        val outputIndex = obj.optInt("outputIndex", -1)
-        if (outputIndex < 0) return null
-        val totalOutputs = obj.optInt("totalOutputs", 0)
-        if (totalOutputs < 1 || outputIndex >= totalOutputs) return null
+    private data class DecodeOutcome(
+        val entries: List<PublicationEntry>,
+        val invalidRecords: Int = 0,
+        val failClosed: Boolean = false,
+        val detail: String = "",
+    )
 
-        val intendedFilename = obj.optString("intendedFilename").takeIf { it.isNotBlank() } ?: return null
-        val pendingFilename = obj.optString("pendingFilename").takeIf { it.isNotBlank() }
-            ?: ".vrka_pending_${transactionId}_$intendedFilename"
-        val stagingPath = obj.optString("stagingPath").takeIf { it.isNotBlank() } ?: return null
-        val expectedSizeBytes = obj.optLong("expectedSizeBytes", -1L)
-        if (expectedSizeBytes < 0L) return null
+    private sealed interface RecordResult {
+        data class Valid(val entry: PublicationEntry) : RecordResult
+        data class Invalid(
+            val jobId: String?,
+            val transactionId: String?,
+            val reason: String,
+        ) : RecordResult
+    }
 
-        val providerTypeStr = obj.optString("providerType")
-        val providerType = PublicationProviderType.values().firstOrNull { it.name == providerTypeStr }
-            ?: return null
+    private fun decodeEntries(array: JSONArray): DecodeOutcome {
+        val valid = mutableListOf<PublicationEntry>()
+        val invalid = mutableListOf<RecordResult.Invalid>()
+        var failClosed = false
+        for (index in 0 until array.length()) {
+            val obj = array.optJSONObject(index)
+            if (obj == null) {
+                invalid += RecordResult.Invalid(null, null, "record $index is not an object")
+                failClosed = true
+                continue
+            }
+            when (val result = decodeRecord(obj)) {
+                is RecordResult.Valid -> valid += result.entry
+                is RecordResult.Invalid -> {
+                    invalid += result
+                    if (result.jobId == null) failClosed = true
+                }
+            }
+        }
 
-        val destinationIdentity = obj.optString("destinationIdentity").takeIf { it.isNotBlank() }
-            ?: return null
+        val validTransactions = valid.mapTo(HashSet()) { it.transactionId }
+        if (validTransactions.size != valid.size) failClosed = true
+        for (record in invalid) {
+            if (record.transactionId != null && record.transactionId in validTransactions) {
+                failClosed = true
+            }
+        }
 
-        val phaseStr = obj.optString("publicationPhase")
-        val publicationPhase = PublicationPhase.values().firstOrNull { it.name == phaseStr }
-            ?: return null
+        val invalidJobs = invalid.mapNotNullTo(HashSet()) { it.jobId }
+        val validByJob = valid.groupBy { it.jobId }
+        val droppedJobs = HashSet<String>()
+        for ((jobId, entries) in validByJob) {
+            if (jobId in invalidJobs || !isCompleteBatch(entries)) droppedJobs += jobId
+        }
+        val retained = valid.filter { it.jobId !in droppedJobs }
+        val invalidCount = invalid.size + valid.count { it.jobId in droppedJobs }
+        if (failClosed || (invalidCount > 0 && retained.isEmpty())) {
+            return DecodeOutcome(
+                entries = emptyList(),
+                invalidRecords = invalidCount,
+                failClosed = true,
+                detail = "Journal contains records that cannot be isolated safely; recovery is disabled",
+            )
+        }
+        return if (invalidCount > 0) {
+            DecodeOutcome(
+                entries = retained,
+                invalidRecords = invalidCount,
+                detail = "Quarantined $invalidCount invalid record(s); ${retained.map { it.jobId }.toSet().size} valid job(s) isolated",
+            )
+        } else {
+            DecodeOutcome(valid)
+        }
+    }
 
-        val statusStr = obj.optString("status")
-        val status = PublicationTransactionStatus.values().firstOrNull { it.name == statusStr }
-            ?: return null
+    /**
+     * A logical job can be retried, so the journal legitimately holds several transactions
+     * for the same output index. The newest transaction per index is the current attempt;
+     * older ones are cleanup/reconciliation candidates and must not invalidate the batch.
+     */
+    private fun isCompleteBatch(entries: List<PublicationEntry>): Boolean {
+        if (entries.isEmpty()) return false
+        val newestPerIndex = entries.groupBy { it.outputIndex }.mapValues { (_, group) ->
+            group.maxWithOrNull(
+                compareBy<PublicationEntry> { it.createdAt }
+                    .thenBy { it.updatedAt }
+                    .thenBy { it.transactionId },
+            )!!
+        }
+        val totals = newestPerIndex.values.map { it.totalOutputs }.toSet()
+        if (totals.size != 1) return false
+        val total = totals.single()
+        if (total != newestPerIndex.size) return false
+        if (newestPerIndex.keys.sorted() != (0 until total).toList()) return false
+        val current = newestPerIndex.values
+        if (current.any { it.providerType != current.first().providerType }) return false
+        if (current.any { it.destinationIdentity != current.first().destinationIdentity }) return false
+        return true
+    }
 
-        val providerUri = obj.optString("providerUri").takeIf { it.isNotBlank() && it != "null" }
-        val copiedBytes = obj.optLong("copiedBytes", -1L)
-        if (copiedBytes < 0L) return null
+    private fun decodeRecord(obj: JSONObject): RecordResult {
+        val rawTransactionId = stringField(obj, "transactionId")
+        val transactionId = rawTransactionId?.takeIf { isSafeIdentifier(it, MAX_TRANSACTION_ID_CHARS) }
+        val rawJobId = stringField(obj, "jobId")
+        val jobId = rawJobId?.takeIf { isSafeIdentifier(it, MAX_JOB_ID_CHARS) }
 
-        val createdAt = obj.optLong("createdAt", -1L).takeIf { it > 0L } ?: System.currentTimeMillis()
-        val updatedAt = obj.optLong("updatedAt", -1L).takeIf { it > 0L } ?: System.currentTimeMillis()
-        val errorMessage = obj.optString("errorMessage").takeIf { it.isNotBlank() && it != "null" }
-        return PublicationEntry(
-            transactionId = transactionId,
-            jobId = jobId,
-            outputIndex = outputIndex,
-            totalOutputs = totalOutputs,
-            intendedFilename = intendedFilename,
-            pendingFilename = pendingFilename,
-            stagingPath = stagingPath,
-            expectedSizeBytes = expectedSizeBytes,
-            providerType = providerType,
-            destinationIdentity = destinationIdentity,
-            publicationPhase = publicationPhase,
-            providerUri = providerUri,
-            copiedBytes = copiedBytes,
-            status = status,
-            createdAt = createdAt,
-            updatedAt = updatedAt,
-            errorMessage = errorMessage,
+        fun invalid(reason: String) = RecordResult.Invalid(jobId, transactionId, reason)
+
+        if (transactionId == null) return invalid("missing or invalid transactionId")
+        if (jobId == null) return invalid("missing or invalid jobId")
+
+        val outputIndex = number(obj, "outputIndex")?.toInt() ?: return invalid("missing outputIndex")
+        val totalOutputs = number(obj, "totalOutputs")?.toInt() ?: return invalid("missing totalOutputs")
+        if (totalOutputs !in 1..MAX_OUTPUTS) return invalid("totalOutputs out of range")
+        if (outputIndex !in 0 until totalOutputs) return invalid("outputIndex out of range")
+
+        val intendedFilename = stringField(obj, "intendedFilename")
+            ?.takeIf(::isSafeFilename)
+            ?: return invalid("missing or unsafe intendedFilename")
+        val pendingFilename = stringField(obj, "pendingFilename")
+            ?: return invalid("missing pendingFilename")
+        if (pendingFilename != pendingNameFor(transactionId, intendedFilename)) {
+            return invalid("pendingFilename does not belong to this transaction")
+        }
+        val stagingPath = stringField(obj, "stagingPath")
+            ?.takeIf { it.isNotBlank() && it.length <= MAX_PATH_CHARS && runCatching { File(it).isAbsolute }.getOrDefault(false) }
+            ?: return invalid("missing or non-absolute stagingPath")
+        val expectedSizeBytes = number(obj, "expectedSizeBytes")?.toLong()
+            ?: return invalid("missing expectedSizeBytes")
+        if (expectedSizeBytes < 0L) return invalid("negative expectedSizeBytes")
+
+        val providerType = PublicationProviderType.values()
+            .firstOrNull { it.name == stringField(obj, "providerType") }
+            ?: return invalid("invalid providerType")
+        val destinationIdentity = stringField(obj, "destinationIdentity")
+            ?: return invalid("missing destinationIdentity")
+        when (providerType) {
+            PublicationProviderType.MEDIA_STORE -> {
+                if (destinationIdentity != PublicationUriRules.MEDIA_STORE_DESTINATION) {
+                    return invalid("invalid MediaStore destination identity")
+                }
+            }
+            PublicationProviderType.SAF -> {
+                if (!isTreeUri(destinationIdentity)) return invalid("invalid SAF tree destination")
+            }
+        }
+
+        val publicationPhase = PublicationPhase.values()
+            .firstOrNull { it.name == stringField(obj, "publicationPhase") }
+            ?: return invalid("invalid publicationPhase")
+        val status = PublicationTransactionStatus.values()
+            .firstOrNull { it.name == stringField(obj, "status") }
+            ?: return invalid("invalid status")
+
+        val providerUri = stringField(obj, "providerUri")
+        if (providerUri != null) {
+            val structurallyValid = when (providerType) {
+                PublicationProviderType.MEDIA_STORE -> isMediaStoreUri(providerUri)
+                PublicationProviderType.SAF -> isDocumentUnderTree(providerUri, destinationIdentity)
+            }
+            if (!structurallyValid) return invalid("providerUri does not belong to the declared provider/destination")
+        }
+
+        val copiedBytes = number(obj, "copiedBytes")?.toLong() ?: return invalid("missing copiedBytes")
+        if (copiedBytes < 0L) return invalid("negative copiedBytes")
+
+        val now = System.currentTimeMillis()
+        val createdAt = number(obj, "createdAt")?.toLong() ?: return invalid("missing createdAt")
+        val updatedAt = number(obj, "updatedAt")?.toLong() ?: return invalid("missing updatedAt")
+        if (createdAt <= 0L || updatedAt <= 0L) return invalid("non-positive timestamp")
+        if (createdAt > now + MAX_CLOCK_SKEW_MS || updatedAt > now + MAX_CLOCK_SKEW_MS) {
+            return invalid("timestamp in the future")
+        }
+        if (updatedAt < createdAt) return invalid("updatedAt precedes createdAt")
+
+        when (publicationPhase) {
+            PublicationPhase.INTENT_RECORDED -> {
+                if (providerUri != null) return invalid("intent record has a provider URI")
+                if (copiedBytes != 0L) return invalid("intent record has copied bytes")
+                if (status != PublicationTransactionStatus.PENDING &&
+                    status != PublicationTransactionStatus.FAILED &&
+                    status != PublicationTransactionStatus.INTERRUPTED &&
+                    status != PublicationTransactionStatus.CLEANUP_PENDING
+                ) {
+                    return invalid("intent record has an inconsistent status")
+                }
+            }
+            PublicationPhase.PROVIDER_OBJECT_CREATED -> {
+                if (copiedBytes != 0L) return invalid("provider-created record has copied bytes")
+            }
+            PublicationPhase.DATA_COPIED -> {
+                if (copiedBytes > expectedSizeBytes) return invalid("copied bytes exceed the expected size")
+            }
+            PublicationPhase.OUTPUT_VALIDATED,
+            PublicationPhase.FINALIZED,
+            PublicationPhase.RECORDED,
+            -> {
+                if (copiedBytes != expectedSizeBytes) {
+                    return invalid("validated record byte count does not match the expected size")
+                }
+            }
+        }
+
+        val pendingProviderObject = status == PublicationTransactionStatus.CLEANUP_PENDING
+        val uriRequired = publicationPhase != PublicationPhase.INTENT_RECORDED &&
+            status != PublicationTransactionStatus.INTERRUPTED &&
+            status != PublicationTransactionStatus.RECONCILED
+        if (uriRequired && providerUri == null) return invalid("missing providerUri for ${status.name}")
+        if (pendingProviderObject && providerUri == null) {
+            return invalid("cleanup-pending record has no provider object to clean up")
+        }
+        when (status) {
+            PublicationTransactionStatus.PENDING -> {
+                if (publicationPhase != PublicationPhase.INTENT_RECORDED) {
+                    return invalid("pending record has advanced phase")
+                }
+            }
+            PublicationTransactionStatus.IN_PROGRESS -> {
+                if (publicationPhase == PublicationPhase.INTENT_RECORDED ||
+                    publicationPhase == PublicationPhase.FINALIZED ||
+                    publicationPhase == PublicationPhase.RECORDED
+                ) {
+                    return invalid("in-progress record has inconsistent phase")
+                }
+            }
+            PublicationTransactionStatus.COMPLETED -> {
+                if (publicationPhase != PublicationPhase.FINALIZED &&
+                    publicationPhase != PublicationPhase.RECORDED
+                ) {
+                    return invalid("completed record is not finalized")
+                }
+            }
+            PublicationTransactionStatus.RECONCILED -> Unit
+            PublicationTransactionStatus.FAILED,
+            PublicationTransactionStatus.INTERRUPTED,
+            PublicationTransactionStatus.CLEANUP_PENDING,
+            -> Unit
+        }
+        if (publicationPhase == PublicationPhase.RECORDED &&
+            status != PublicationTransactionStatus.COMPLETED &&
+            status != PublicationTransactionStatus.RECONCILED
+        ) {
+            return invalid("recorded phase has inconsistent status")
+        }
+
+        val errorMessage = stringField(obj, "errorMessage")?.take(MAX_DETAIL_CHARS)
+        return RecordResult.Valid(
+            PublicationEntry(
+                transactionId = transactionId,
+                jobId = jobId,
+                outputIndex = outputIndex,
+                totalOutputs = totalOutputs,
+                intendedFilename = intendedFilename,
+                pendingFilename = pendingFilename,
+                stagingPath = stagingPath,
+                expectedSizeBytes = expectedSizeBytes,
+                providerType = providerType,
+                destinationIdentity = destinationIdentity,
+                publicationPhase = publicationPhase,
+                providerUri = providerUri,
+                copiedBytes = copiedBytes,
+                status = status,
+                createdAt = createdAt,
+                updatedAt = updatedAt,
+                errorMessage = errorMessage,
+            ),
         )
     }
 
+    private fun number(obj: JSONObject, name: String): Number? {
+        if (!obj.has(name) || obj.isNull(name)) return null
+        return obj.opt(name) as? Number
+    }
+
+    private fun stringField(obj: JSONObject, name: String): String? {
+        if (!obj.has(name) || obj.isNull(name)) return null
+        return obj.opt(name) as? String
+    }
+
+    private fun isSafeIdentifier(value: String, maxChars: Int): Boolean =
+        value.isNotBlank() &&
+            value.length <= maxChars &&
+            value.none { it.isWhitespace() || it.isISOControl() }
+
+    private fun isSafeFilename(value: String): Boolean =
+        value.isNotBlank() &&
+            value.length <= MAX_FILENAME_CHARS &&
+            value != "." &&
+            value != ".." &&
+            !value.startsWith(".") &&
+            value.none { it == '/' || it == '\\' || it == '\u0000' || it.isISOControl() }
+
+    private fun isTreeUri(value: String): Boolean =
+        runCatching { PublicationUriRules.isTreeUri(Uri.parse(value)) }.getOrDefault(false)
+
+    private fun isDocumentUnderTree(document: String, tree: String): Boolean = runCatching {
+        PublicationUriRules.isDocumentUnderTree(Uri.parse(document), Uri.parse(tree))
+    }.getOrDefault(false)
+
+    private fun isMediaStoreUri(value: String): Boolean =
+        runCatching { PublicationUriRules.isMediaStoreUri(Uri.parse(value)) }.getOrDefault(false)
+
+    private fun pendingNameFor(transactionId: String, intendedFilename: String): String =
+        PublicationUriRules.pendingNameFor(transactionId, intendedFilename)
+
     companion object {
+        private const val CURRENT_SCHEMA_VERSION = 1
         private const val MAX_JOURNAL_ENTRIES = 200
         private const val MAX_RECOVERY_COPIES = 3
         private const val MAX_DETAIL_CHARS = 300
+        private const val MAX_OUTPUTS = 500
+        private const val MAX_FILENAME_CHARS = 255
+        private const val MAX_TRANSACTION_ID_CHARS = 128
+        private const val MAX_JOB_ID_CHARS = 256
+        private const val MAX_PATH_CHARS = 4096
+        private const val MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000L
     }
 }

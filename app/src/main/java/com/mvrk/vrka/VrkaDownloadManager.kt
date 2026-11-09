@@ -64,6 +64,10 @@ class VrkaDownloadManager internal constructor(
     private val scope: CoroutineScope,
     customStore: JobStore? = null,
     customPublisher: OutputPublisher? = null,
+    customStagingRoot: File? = null,
+    customStagingCleanupStore: StagingCleanupStore? = null,
+    private val stagingDelete: (File) -> Boolean = { it.deleteRecursively() },
+    autoRecoverOnInit: Boolean = true,
 ) {
     constructor(
         context: Context,
@@ -91,7 +95,11 @@ class VrkaDownloadManager internal constructor(
     private val transferJobWasScheduled =
         DownloadTransferRuntime.wasTransferJobInvoked || DownloadTransferScheduler.isScheduled(context)
     internal val publisher = customPublisher ?: OutputPublisher(context, settingsRepository)
-    private val stagingRoot by lazy { File(context.getExternalFilesDir(null), "staging") }
+    private val stagingRoot: File by lazy { customStagingRoot ?: File(context.getExternalFilesDir(null), "staging") }
+    private val stagingCleanupStore = customStagingCleanupStore
+        ?: StagingCleanupStore(File(context.filesDir, "staging_cleanup.json"))
+    /** Serializes snapshot selection, retention, write, and durable verification. */
+    private val persistenceLock = Any()
     private val speedPattern = Regex("""\bat\s+([^\s]+/s)""", RegexOption.IGNORE_CASE)
 
     private val _jobs = MutableStateFlow<List<DownloadJob>>(
@@ -172,21 +180,23 @@ class VrkaDownloadManager internal constructor(
             metadataRepository.clear()
         }
         scope.launch(Dispatchers.IO) {
-            val initial = runCatching {
-                store.load(recoverActive = transferJobWasScheduled)
-                    .sortedByDescending(DownloadJob::createdAt)
-            }.getOrDefault(emptyList())
-            synchronized(_jobs) {
-                val existingIds = _jobs.value.map { it.id }.toSet()
-                val missing = initial.filterNot { it.id in existingIds }
-                if (missing.isNotEmpty()) {
-                    _jobs.value = (_jobs.value + missing).sortedByDescending(DownloadJob::createdAt)
+            if (autoRecoverOnInit) {
+                val initial = runCatching {
+                    store.load(recoverActive = transferJobWasScheduled)
+                        .sortedByDescending(DownloadJob::createdAt)
+                }.getOrDefault(emptyList())
+                synchronized(_jobs) {
+                    val existingIds = _jobs.value.map { it.id }.toSet()
+                    val missing = initial.filterNot { it.id in existingIds }
+                    if (missing.isNotEmpty()) {
+                        _jobs.value = (_jobs.value + missing).sortedByDescending(DownloadJob::createdAt)
+                    }
                 }
+                reconcilePublicationJournalOnStartup()
+                // Runs after persisted state is merged so the plan sees every record.
+                resumeInterruptedWorkIfNeeded()
+                reportStoreLoadStatus(store.lastLoadResult)
             }
-            reconcilePublicationJournalOnStartup()
-            // Runs after persisted state is merged so the plan sees every record.
-            resumeInterruptedWorkIfNeeded()
-            reportStoreLoadStatus(store.lastLoadResult)
             for (ignored in persistRequests) {
                 persistJobsNow()
             }
@@ -244,174 +254,57 @@ class VrkaDownloadManager internal constructor(
             )
         }
         when (loadResult.state) {
-            PublicationJournalLoadState.CORRUPT,
-            PublicationJournalLoadState.READ_FAILED -> {
+            PublicationJournalLoadState.READ_FAILED,
+            PublicationJournalLoadState.UNSUPPORTED_SCHEMA -> {
                 reportStoreIssue(
                     stage = "Publication journal recovery",
-                    summary = "Publication journal is corrupted or unreadable",
+                    summary = "Publication journal cannot be interpreted safely",
                     detail = loadResult.detail,
                 )
                 return
             }
+            PublicationJournalLoadState.CORRUPT -> {
+                if (!loadResult.isolated || loadResult.entries.isEmpty()) {
+                    reportStoreIssue(
+                        stage = "Publication journal recovery",
+                        summary = "Publication journal is corrupted and cannot be isolated",
+                        detail = loadResult.detail,
+                    )
+                    return
+                }
+                reportStoreIssue(
+                    stage = "Publication journal recovery",
+                    summary = "Publication journal quarantined invalid records",
+                    detail = loadResult.detail,
+                )
+            }
             PublicationJournalLoadState.MISSING,
             PublicationJournalLoadState.EMPTY -> {
                 handleLegacyInFlightJobs()
+                retryPendingStagingCleanup()
                 return
             }
             PublicationJournalLoadState.OK -> Unit
         }
 
-        val unreconciled = runCatching { publisher.activeJournal.unreconciledEntries() }.getOrDefault(emptyList())
+        val unreconciled = loadResult.entries.filter { it.status != PublicationTransactionStatus.RECONCILED }
         if (unreconciled.isEmpty()) {
             handleLegacyInFlightJobs()
+            retryPendingStagingCleanup()
             return
         }
 
         val byJob = unreconciled.groupBy { it.jobId }
-        val fullyReconciledJobIds = mutableListOf<String>()
         val jobsToUpdate = mutableMapOf<String, DownloadJob>()
+        val plans = mutableMapOf<String, JobRecoveryPlan>()
 
         for ((jobId, entries) in byJob) {
             val existingJob = _jobs.value.firstOrNull { it.id == jobId }
-
-            // If job is already DONE in JobStore, verify and mark reconciled
-            if (existingJob != null && existingJob.state == JobState.DONE) {
-                fullyReconciledJobIds.add(jobId)
-                continue
-            }
-
-            // Step 1: Discover any provider objects created before their URI was recorded
-            val adoptedEntries = entries.map { entry ->
-                if (entry.providerUri == null) {
-                    val discovered = when (entry.providerType) {
-                        PublicationProviderType.MEDIA_STORE -> publisher.findPendingMediaStoreUri(entry.pendingFilename)
-                        PublicationProviderType.SAF -> {
-                            runCatching { Uri.parse(entry.destinationIdentity) }.getOrNull()?.let { treeUri ->
-                                publisher.findPendingSafUri(treeUri, entry.pendingFilename)
-                            }
-                        }
-                    }
-                    if (discovered != null) {
-                        publisher.activeJournal.updateProviderCreated(entry.transactionId, discovered.toString())
-                        entry.copy(
-                            providerUri = discovered.toString(),
-                            publicationPhase = PublicationPhase.PROVIDER_OBJECT_CREATED,
-                        )
-                    } else {
-                        entry
-                    }
-                } else {
-                    entry
-                }
-            }
-
-            val totalOutputs = adoptedEntries.firstOrNull()?.totalOutputs ?: 1
-            val isAllPresent = adoptedEntries.size == totalOutputs
-
-            val allOutputsComplete = isAllPresent && adoptedEntries.all { entry ->
-                val phase = entry.publicationPhase
-                phase == PublicationPhase.FINALIZED ||
-                    phase == PublicationPhase.RECORDED ||
-                    (phase == PublicationPhase.DATA_COPIED && entry.copiedBytes == entry.expectedSizeBytes && entry.expectedSizeBytes > 0L)
-            }
-
-            if (allOutputsComplete) {
-                // Advance any DATA_COPIED items to FINALIZED
-                val finalizedEntries = adoptedEntries.map { entry ->
-                    if (entry.publicationPhase == PublicationPhase.DATA_COPIED && entry.providerUri != null) {
-                        val uri = Uri.parse(entry.providerUri)
-                        when (entry.providerType) {
-                            PublicationProviderType.MEDIA_STORE -> {
-                                val finalized = publisher.finalizeMediaStore(uri, entry.intendedFilename)
-                                if (finalized) {
-                                    publisher.activeJournal.updateFinalized(entry.transactionId)
-                                    entry.copy(publicationPhase = PublicationPhase.FINALIZED)
-                                } else {
-                                    entry
-                                }
-                            }
-                            PublicationProviderType.SAF -> {
-                                val finalUri = publisher.finalizeSaf(uri, entry.intendedFilename)
-                                val verified = publisher.fileExists(finalUri.toString())
-                                if (verified) {
-                                    publisher.activeJournal.updateFinalized(entry.transactionId, finalUri.toString())
-                                    entry.copy(
-                                        providerUri = finalUri.toString(),
-                                        publicationPhase = PublicationPhase.FINALIZED,
-                                    )
-                                } else {
-                                    entry
-                                }
-                            }
-                        }
-                    } else {
-                        entry
-                    }
-                }
-
-                // Verify all outputs are finalized and exist at their provider URIs
-                val allExist = finalizedEntries.all { entry ->
-                    (entry.publicationPhase == PublicationPhase.FINALIZED || entry.publicationPhase == PublicationPhase.RECORDED) &&
-                        entry.providerUri != null && publisher.fileExists(entry.providerUri)
-                }
-
-                if (allExist) {
-                    val uris = finalizedEntries.map { it.providerUri!! }
-                    val totalBytes = finalizedEntries.sumOf { it.copiedBytes }
-                    val targetJob = existingJob ?: DownloadJob(
-                        id = jobId,
-                        request = DownloadRequest(url = "", mode = MediaMode.VIDEO, quality = VideoQuality.P1080),
-                        state = JobState.DONE,
-                        title = finalizedEntries.firstOrNull()?.intendedFilename ?: "Recovered Media",
-                        detail = if (uris.size == 1) "Saved to Downloads/VRKA" else "Saved ${uris.size} files",
-                        downloadedBytes = totalBytes,
-                        reportedTotalBytes = totalBytes,
-                        reportedTotalIsExact = true,
-                        actualFinalFileBytes = totalBytes,
-                        outputUris = uris,
-                        error = "",
-                        publishStarted = true,
-                        createdAt = finalizedEntries.minOfOrNull { it.updatedAt } ?: System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis(),
-                    )
-                    val isOpus = targetJob.request.mode == MediaMode.AUDIO && targetJob.request.audioFormat == AudioFormat.OPUS
-                    val detail = if (isOpus) {
-                        "Saved (native Opus stream copy)"
-                    } else if (uris.size == 1) {
-                        "Saved to Downloads/VRKA"
-                    } else {
-                        "Saved ${uris.size} files"
-                    }
-
-                    jobsToUpdate[jobId] = targetJob.copy(
-                        state = JobState.DONE,
-                        progress = 100f,
-                        detail = detail,
-                        downloadedBytes = totalBytes,
-                        reportedTotalBytes = totalBytes,
-                        reportedTotalIsExact = true,
-                        actualFinalFileBytes = totalBytes,
-                        outputUris = uris,
-                        error = "",
-                        publishStarted = true,
-                        updatedAt = System.currentTimeMillis(),
-                    )
-                    fullyReconciledJobIds.add(jobId)
-                } else {
-                    // One or more outputs could not be finalized (e.g. MediaStore update affected 0 rows).
-                    // Preserve the journal and outputs for retry; do NOT delete completed files and do NOT reconcile.
-                    reportStoreIssue(
-                        stage = "Publication finalization",
-                        summary = "Output finalization verification failed",
-                        detail = "Outputs for job $jobId could not be finalized; preserving journal for retry",
-                    )
-                }
-            } else {
-                handleIncompleteBatch(jobId, existingJob, adoptedEntries, jobsToUpdate, fullyReconciledJobIds)
-            }
+            val plan = planJobRecovery(jobId, existingJob, entries)
+            if (plan.updatedJob != null) jobsToUpdate[jobId] = plan.updatedJob
+            plans[jobId] = plan
         }
 
-        // Step 2: Update in-memory job state
         if (jobsToUpdate.isNotEmpty()) {
             mutate(persist = false) { currentList ->
                 val updatedMap = jobsToUpdate
@@ -422,91 +315,391 @@ class VrkaDownloadManager internal constructor(
             }
         }
 
-        // Step 3 & 4: Persist terminal JobStore state and verify persistence result
-        val persistSuccess = if (jobsToUpdate.isNotEmpty()) {
-            persistJobsNow()
-        } else {
-            true
-        }
-
-        // Step 5 & 6: ONLY if persistence succeeded, mark journal reconciled and clean up staging
-        if (persistSuccess) {
-            fullyReconciledJobIds.forEach { jobId ->
-                runCatching { publisher.activeJournal.markReconciled(jobId) }
-                cleanupStaging(jobId)
-            }
-        } else {
+        // Every unresolved job is pinned so the 250-record history cap cannot evict a job
+        // whose journal transaction still requires reconciliation.
+        val persistSuccess = jobsToUpdate.isEmpty() || persistJobsNow(byJob.keys)
+        if (!persistSuccess) {
             reportStoreIssue(
                 stage = "Publication journal reconciliation",
                 summary = "Failed to persist reconciled jobs to JobStore; retaining journal and staging",
-                detail = "JobStore save returned false during startup reconciliation",
+                detail = "JobStore save or durable verification failed during startup reconciliation",
             )
+            handleLegacyInFlightJobs()
+            return
+        }
+
+        for ((jobId, plan) in plans) {
+            var reconciliationSucceeded = true
+            if (plan.reconciledTransactions.isNotEmpty()) {
+                reconciliationSucceeded = runCatching {
+                    publisher.activeJournal.markReconciled(plan.reconciledTransactions)
+                    true
+                }.getOrDefault(false)
+                if (!reconciliationSucceeded) {
+                    reportStoreIssue(
+                        stage = "Publication journal reconciliation",
+                        summary = "Could not retire reconciled publication transactions",
+                        detail = "Journal write failed for job $jobId; staging retained for a later retry.",
+                    )
+                }
+            }
+            if (reconciliationSucceeded) {
+                cleanupStagingWhenSafe(jobId)
+            }
         }
 
         handleLegacyInFlightJobs()
+        retryPendingStagingCleanup()
     }
 
-    private fun handleIncompleteBatch(
+    private data class JobRecoveryPlan(
+        val updatedJob: DownloadJob?,
+        val reconciledTransactions: Set<String>,
+        val unresolvedTransactions: Set<String>,
+    )
+
+    /**
+     * The newest transaction per output index belongs to the current attempt; older
+     * transactions for the same job are leftovers from previous attempts and are cleaned
+     * or reconciled independently without affecting the current batch's verdict.
+     */
+    private fun planJobRecovery(
         jobId: String,
         existingJob: DownloadJob?,
         entries: List<PublicationEntry>,
-        jobsToUpdate: MutableMap<String, DownloadJob>,
-        fullyReconciledJobIds: MutableList<String>,
-    ) {
-        val completedUris = mutableListOf<String>()
-        var totalBytes = 0L
-        val totalOutputs = entries.firstOrNull()?.totalOutputs ?: 1
-        var anyCleanupFailed = false
+    ): JobRecoveryPlan {
+        val newestPerIndex = entries.groupBy { it.outputIndex }.mapValues { (_, group) ->
+            group.maxWithOrNull(
+                compareBy<PublicationEntry> { it.createdAt }
+                    .thenBy { it.updatedAt }
+                    .thenBy { it.transactionId },
+            )!!
+        }
+        val historical: List<PublicationEntry>
+        val current: List<PublicationEntry>
+        if (existingJob != null && existingJob.state == JobState.DONE) {
+            // The durable DONE record names the transactions that actually produced its
+            // outputs. Journal entries outside those URIs are leftovers from earlier
+            // attempts and must not demote a successfully recorded publication.
+            val doneUris = existingJob.outputUris.toSet()
+            val matching = entries.filter { it.providerUri != null && it.providerUri in doneUris }
+                .sortedBy { it.outputIndex }
+            val matchingIds = matching.mapTo(HashSet()) { it.transactionId }
+            current = matching
+            historical = entries.filter { it.transactionId !in matchingIds }
+        } else {
+            val currentIds = newestPerIndex.values.mapTo(HashSet()) { it.transactionId }
+            current = newestPerIndex.values.sortedBy { it.outputIndex }
+            historical = entries.filter { it.transactionId !in currentIds }
+        }
 
-        entries.forEach { entry ->
-            val isFinal = (entry.publicationPhase == PublicationPhase.FINALIZED || entry.publicationPhase == PublicationPhase.RECORDED) &&
-                entry.providerUri != null && publisher.fileExists(entry.providerUri)
-            if (isFinal) {
-                completedUris.add(entry.providerUri)
-                totalBytes += entry.copiedBytes
+        val reconciled = mutableSetOf<String>()
+        val unresolved = mutableSetOf<String>()
+        val completed = linkedMapOf<String, PublicationEntry>()
+        var missingCurrentOutput = false
+
+        for (entry in historical) {
+            if (resolveHistoricalEntry(entry)) {
+                reconciled += entry.transactionId
             } else {
-                val uri = entry.providerUri
-                if (uri != null) {
-                    val deleted = runCatching { publisher.delete(uri) }.getOrDefault(false)
-                    if (deleted) {
-                        publisher.activeJournal.updateDeleted(entry.transactionId)
-                    } else {
-                        anyCleanupFailed = true
-                        publisher.activeJournal.markCleanupPending(entry.transactionId, "Could not delete temporary output: $uri")
-                        reportStoreIssue(
-                            stage = "Publication cleanup",
-                            summary = "Failed to clean up unfinalized output",
-                            detail = "Could not delete partial provider output $uri for job $jobId",
-                        )
-                    }
-                } else {
-                    runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
-                }
+                unresolved += entry.transactionId
             }
         }
 
-        if (existingJob != null && existingJob.state != JobState.DONE) {
+        for (original in current) {
+            var entry = original
+            if (entry.providerUri == null) {
+                when (val lookup = lookupPendingObject(entry)) {
+                    is UriLookupResult.Found -> {
+                        val adopted = adoptDiscoveredEntry(entry, lookup.uri.toString())
+                        if (adopted == null) {
+                            unresolved += entry.transactionId
+                            continue
+                        }
+                        entry = adopted
+                    }
+                    UriLookupResult.DefinitelyAbsent -> {
+                        if (entry.publicationPhase == PublicationPhase.FINALIZED ||
+                            entry.publicationPhase == PublicationPhase.RECORDED
+                        ) {
+                            missingCurrentOutput = true
+                        } else {
+                            runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
+                        }
+                        reconciled += entry.transactionId
+                        continue
+                    }
+                    is UriLookupResult.Unknown -> {
+                        unresolved += entry.transactionId
+                        continue
+                    }
+                }
+            }
+
+            val inspection = publisher.inspectOutput(entry)
+            when (inspection.status) {
+                    ProviderObjectStatus.VERIFIED -> {
+                        val finalized = if (entry.publicationPhase == PublicationPhase.FINALIZED ||
+                            entry.publicationPhase == PublicationPhase.RECORDED
+                        ) {
+                            entry
+                        } else {
+                            persistFinalizedEntry(entry, entry.providerUri!!)
+                        }
+                        if (finalized == null) {
+                            unresolved += entry.transactionId
+                        } else {
+                            completed[entry.transactionId] = finalized
+                            reconciled += entry.transactionId
+                        }
+                    }
+                    ProviderObjectStatus.PENDING -> {
+                        if (entry.copiedBytes == entry.expectedSizeBytes) {
+                            val finalization = publisher.finalizeEntry(entry)
+                            when (finalization.inspection.status) {
+                                ProviderObjectStatus.VERIFIED -> {
+                                    val finalized = persistFinalizedEntry(entry, finalization.uri.toString())
+                                    if (finalized == null) {
+                                        unresolved += entry.transactionId
+                                    } else {
+                                        completed[entry.transactionId] = finalized
+                                        reconciled += entry.transactionId
+                                    }
+                                }
+                                ProviderObjectStatus.ABSENT -> {
+                                    missingCurrentOutput = true
+                                    reconciled += entry.transactionId
+                                }
+                                ProviderObjectStatus.PENDING,
+                                ProviderObjectStatus.MISMATCH,
+                                ProviderObjectStatus.UNKNOWN,
+                                -> {
+                                    // A fully copied object is never destroyed because a
+                                    // transient finalization attempt failed; it stays
+                                    // recoverable for the next startup.
+                                    unresolved += entry.transactionId
+                                }
+                            }
+                        } else if (cleanupIncompleteEntry(entry)) {
+                            reconciled += entry.transactionId
+                        } else {
+                            unresolved += entry.transactionId
+                        }
+                    }
+                    ProviderObjectStatus.ABSENT -> {
+                        if (entry.publicationPhase == PublicationPhase.FINALIZED ||
+                            entry.publicationPhase == PublicationPhase.RECORDED
+                        ) {
+                            missingCurrentOutput = true
+                        } else {
+                            runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
+                        }
+                        reconciled += entry.transactionId
+                    }
+                    ProviderObjectStatus.MISMATCH,
+                    ProviderObjectStatus.UNKNOWN,
+                    -> unresolved += entry.transactionId
+                }
+        }
+
+        val totalOutputs = current.firstOrNull()?.totalOutputs ?: 1
+        val allCurrentComplete = completed.size == current.size &&
+            current.size == totalOutputs &&
+            current.map { it.outputIndex }.toSet() == (0 until totalOutputs).toSet() &&
+            !missingCurrentOutput
+        val completedEntries = current.mapNotNull { completed[it.transactionId] }
+
+        if (existingJob != null && existingJob.state == JobState.DONE) {
+            if (current.isEmpty()) {
+                return JobRecoveryPlan(null, reconciled, unresolved)
+            }
+            val allMatchedVerified = completed.size == current.size && !missingCurrentOutput
+            if (allMatchedVerified && unresolved.isEmpty()) {
+                return JobRecoveryPlan(null, reconciled, unresolved)
+            }
+            if (missingCurrentOutput || (!allMatchedVerified && unresolved.isEmpty())) {
+                val demoted = existingJob.copy(
+                    state = JobState.FAILED,
+                    error = INTERRUPTED_DOWNLOAD_ERROR,
+                    detail = "Published output verification failed",
+                    outputUris = completedEntries.map { it.providerUri!! },
+                    updatedAt = System.currentTimeMillis(),
+                )
+                return JobRecoveryPlan(demoted, reconciled, unresolved)
+            }
+            return JobRecoveryPlan(null, reconciled, unresolved)
+        }
+
+        val base = existingJob ?: DownloadJob(
+            id = jobId,
+            request = DownloadRequest(url = "", mode = MediaMode.VIDEO, quality = VideoQuality.P1080),
+            title = current.firstOrNull()?.intendedFilename ?: "Recovered Media",
+            publishStarted = true,
+            createdAt = entries.minOfOrNull { it.createdAt } ?: System.currentTimeMillis(),
+        )
+        val totalBytes = completedEntries.sumOf { it.copiedBytes }
+        val uris = completedEntries.map { it.providerUri!! }
+        val updated = if (allCurrentComplete) {
+            val isOpus = base.request.mode == MediaMode.AUDIO && base.request.audioFormat == AudioFormat.OPUS
+            val detail = if (isOpus) {
+                "Saved (native Opus stream copy)"
+            } else if (uris.size == 1) {
+                "Saved to Downloads/VRKA"
+            } else {
+                "Saved ${uris.size} files"
+            }
+            base.copy(
+                state = JobState.DONE,
+                progress = 100f,
+                detail = detail,
+                downloadedBytes = totalBytes,
+                reportedTotalBytes = totalBytes,
+                reportedTotalIsExact = true,
+                actualFinalFileBytes = totalBytes,
+                outputUris = uris,
+                error = "",
+                speed = "",
+                etaSeconds = null,
+                publishStarted = true,
+                updatedAt = System.currentTimeMillis(),
+            )
+        } else {
             val detail = when {
-                anyCleanupFailed -> "Interrupted during publication (cleanup pending for partial files)"
-                completedUris.isNotEmpty() -> "Interrupted during publication (${completedUris.size} of $totalOutputs files published)"
+                unresolved.isNotEmpty() -> "Interrupted during publication (recovery pending)"
+                uris.isNotEmpty() -> "Interrupted during publication (${uris.size} of $totalOutputs files published)"
                 else -> "Interrupted during publication"
             }
-            jobsToUpdate[jobId] = existingJob.copy(
+            base.copy(
                 state = JobState.FAILED,
                 error = INTERRUPTED_DOWNLOAD_ERROR,
                 detail = detail,
-                outputUris = completedUris,
+                outputUris = uris,
                 downloadedBytes = totalBytes,
                 reportedTotalBytes = totalBytes,
                 actualFinalFileBytes = totalBytes,
                 speed = "",
                 etaSeconds = null,
+                publishStarted = true,
                 updatedAt = System.currentTimeMillis(),
             )
         }
+        return JobRecoveryPlan(updated, reconciled, unresolved)
+    }
 
-        if (!anyCleanupFailed) {
-            fullyReconciledJobIds.add(jobId)
+    private fun resolveHistoricalEntry(entry: PublicationEntry): Boolean {
+        var working = entry
+        if (working.providerUri == null) {
+            when (val lookup = lookupPendingObject(working)) {
+                is UriLookupResult.Found -> {
+                    working = adoptDiscoveredEntry(working, lookup.uri.toString()) ?: return false
+                }
+                UriLookupResult.DefinitelyAbsent -> {
+                    runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
+                    return true
+                }
+                is UriLookupResult.Unknown -> return false
+            }
+        }
+        return when (publisher.inspectOutput(working).status) {
+            ProviderObjectStatus.VERIFIED -> {
+                val finalized = if (working.publicationPhase == PublicationPhase.FINALIZED ||
+                    working.publicationPhase == PublicationPhase.RECORDED
+                ) {
+                    working
+                } else {
+                    persistFinalizedEntry(working, working.providerUri!!)
+                }
+                // A previous attempt's finalized file is preserved; only its journal
+                // transaction is retired. No unrelated or user-visible file is deleted.
+                finalized != null
+            }
+            ProviderObjectStatus.PENDING -> cleanupIncompleteEntry(working)
+            ProviderObjectStatus.ABSENT -> {
+                runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
+                true
+            }
+            ProviderObjectStatus.MISMATCH,
+            ProviderObjectStatus.UNKNOWN,
+            -> false
+        }
+    }
+
+    private fun lookupPendingObject(entry: PublicationEntry): UriLookupResult =
+        when (entry.providerType) {
+            PublicationProviderType.MEDIA_STORE -> publisher.findPendingMediaStoreUri(entry.pendingFilename)
+            PublicationProviderType.SAF -> runCatching { Uri.parse(entry.destinationIdentity) }
+                .getOrNull()
+                ?.let { tree -> publisher.findPendingSafUri(tree, entry.pendingFilename) }
+                ?: UriLookupResult.Unknown("Invalid SAF destination identity")
+        }
+
+    private fun adoptDiscoveredEntry(entry: PublicationEntry, providerUri: String): PublicationEntry? =
+        runCatching {
+            publisher.activeJournal.updateProviderCreated(entry.transactionId, providerUri)
+            entry.copy(
+                providerUri = providerUri,
+                publicationPhase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            )
+        }.getOrNull()
+
+    private fun persistFinalizedEntry(entry: PublicationEntry, providerUri: String): PublicationEntry? =
+        runCatching {
+            publisher.activeJournal.updateFinalized(entry.transactionId, providerUri)
+            entry.copy(
+                providerUri = providerUri,
+                publicationPhase = PublicationPhase.FINALIZED,
+                status = PublicationTransactionStatus.COMPLETED,
+            )
+        }.getOrNull()
+
+    private fun cleanupIncompleteEntry(entry: PublicationEntry): Boolean =
+        when (publisher.cleanupPendingObject(entry)) {
+            CleanupOutcome.DELETED,
+            CleanupOutcome.ALREADY_ABSENT,
+            -> runCatching {
+                publisher.activeJournal.updateDeleted(entry.transactionId)
+                true
+            }.getOrDefault(false)
+            CleanupOutcome.RETRY_REQUIRED -> {
+                runCatching {
+                    publisher.activeJournal.markCleanupPending(
+                        entry.transactionId,
+                        "Provider cleanup could not be completed safely; retrying on a later startup",
+                    )
+                }
+                reportStoreIssue(
+                    stage = "Publication cleanup",
+                    summary = "Publication cleanup requires a later retry",
+                    detail = "Transaction ${entry.transactionId} (${entry.providerUri ?: "no provider object"}) was not deleted because ownership or provider availability could not be verified.",
+                )
+                false
+            }
+        }
+
+    private fun journalAllowsStagingCleanup(jobId: String): Boolean = runCatching {
+        val load = publisher.activeJournal.loadWithStatus()
+        if (load.state != PublicationJournalLoadState.OK &&
+            load.state != PublicationJournalLoadState.MISSING &&
+            load.state != PublicationJournalLoadState.EMPTY
+        ) {
+            // A journal that cannot be interpreted must not authorize deleting recovery data.
+            return false
+        }
+        load.entries.filter { it.jobId == jobId }.all {
+            it.status == PublicationTransactionStatus.RECONCILED ||
+                it.status == PublicationTransactionStatus.CLEANUP_PENDING
+        }
+    }.getOrDefault(false)
+
+    /**
+     * Deletes staging only when no unresolved transaction still requires its job's data.
+     * Otherwise the cleanup is durably queued for a later startup.
+     */
+    private fun cleanupStagingWhenSafe(jobId: String) {
+        if (journalAllowsStagingCleanup(jobId)) {
+            cleanupStaging(jobId)
+        } else {
+            runCatching { stagingCleanupStore.markPending(jobId) }
         }
     }
 
@@ -727,7 +920,7 @@ class VrkaDownloadManager internal constructor(
             persist = true,
         )
         scope.launch(Dispatchers.IO) {
-            runCatching { cleanupStaging(jobId) }
+            cleanupStagingWhenSafe(jobId)
         }
         triggerScheduler()
     }
@@ -945,12 +1138,24 @@ class VrkaDownloadManager internal constructor(
         )
     }
 
-    private fun persistJobsNow(): Boolean {
+    /**
+     * Single authoritative persistence path. The snapshot is selected inside
+     * [persistenceLock], after every earlier writer completed, so a stale snapshot can never
+     * replace a newer terminal snapshot. The store re-reads the file it just replaced and
+     * reports success only when the exact job states are durable.
+     */
+    private fun persistJobsNow(extraPinnedJobIds: Set<String> = emptySet()): Boolean {
         val started = SystemClock.elapsedRealtime()
-        val result = store.save(_jobs.value)
+        val snapshotSize: Int
+        val result = synchronized(persistenceLock) {
+            val pinned = extraPinnedJobIds + pinnedJobIdsFromJournal()
+            val snapshot = synchronized(_jobs) { _jobs.value }
+            snapshotSize = snapshot.size
+            store.save(snapshot, pinned)
+        }
         Log.d(
             "VRKA",
-            "JobStore save success=${result.success} jobs=${_jobs.value.size} elapsedMs=${SystemClock.elapsedRealtime() - started}",
+            "JobStore save success=${result.success} jobs=$snapshotSize pinned=${extraPinnedJobIds.size} elapsedMs=${SystemClock.elapsedRealtime() - started}",
         )
         if (!result.success) {
             reportStoreIssue(
@@ -960,6 +1165,25 @@ class VrkaDownloadManager internal constructor(
             )
         }
         return result.success
+    }
+
+    /**
+     * Jobs referenced by unresolved publication transactions are never evicted by the
+     * history cap. If the journal itself cannot be read, every job that entered publication
+     * is pinned: the manager cannot prove which history records are still needed.
+     */
+    private fun pinnedJobIdsFromJournal(): Set<String> {
+        val load = runCatching { publisher.activeJournal.loadWithStatus() }.getOrNull()
+        if (load == null ||
+            load.state == PublicationJournalLoadState.READ_FAILED ||
+            load.state == PublicationJournalLoadState.UNSUPPORTED_SCHEMA ||
+            load.state == PublicationJournalLoadState.CORRUPT
+        ) {
+            return _jobs.value.filter { it.publishStarted }.mapTo(HashSet()) { it.id }
+        }
+        return load.entries
+            .filter { it.status != PublicationTransactionStatus.RECONCILED }
+            .mapTo(HashSet()) { it.jobId }
     }
 
     private fun reportStoreIssue(stage: String, summary: String, detail: String) {
@@ -1379,7 +1603,7 @@ class VrkaDownloadManager internal constructor(
                     )
                 )
             }
-            cleanupStaging(jobId)
+            cleanupStagingWhenSafe(jobId)
         } finally {
             activeFallbackEngines.remove(jobId)?.cancel()
             activeEngineTokens.remove(jobId)?.cancel()
@@ -1667,37 +1891,34 @@ class VrkaDownloadManager internal constructor(
         )
         markFinalize("publication-started")
         val published = mutableListOf<String>()
+        val publishedTransactions = mutableListOf<String>()
         val publishedMedia = mutableListOf<PublishedOutput>()
-        try {
-            val planned = outputs.mapIndexed { index, file ->
-                file to preferredOutputName(job, file, index, outputs.size)
+        val planned = outputs.mapIndexed { index, file ->
+            file to preferredOutputName(job, file, index, outputs.size)
+        }
+        val publishedOutputs = publisher.publishAll(
+            files = planned,
+            destinationTreeUri = job.request.destinationTreeUri,
+            jobId = job.id,
+            shouldContinue = { !isCancelled(job.id) },
+            onPublished = { index, total ->
+                update(
+                    job.id,
+                    detail = if (total == 1) {
+                        "Publishing file"
+                    } else {
+                        "Publishing ${index + 1} of $total"
+                    },
+                    expectedAttempt = job.attempt,
+                )
+            },
+        )
+        publishedOutputs.forEach { output ->
+            published += output.uri.toString()
+            publishedTransactions += output.transactionId
+            if (DownloadAccounting.isMediaExtension(output.extension)) {
+                publishedMedia += output
             }
-            val publishedOutputs = publisher.publishAll(
-                files = planned,
-                destinationTreeUri = job.request.destinationTreeUri,
-                jobId = job.id,
-                shouldContinue = { !isCancelled(job.id) },
-                onPublished = { index, total ->
-                    update(
-                        job.id,
-                        detail = if (total == 1) {
-                            "Publishing file"
-                        } else {
-                            "Publishing ${index + 1} of $total"
-                        },
-                        expectedAttempt = job.attempt,
-                    )
-                },
-            )
-            publishedOutputs.forEach { output ->
-                published += output.uri.toString()
-                if (DownloadAccounting.isMediaExtension(output.extension)) {
-                    publishedMedia += output
-                }
-            }
-        } catch (error: Throwable) {
-            published.forEach { uri -> runCatching { publisher.delete(uri) } }
-            throw error
         }
         val isOpus = job.request.mode == MediaMode.AUDIO && job.request.audioFormat == AudioFormat.OPUS
         val transcoded = isOpus && outputLines.any { it.contains("libopus", ignoreCase = true) || it.contains("Converting audio", ignoreCase = true) }
@@ -1725,6 +1946,7 @@ class VrkaDownloadManager internal constructor(
             reportedTotalIsExact = finalBytes != null,
             actualFinalFileBytes = publishedBytes,
             outputUris = published,
+            transactionIds = publishedTransactions.toSet(),
             subtitleStatus = jobSubStatus,
         )
         if (!committed) {
@@ -1833,24 +2055,21 @@ class VrkaDownloadManager internal constructor(
                         requireAudioStreams(job, outputs)
                     }
                     val published = mutableListOf<String>()
+                    val publishedTransactions = mutableListOf<String>()
                     var publishedBytes: Long? = null
-                    try {
-                        val planned = outputs.mapIndexed { index, file ->
-                            file to preferredOutputName(job, file, index, outputs.size)
-                        }
-                        val publishedOutputs = publisher.publishAll(
-                            files = planned,
-                            destinationTreeUri = job.request.destinationTreeUri,
-                            jobId = job.id,
-                            shouldContinue = { !isCancelled(job.id) },
-                        )
-                        publishedOutputs.forEach { output ->
-                            published += output.uri.toString()
-                            publishedBytes = (publishedBytes ?: 0L) + output.bytes
-                        }
-                    } catch (error: Throwable) {
-                        published.forEach { uri -> runCatching { publisher.delete(uri) } }
-                        throw error
+                    val planned = outputs.mapIndexed { index, file ->
+                        file to preferredOutputName(job, file, index, outputs.size)
+                    }
+                    val publishedOutputs = publisher.publishAll(
+                        files = planned,
+                        destinationTreeUri = job.request.destinationTreeUri,
+                        jobId = job.id,
+                        shouldContinue = { !isCancelled(job.id) },
+                    )
+                    publishedOutputs.forEach { output ->
+                        published += output.uri.toString()
+                        publishedTransactions += output.transactionId
+                        publishedBytes = (publishedBytes ?: 0L) + output.bytes
                     }
                     val committed = commitTerminalPublishedJob(
                         jobId = job.id,
@@ -1861,6 +2080,7 @@ class VrkaDownloadManager internal constructor(
                         actualFinalFileBytes = publishedBytes?.takeIf { it > 0L }
                             ?: result.totalBytes.takeIf { it > 0L },
                         outputUris = published,
+                        transactionIds = publishedTransactions.toSet(),
                     )
                     if (!committed) {
                         Log.w("VRKA", "Terminal persistence failed for ${job.id}; journal and staging retained for recovery.")
@@ -2100,25 +2320,55 @@ class VrkaDownloadManager internal constructor(
         return File(stagingRoot, jobId).apply { mkdirs() }
     }
 
-    private fun cleanupStaging(jobId: String) {
+    private fun cleanupStaging(jobId: String): Boolean {
         val child = File(stagingRoot, jobId)
         val rootPath = stagingRoot.absoluteFile.toPath().normalize()
         val childPath = child.absoluteFile.toPath().normalize()
-        if (childPath.startsWith(rootPath) && childPath != rootPath) {
-            runCatching { child.deleteRecursively() }
+        if (!childPath.startsWith(rootPath) || childPath == rootPath) return true
+        if (!child.exists()) {
+            runCatching { stagingCleanupStore.clear(jobId) }
+            return true
+        }
+        val deleted = runCatching { stagingDelete(child) }.getOrDefault(false)
+        if (deleted && !child.exists()) {
+            runCatching { stagingCleanupStore.clear(jobId) }
+            return true
+        }
+        runCatching { stagingCleanupStore.markPending(jobId) }
+        reportStoreIssue(
+            stage = "Staging cleanup",
+            summary = "Could not delete download staging data",
+            detail = "Staging directory for job $jobId will be retried on the next startup.",
+        )
+        return false
+    }
+
+    /**
+     * Retries staging deletion only when no unresolved publication transaction still refers
+     * to the job. Staging must never be removed while it can still serve recovery.
+     */
+    internal fun retryPendingStagingCleanup() {
+        val pending = runCatching { stagingCleanupStore.pending() }.getOrDefault(emptyList())
+        for (entry in pending) {
+            val job = _jobs.value.firstOrNull { it.id == entry.jobId }
+            if (job != null && !job.state.isTerminal) continue
+            if (journalAllowsStagingCleanup(entry.jobId)) {
+                cleanupStaging(entry.jobId)
+            }
         }
     }
 
     /**
      * Executes the durable terminal completion protocol for published outputs:
-     * 1. Confirms provider outputs are finalized (validated by publisher beforehand).
+     * 1. Confirms provider outputs are finalized (validated by the publisher beforehand).
      * 2. Constructs the complete terminal JobStore state.
-     * 3. Persists the terminal state using a checked, awaited save operation.
-     * 4. Verifies that the exact transaction state was successfully persisted.
-     * 5. Only then marks its publication journal entries reconciled.
-     * 6. Only after successful reconciliation performs staging cleanup and posts notification.
+     * 3. Persists the terminal state with the current completion job pinned through retention.
+     * 4. Re-reads the durable store and verifies the exact terminal record, not just memory.
+     * 5. Only then retires exactly the publication transactions produced by this attempt.
+     * 6. Only after verified persistence performs staging cleanup and posts the notification.
      *
-     * Returns true if terminal state was durably persisted and reconciled; false if persistence failed.
+     * Returns true only when the terminal state is durably present. A false result leaves the
+     * journal, provider outputs, and staging intact for restart recovery.
      */
     internal suspend fun commitTerminalPublishedJob(
         jobId: String,
@@ -2128,6 +2378,7 @@ class VrkaDownloadManager internal constructor(
         reportedTotalIsExact: Boolean,
         actualFinalFileBytes: Long?,
         outputUris: List<String>,
+        transactionIds: Set<String> = emptySet(),
         subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus? = null,
     ): Boolean {
         // Step 1: In-memory mutation
@@ -2161,9 +2412,9 @@ class VrkaDownloadManager internal constructor(
             return false
         }
 
-        // Step 2 & 3: Checked, awaited terminal persistence
+        // Step 2 & 3: Checked, awaited terminal persistence. Cancellation cannot interrupt it.
         val persistSuccess = withContext(Dispatchers.IO + NonCancellable) {
-            persistJobsNow()
+            persistJobsNow(setOf(jobId))
         }
 
         if (!persistSuccess) {
@@ -2176,18 +2427,49 @@ class VrkaDownloadManager internal constructor(
             return false
         }
 
-        // Step 4: Verification - verify in-memory job state in current jobs matches the persisted terminal state
-        val verifiedJob = current(jobId)
-        if (verifiedJob?.state != JobState.DONE || verifiedJob.outputUris != outputUris) {
+        // Step 4: Verify the durable record by re-reading the actual store file.
+        val durableJob = withContext(Dispatchers.IO + NonCancellable) {
+            runCatching { store.load(recoverActive = true).firstOrNull { it.id == jobId } }.getOrNull()
+        }
+        if (durableJob?.state != JobState.DONE || durableJob.outputUris != outputUris) {
+            reportStoreIssue(
+                stage = "Queue/history persistence",
+                summary = "Durable terminal state verification failed",
+                detail = "Job $jobId is not present as DONE with its output URIs in the persisted store; retaining journal and staging.",
+            )
             Log.e("VRKA", "Terminal job state verification failed for $jobId; retaining journal and staging data.")
             return false
         }
 
-        // Step 5: Mark publication journal reconciled ONLY after verified JobStore persistence
+        // Step 5: Retire exactly the transactions created by this attempt. Previous failed
+        // attempts for the same logical job remain in the journal and are handled separately.
+        val transactions = if (transactionIds.isNotEmpty()) {
+            transactionIds
+        } else {
+            runCatching {
+                publisher.activeJournal.entriesForJob(jobId)
+                    .filter { it.status == PublicationTransactionStatus.COMPLETED }
+                    .mapTo(HashSet()) { it.transactionId }
+            }.getOrDefault(emptySet())
+        }
+        val reconciled = transactions.isEmpty() || runCatching {
+            publisher.activeJournal.markReconciled(transactions)
+            true
+        }.getOrDefault(false)
         runCatching { diagnosticStore.clearUrlsForJob(jobId) }
-        runCatching { publisher.activeJournal.markReconciled(jobId) }
 
-        // Step 6: Post completion notification and clean up staging ONLY after successful reconciliation
+        if (!reconciled) {
+            reportStoreIssue(
+                stage = "Publication journal reconciliation",
+                summary = "Could not retire the completed publication transactions",
+                detail = "Terminal state for job $jobId is durable; journal reconciliation is retried on the next startup.",
+            )
+            runCatching { stagingCleanupStore.markPending(jobId) }
+            return true
+        }
+
+        // Step 6: Post completion notification and clean up staging only after durable
+        // persistence and reconciliation. Cleanup failure becomes a durable retry record.
         runCatching { current(jobId)?.let { DownloadNotifications.notifyCompleted(context, it) } }
         Log.d("VRKA", "Finalize job=$jobId stage=done-state-posted")
         cleanupStaging(jobId)

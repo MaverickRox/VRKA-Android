@@ -42,6 +42,7 @@ internal data class JobStoreLoadResult(
 internal data class JobStoreSaveResult(
     val success: Boolean,
     val error: String = "",
+    val persistedJobIds: Set<String> = emptySet(),
 )
 
 /**
@@ -330,12 +331,29 @@ internal class JobStore(
         return objects
     }
 
+    /**
+     * Persists [jobs] with an explicit retention policy and verifies the durable result.
+     *
+     * Retention never discards nonterminal work or a job named in [pinnedJobIds] (jobs with
+     * unresolved publication journal transactions, including cleanup-pending entries). Only
+     * terminal history beyond the protected set is bounded to [MAX_JOBS] records, newest
+     * first by [DownloadJob.updatedAt].
+     *
+     * The payload is written to a temporary file, atomically moved, and then read back from
+     * disk. Success is reported only when every retained record is present in the durable
+     * file with the exact state and output URI list that was requested. A save that cannot
+     * confirm its own durable result fails closed so callers retain their recovery data.
+     */
     @Synchronized
-    fun save(jobs: List<DownloadJob>): JobStoreSaveResult {
+    fun save(jobs: List<DownloadJob>, pinnedJobIds: Set<String> = emptySet()): JobStoreSaveResult {
         var temporary: File? = null
         return try {
+            if (jobs.mapTo(HashSet()) { it.id }.size != jobs.size) {
+                return JobStoreSaveResult(false, "Duplicate job identities cannot be persisted")
+            }
+            val retained = applyRetention(jobs, pinnedJobIds)
             val array = JSONArray()
-            jobs.take(MAX_JOBS).forEach { array.put(encode(it)) }
+            retained.forEach { array.put(encode(it)) }
             val payload = JSONObject()
                 .put("schemaVersion", CURRENT_SCHEMA_VERSION)
                 .put("jobs", array)
@@ -353,7 +371,7 @@ internal class JobStore(
                     return JobStoreSaveResult(false, "Atomic and fallback moves did not produce the store file")
                 }
             }
-            JobStoreSaveResult(true)
+            verifyPersisted(retained)
         } catch (error: Throwable) {
             JobStoreSaveResult(false, error.message.orEmpty().take(MAX_DETAIL_CHARS))
         } finally {
@@ -361,6 +379,56 @@ internal class JobStore(
                 temporary.delete()
             }
         }
+    }
+
+    private fun applyRetention(jobs: List<DownloadJob>, pinnedJobIds: Set<String>): List<DownloadJob> {
+        if (jobs.size <= MAX_JOBS) return jobs
+        val protected = jobs.filter { !it.state.isTerminal || it.id in pinnedJobIds }
+        val protectedIds = protected.mapTo(HashSet()) { it.id }
+        // Protected work is never truncated: it is bounded by active downloads plus the
+        // journal's own entry cap, while history alone is what grows without limit.
+        val historyBudget = (MAX_JOBS - protected.size).coerceAtLeast(0)
+        val retainedHistory = jobs.asSequence()
+            .filter { it.state.isTerminal && it.id !in protectedIds }
+            .sortedWith(
+                compareByDescending<DownloadJob> { it.updatedAt }
+                    .thenByDescending { it.createdAt }
+                    .thenBy { it.id },
+            )
+            .take(historyBudget)
+            .mapTo(HashSet()) { it.id }
+        return jobs.filter { it.id in protectedIds || it.id in retainedHistory }
+    }
+
+    /**
+     * Re-reads the file that was just replaced. A concurrent writer or a filesystem that
+     * silently discarded the move is detected here instead of being reported as success.
+     */
+    private fun verifyPersisted(expected: List<DownloadJob>): JobStoreSaveResult {
+        val durable = read(recoverActive = true)
+        if (durable.state == JobStoreLoadState.READ_FAILED ||
+            durable.state == JobStoreLoadState.MALFORMED ||
+            durable.state == JobStoreLoadState.UNSUPPORTED_SCHEMA
+        ) {
+            return JobStoreSaveResult(false, "Persisted file could not be read back: ${durable.detail}")
+        }
+        val durableById = durable.jobs.associateBy { it.id }
+        if (durableById.keys != expected.mapTo(HashSet()) { it.id }) {
+            return JobStoreSaveResult(false, "Persisted snapshot does not contain the exact retained job set")
+        }
+        for (job in expected) {
+            val persisted = durableById[job.id]
+            if (persisted == null ||
+                persisted.state != job.state ||
+                persisted.outputUris != job.outputUris
+            ) {
+                return JobStoreSaveResult(
+                    false,
+                    "Persisted snapshot lost the durable state for job ${job.id}",
+                )
+            }
+        }
+        return JobStoreSaveResult(true, persistedJobIds = durableById.keys)
     }
 
     private fun encode(job: DownloadJob): JSONObject {
