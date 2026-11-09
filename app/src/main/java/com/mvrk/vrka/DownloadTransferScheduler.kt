@@ -41,6 +41,11 @@ internal object DownloadTransferRuntime {
         transferJobInvoked = true
     }
 
+    internal fun resetForTesting() {
+        transferJobInvoked = false
+        transferJobRunning = false
+    }
+
     /** Asks the worker to repost its notification immediately (for example after FGS handoff). */
     fun requestNotificationRefresh() {
         refreshRequests.tryEmit(Unit)

@@ -1,20 +1,388 @@
 package com.mvrk.vrka
 
+import android.content.ContentValues
+import android.content.Context
+import android.database.Cursor
+import android.net.Uri
+import android.provider.MediaStore
+import android.provider.OpenableColumns
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import java.util.UUID
+import java.io.IOException
+import java.io.OutputStream
+import java.lang.reflect.Proxy
 
 class PublicationJournalRecoveryTest {
 
     @get:Rule
     val tempFolder = TemporaryFolder()
+
+    // ---------------------------------------------------------------------------------------------
+    // Test Doubles & Controlled Operations (Real Production-Path Testing)
+    // ---------------------------------------------------------------------------------------------
+
+    class StoredMediaStoreItem(
+        val uri: Uri,
+        val collection: Uri,
+        val values: ContentValues,
+        var isPending: Boolean = true,
+        var displayName: String = "",
+        val file: File,
+    )
+
+    class StoredSafDoc(
+        val uri: Uri,
+        val tree: Uri,
+        var displayName: String,
+        val mimeType: String,
+        val file: File,
+    )
+
+    class TestPublicationStorageOps(private val tempDir: File) : PublicationStorageOps {
+        val mediaStoreItems = mutableMapOf<String, StoredMediaStoreItem>()
+        val safDocs = mutableMapOf<String, StoredSafDoc>()
+        private var nextId = 1000L
+
+        var failInsertMediaStore: Boolean = false
+        var crashAfterMediaStoreInsertBeforeUriReturned: Boolean = false
+        var failCreateSafDoc: Boolean = false
+        var crashAfterSafCreateBeforeUriReturned: Boolean = false
+        var outputStreamByteLimit: Long? = null
+        var failMediaStoreUpdate: Boolean = false
+        var mediaStoreUpdateAffectedRows: Int? = null
+        var failSafRename: Boolean = false
+        var failDelete: Boolean = false
+        val deletedUris = mutableListOf<Uri>()
+
+        private fun uriKey(uri: Uri): String = uri.toString()
+
+        override fun insertMediaStore(
+            collection: Uri,
+            values: ContentValues,
+            displayName: String?,
+            isPending: Boolean?,
+        ): Uri? {
+            if (failInsertMediaStore) return null
+            val id = nextId++
+            val uri = Uri.parse("content://media/external/downloads/$id")
+            val name = displayName ?: runCatching { values.getAsString(MediaStore.MediaColumns.DISPLAY_NAME) }.getOrNull() ?: "unnamed"
+            val pending = isPending ?: (runCatching { values.getAsInteger(MediaStore.MediaColumns.IS_PENDING) }.getOrNull() == 1)
+            val destFile = File(tempDir, "ms_$id.tmp").apply { createNewFile() }
+            val item = StoredMediaStoreItem(uri, collection, ContentValues(values), pending, name, destFile)
+            mediaStoreItems[uriKey(uri)] = item
+            if (crashAfterMediaStoreInsertBeforeUriReturned) {
+                throw RuntimeException("Crash immediately after provider insert before URI returned")
+            }
+            return uri
+        }
+
+        override fun openOutputStream(uri: Uri, mode: String): OutputStream? {
+            val key = uriKey(uri)
+            val file = mediaStoreItems[key]?.file ?: safDocs[key]?.file ?: return null
+            val baseOut = file.outputStream()
+            val limit = outputStreamByteLimit
+            return if (limit != null) {
+                object : OutputStream() {
+                    private var bytesWritten = 0L
+                    override fun write(b: Int) {
+                        if (bytesWritten >= limit) throw IOException("Simulated I/O failure after $bytesWritten bytes")
+                        baseOut.write(b)
+                        bytesWritten++
+                    }
+                    override fun write(b: ByteArray, off: Int, len: Int) {
+                        val remaining = limit - bytesWritten
+                        if (remaining <= 0) throw IOException("Simulated I/O failure after $bytesWritten bytes")
+                        val toWrite = minOf(len.toLong(), remaining).toInt()
+                        baseOut.write(b, off, toWrite)
+                        bytesWritten += toWrite
+                        if (toWrite < len) throw IOException("Simulated I/O failure during write after $bytesWritten bytes")
+                    }
+                    override fun flush() = baseOut.flush()
+                    override fun close() = baseOut.close()
+                }
+            } else {
+                baseOut
+            }
+        }
+
+        override fun updateMediaStore(
+            uri: Uri,
+            values: ContentValues,
+            displayName: String?,
+            isPending: Boolean?,
+        ): Int {
+            if (failMediaStoreUpdate) return 0
+            val item = mediaStoreItems[uriKey(uri)] ?: return 0
+            val name = displayName ?: runCatching { values.getAsString(MediaStore.MediaColumns.DISPLAY_NAME) }.getOrNull()
+            val pending = isPending ?: if (runCatching { values.containsKey(MediaStore.MediaColumns.IS_PENDING) }.getOrDefault(false)) {
+                runCatching { values.getAsInteger(MediaStore.MediaColumns.IS_PENDING) }.getOrNull() == 1
+            } else null
+            if (mediaStoreUpdateAffectedRows != null) {
+                val rows = mediaStoreUpdateAffectedRows!!
+                if (rows > 0) {
+                    if (pending != null) item.isPending = pending
+                    if (name != null) item.displayName = name
+                }
+                return rows
+            }
+            if (pending != null) item.isPending = pending
+            if (name != null) item.displayName = name
+            return 1
+        }
+
+        override fun queryMediaStore(
+            uri: Uri,
+            projection: Array<String>?,
+            selection: String?,
+            selectionArgs: Array<String>?,
+        ): Cursor? {
+            val item = mediaStoreItems[uriKey(uri)] ?: return null
+            val cols = projection ?: arrayOf(
+                MediaStore.MediaColumns._ID,
+                MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.IS_PENDING,
+                OpenableColumns.SIZE,
+            )
+            val rowMap = mutableMapOf<String, Any?>()
+            cols.forEach { col ->
+                when (col) {
+                    MediaStore.MediaColumns.DISPLAY_NAME, OpenableColumns.DISPLAY_NAME -> rowMap[col] = item.displayName
+                    MediaStore.MediaColumns.IS_PENDING -> rowMap[col] = if (item.isPending) 1 else 0
+                    OpenableColumns.SIZE -> rowMap[col] = item.file.length()
+                    MediaStore.MediaColumns._ID -> rowMap[col] = uri.lastPathSegment?.toLongOrNull() ?: 1L
+                    else -> rowMap[col] = null
+                }
+            }
+            return createMockCursor(cols, listOf(rowMap))
+        }
+
+        override fun queryMediaStoreCollection(
+            collection: Uri,
+            projection: Array<String>?,
+            selection: String?,
+            selectionArgs: Array<String>?,
+        ): Cursor? {
+            val cols = projection ?: arrayOf(
+                MediaStore.MediaColumns._ID,
+                MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.IS_PENDING,
+                OpenableColumns.SIZE,
+            )
+            val rows = mutableListOf<Map<String, Any?>>()
+            mediaStoreItems.values.filter { uriKey(it.collection) == uriKey(collection) }.forEach { item ->
+                if (selection != null && selection.contains(MediaStore.MediaColumns.DISPLAY_NAME)) {
+                    val arg = selectionArgs?.firstOrNull()
+                    if (arg != null && item.displayName != arg) return@forEach
+                }
+                val rowMap = mutableMapOf<String, Any?>()
+                cols.forEach { col ->
+                    when (col) {
+                        MediaStore.MediaColumns.DISPLAY_NAME, OpenableColumns.DISPLAY_NAME -> rowMap[col] = item.displayName
+                        MediaStore.MediaColumns.IS_PENDING -> rowMap[col] = if (item.isPending) 1 else 0
+                        OpenableColumns.SIZE -> rowMap[col] = item.file.length()
+                        MediaStore.MediaColumns._ID -> rowMap[col] = item.uri.lastPathSegment?.toLongOrNull() ?: 1L
+                        else -> rowMap[col] = null
+                    }
+                }
+                rows += rowMap
+            }
+            return createMockCursor(cols, rows)
+        }
+
+        override fun deleteUri(uri: Uri): Boolean {
+            if (failDelete) return false
+            deletedUris += uri
+            val key = uriKey(uri)
+            val removedMs = mediaStoreItems.remove(key)
+            removedMs?.file?.delete()
+            val removedSaf = safDocs.remove(key)
+            removedSaf?.file?.delete()
+            return true
+        }
+
+        override fun fileExists(uri: Uri): Boolean {
+            val key = uriKey(uri)
+            return mediaStoreItems.containsKey(key) || safDocs.containsKey(key)
+        }
+
+        override fun getFileSize(uri: Uri): Long {
+            val key = uriKey(uri)
+            return mediaStoreItems[key]?.file?.length() ?: safDocs[key]?.file?.length() ?: -1L
+        }
+
+        override fun queryDisplayName(uri: Uri): String? {
+            val key = uriKey(uri)
+            return mediaStoreItems[key]?.displayName ?: safDocs[key]?.displayName
+        }
+
+        override fun findPendingMediaStoreUri(pendingFilename: String): Uri? =
+            mediaStoreItems.values.firstOrNull { it.displayName == pendingFilename }?.uri
+
+        override fun existingSafNames(tree: Uri): Set<String> =
+            safDocs.values.filter { uriKey(it.tree) == uriKey(tree) }.map { it.displayName }.toSet()
+
+        override fun findPendingSafUri(tree: Uri, pendingFilename: String): Uri? =
+            safDocs.values.firstOrNull { uriKey(it.tree) == uriKey(tree) && it.displayName == pendingFilename }?.uri
+
+        override fun createSafDocument(tree: Uri, mimeType: String, pendingFilename: String): Uri? {
+            if (failCreateSafDoc) return null
+            val id = nextId++
+            val uri = Uri.parse("content://saf/tree/document/$id")
+            val destFile = File(tempDir, "saf_$id.tmp").apply { createNewFile() }
+            val doc = StoredSafDoc(uri, tree, pendingFilename, mimeType, destFile)
+            safDocs[uriKey(uri)] = doc
+            if (crashAfterSafCreateBeforeUriReturned) {
+                throw RuntimeException("Crash immediately after SAF create before URI returned")
+            }
+            return uri
+        }
+
+        override fun renameSafDocument(uri: Uri, finalName: String): Uri? {
+            if (failSafRename) return null
+            val doc = safDocs[uriKey(uri)] ?: return null
+            doc.displayName = finalName
+            return uri
+        }
+
+        override fun deleteSafDocument(uri: Uri): Boolean = deleteUri(uri)
+    }
+
+    class TestJobStoreFileOps(
+        var failWrite: Boolean = false,
+        var failMove: Boolean = false,
+    ) : JobStoreFileOps {
+        override fun readText(file: File): String = file.readText(Charsets.UTF_8)
+        override fun createTempFile(parent: File, prefix: String): File =
+            File.createTempFile(prefix, ".tmp", parent)
+        override fun writeText(file: File, text: String) {
+            if (failWrite) throw IOException("Simulated JobStore write failure")
+            file.writeText(text, Charsets.UTF_8)
+        }
+        override fun atomicMove(source: File, target: File): Boolean {
+            if (failMove) return false
+            return DefaultJobStoreFileOps.atomicMove(source, target)
+        }
+        override fun replaceMove(source: File, target: File) {
+            if (failMove) throw IOException("Simulated JobStore move failure")
+            DefaultJobStoreFileOps.replaceMove(source, target)
+        }
+    }
+
+    companion object {
+        fun createMockCursor(
+            columns: Array<String>,
+            rows: List<Map<String, Any?>>,
+        ): Cursor {
+            var rowIndex = -1
+            return Proxy.newProxyInstance(
+                Cursor::class.java.classLoader,
+                arrayOf(Cursor::class.java),
+            ) { _, method, args ->
+                when (method.name) {
+                    "moveToFirst" -> {
+                        rowIndex = if (rows.isNotEmpty()) 0 else -1
+                        rowIndex != -1
+                    }
+                    "moveToNext" -> {
+                        rowIndex++
+                        rowIndex < rows.size
+                    }
+                    "close" -> null
+                    "getCount" -> rows.size
+                    "getColumnIndex" -> {
+                        val col = args[0] as String
+                        columns.indexOf(col)
+                    }
+                    "getString" -> {
+                        val colIdx = args[0] as Int
+                        val colName = columns[colIdx]
+                        rows[rowIndex][colName]?.toString()
+                    }
+                    "getInt" -> {
+                        val colIdx = args[0] as Int
+                        val colName = columns[colIdx]
+                        (rows[rowIndex][colName] as? Number)?.toInt() ?: 0
+                    }
+                    "getLong" -> {
+                        val colIdx = args[0] as Int
+                        val colName = columns[colIdx]
+                        (rows[rowIndex][colName] as? Number)?.toLong() ?: 0L
+                    }
+                    "isNull" -> {
+                        val colIdx = args[0] as Int
+                        val colName = columns[colIdx]
+                        rows[rowIndex][colName] == null
+                    }
+                    else -> null
+                }
+            } as Cursor
+        }
+
+        class TestContext(baseFilesDir: File) : android.content.ContextWrapper(null) {
+            private val files = File(baseFilesDir, "files").apply { mkdirs() }
+            private val cache = File(baseFilesDir, "cache").apply { mkdirs() }
+            private val noBackup = File(baseFilesDir, "noBackup").apply { mkdirs() }
+
+            private var editorProxy: android.content.SharedPreferences.Editor? = null
+
+            init {
+                editorProxy = Proxy.newProxyInstance(
+                    android.content.SharedPreferences.Editor::class.java.classLoader,
+                    arrayOf(android.content.SharedPreferences.Editor::class.java),
+                ) { _, editorMethod, _ ->
+                    when (editorMethod.name) {
+                        "commit" -> true
+                        "apply" -> null
+                        else -> editorProxy
+                    }
+                } as android.content.SharedPreferences.Editor
+            }
+
+            private val prefs: android.content.SharedPreferences = Proxy.newProxyInstance(
+                android.content.SharedPreferences::class.java.classLoader,
+                arrayOf(android.content.SharedPreferences::class.java),
+            ) { _, method, args ->
+                when (method.name) {
+                    "getString" -> args.getOrNull(1)
+                    "getInt" -> args.getOrNull(1) ?: 0
+                    "getLong" -> args.getOrNull(1) ?: 0L
+                    "getBoolean" -> args.getOrNull(1) ?: false
+                    "contains" -> false
+                    "all" -> emptyMap<String, Any>()
+                    "edit" -> editorProxy
+                    else -> null
+                }
+            } as android.content.SharedPreferences
+
+            override fun getApplicationContext(): Context = this
+            override fun getFilesDir(): File = files
+            override fun getCacheDir(): File = cache
+            override fun getNoBackupFilesDir(): File = noBackup
+            override fun getExternalFilesDir(type: String?): File = files
+            override fun getPackageName(): String = "com.mvrk.vrka"
+            override fun getApplicationInfo(): android.content.pm.ApplicationInfo =
+                android.content.pm.ApplicationInfo().apply {
+                    uid = 1000
+                    packageName = "com.mvrk.vrka"
+                }
+            override fun checkPermission(permission: String, pid: Int, uid: Int): Int = 0
+            override fun getSharedPreferences(name: String?, mode: Int): android.content.SharedPreferences = prefs
+        }
+
+        fun createTestContext(rootDir: File): Context = TestContext(rootDir)
+    }
 
     private fun sampleRequest(url: String = "https://example.com/video") = DownloadRequest(
         url = url,
@@ -38,6 +406,42 @@ class PublicationJournalRecoveryTest {
         createdAt = System.currentTimeMillis(),
         updatedAt = System.currentTimeMillis(),
     )
+
+    private fun createHarness(
+        testDir: File,
+        storageOps: TestPublicationStorageOps,
+        initialJobs: List<DownloadJob> = emptyList(),
+        jobStoreFileOps: JobStoreFileOps = DefaultJobStoreFileOps,
+    ): Pair<VrkaDownloadManager, PublicationJournal> {
+        val jobsFile = File(testDir, "download_jobs.json")
+        val journalFile = File(testDir, "pub_journal.json")
+        val store = JobStore(jobsFile, jobStoreFileOps)
+        if (initialJobs.isNotEmpty()) {
+            store.save(initialJobs)
+        }
+        val journal = PublicationJournal(journalFile)
+        val context = createTestContext(testDir)
+        val settingsRepo = SettingsRepository(context, MutableStateFlow(AppSettings(outputTreeUri = "content://saf/tree")))
+        val publisher = OutputPublisher(
+            context = context,
+            settingsRepository = settingsRepo,
+            journal = journal,
+            ops = storageOps,
+        )
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val manager = VrkaDownloadManager(
+            context = context,
+            settingsRepository = settingsRepo,
+            scope = testScope,
+            customStore = store,
+            customPublisher = publisher,
+        )
+        return manager to journal
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Core Journal Roundtrip & Persistence Tests
+    // ---------------------------------------------------------------------------------------------
 
     @Test
     fun journalRoundtripPersistenceAndSchema() {
@@ -65,49 +469,64 @@ class PublicationJournalRecoveryTest {
         assertEquals(PublicationTransactionStatus.PENDING, loaded1[0].status)
         assertEquals(".vrka_pending_tx-1_video.mp4", loaded1[0].pendingFilename)
 
-        // Advance to PROVIDER_OBJECT_CREATED
         journal.updateProviderCreated("tx-1", "content://media/external/downloads/100")
         val loaded2 = journal.allEntries()
         assertEquals("content://media/external/downloads/100", loaded2[0].providerUri)
         assertEquals(PublicationPhase.PROVIDER_OBJECT_CREATED, loaded2[0].publicationPhase)
         assertEquals(PublicationTransactionStatus.IN_PROGRESS, loaded2[0].status)
 
-        // Advance to DATA_COPIED
         journal.updateDataCopied("tx-1", 1048576L)
         val loaded3 = journal.allEntries()
         assertEquals(1048576L, loaded3[0].copiedBytes)
         assertEquals(PublicationPhase.DATA_COPIED, loaded3[0].publicationPhase)
 
-        // Advance to FINALIZED
         journal.updateFinalized("tx-1")
         val loaded4 = journal.allEntries()
         assertEquals(PublicationPhase.FINALIZED, loaded4[0].publicationPhase)
         assertEquals(PublicationTransactionStatus.COMPLETED, loaded4[0].status)
 
-        // Mark reconciled
         journal.markReconciled("job-1")
         val loaded5 = journal.allEntries()
         assertEquals(PublicationTransactionStatus.RECONCILED, loaded5[0].status)
         assertTrue(journal.unreconciledEntries().isEmpty())
     }
 
-    // Boundary 1: MediaStore insert before URI persistence
+    // ---------------------------------------------------------------------------------------------
+    // 15 Comprehensive Production-Path Boundary & Failure Injection Scenarios (TEST-01)
+    // ---------------------------------------------------------------------------------------------
+
+    // 1. MediaStore insert failure / crash before URI saved
     @Test
     fun boundary01_mediaStore_insertBeforeUriPersistence_orphanedObjectCleanedUp() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val journal = PublicationJournal(journalFile)
-
-        val txId = "tx-boundary-1"
+        val testDir = tempFolder.newFolder("b01")
+        val ops = TestPublicationStorageOps(testDir)
+        val txId = "tx-b01"
         val pendingName = ".vrka_pending_${txId}_video.mp4"
-        journal.recordIntent(
+
+        val orphanedUri = ops.insertMediaStore(
+            Uri.parse("content://media/external/downloads"),
+            ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, pendingName) },
+            displayName = pendingName,
+            isPending = true,
+        )!!
+        val unrelatedUri = ops.insertMediaStore(
+            Uri.parse("content://media/external/downloads"),
+            ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, "video.mp4") },
+            displayName = "video.mp4",
+            isPending = false,
+        )!!
+
+        val journalFile = File(testDir, "pub_journal.json")
+        val preJournal = PublicationJournal(journalFile)
+        preJournal.recordIntent(
             PublicationEntry(
                 transactionId = txId,
-                jobId = "job-boundary-1",
+                jobId = "job-b01",
                 outputIndex = 0,
                 totalOutputs = 1,
                 intendedFilename = "video.mp4",
                 pendingFilename = pendingName,
-                stagingPath = "/staging/video.mp4",
+                stagingPath = File(testDir, "video.mp4").absolutePath,
                 expectedSizeBytes = 5000L,
                 providerType = PublicationProviderType.MEDIA_STORE,
                 destinationIdentity = "Downloads/VRKA",
@@ -116,578 +535,703 @@ class PublicationJournalRecoveryTest {
             ),
         )
 
-        // Simulate provider store holding orphaned pending object and an unrelated user file
-        val providerStore = mutableMapOf<String, Long>()
-        providerStore[pendingName] = 0L // Created row before URI saved, 0 bytes
-        providerStore["video.mp4"] = 5000L // Unrelated user file!
+        val job = sampleJob("job-b01", state = JobState.POSTPROCESSING)
+        val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
 
-        // On recovery: query locates object matching entry.pendingFilename
-        val discoveredPendingName = providerStore.keys.firstOrNull { it == pendingName }
-        assertNotNull(discoveredPendingName)
-        assertEquals(pendingName, discoveredPendingName)
+        manager.reconcilePublicationJournalOnStartup()
 
-        // Incomplete copy (0 < 5000): safely remove orphaned provider object
-        providerStore.remove(discoveredPendingName)
-        journal.markInterrupted(txId)
-
-        // Invariants: orphaned object deleted, unrelated user file untouched
-        assertFalse(providerStore.containsKey(pendingName))
-        assertTrue(providerStore.containsKey("video.mp4"))
-        assertEquals(PublicationTransactionStatus.INTERRUPTED, journal.entriesForJob("job-boundary-1").single().status)
+        assertFalse("Orphaned pending provider object must be deleted", ops.fileExists(orphanedUri))
+        assertTrue("Unrelated user file must never be deleted", ops.fileExists(unrelatedUri))
+        assertEquals(PublicationTransactionStatus.RECONCILED, journal.entriesForJob("job-b01").single().status)
+        assertTrue(journal.unreconciledEntries().isEmpty())
     }
 
-    // Boundary 2: SAF createDocument before URI persistence
+    // 2. Partial output copy failure (throws IOException after N bytes)
     @Test
-    fun boundary02_saf_createDocumentBeforeUriPersistence_orphanedDocumentCleanedUp() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val journal = PublicationJournal(journalFile)
+    fun boundary02_partialOutputCopyFailure_cleansUpAndMarksFailed() {
+        val testDir = tempFolder.newFolder("b02")
+        val ops = TestPublicationStorageOps(testDir)
+        ops.outputStreamByteLimit = 50L
+        val (manager, journal) = createHarness(testDir, ops)
 
-        val txId = "tx-boundary-2"
-        val pendingName = ".vrka_pending_${txId}_doc.mp4"
-        journal.recordIntent(
+        val staging = File(testDir, "big_video.mp4").apply { writeBytes(ByteArray(200)) }
+
+        val failed = try {
+            manager.publisher.publishAll(
+                listOf(staging to "big_video.mp4"),
+                destinationTreeUri = "content://saf/tree",
+                jobId = "job-b02",
+            )
+            false
+        } catch (e: IOException) {
+            true
+        }
+        assertTrue("Publication must fail when stream throws IOException", failed)
+        assertEquals("Partial provider files must be deleted on error", 1, ops.deletedUris.distinct().size)
+        assertEquals(PublicationTransactionStatus.FAILED, journal.entriesForJob("job-b02").single().status)
+    }
+
+    // 3. Completed byte copy before journal update
+    @Test
+    fun boundary03_completedByteCopyBeforeJournalUpdate_recoversToDone() {
+        DownloadTransferRuntime.markTransferJobInvoked()
+        try {
+            val testDir = tempFolder.newFolder("b03")
+            val ops = TestPublicationStorageOps(testDir)
+            val txId = "tx-b03"
+            val pendingName = ".vrka_pending_${txId}_full.mp4"
+            val staging = File(testDir, "full.mp4").apply { writeBytes(ByteArray(1000)) }
+
+            val uri = ops.insertMediaStore(
+                Uri.parse("content://media/external/downloads"),
+                ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, pendingName) },
+                displayName = pendingName,
+                isPending = true,
+            )!!
+            ops.openOutputStream(uri, "w")!!.use { it.write(ByteArray(1000)) }
+
+            val journalFile = File(testDir, "pub_journal.json")
+            val preJournal = PublicationJournal(journalFile)
+            preJournal.recordIntent(
+                PublicationEntry(
+                    transactionId = txId,
+                    jobId = "job-b03",
+                    outputIndex = 0,
+                    totalOutputs = 1,
+                    intendedFilename = "full.mp4",
+                    pendingFilename = pendingName,
+                    stagingPath = staging.absolutePath,
+                    expectedSizeBytes = 1000L,
+                    providerType = PublicationProviderType.MEDIA_STORE,
+                    destinationIdentity = "Downloads/VRKA",
+                    publicationPhase = PublicationPhase.INTENT_RECORDED,
+                ),
+            )
+            preJournal.updateProviderCreated(txId, uri.toString())
+            preJournal.updateDataCopied(txId, 1000L)
+
+            val job = sampleJob("job-b03", state = JobState.POSTPROCESSING)
+            val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
+
+            manager.reconcilePublicationJournalOnStartup()
+            val recoveredEntry = journal.entriesForJob("job-b03").single()
+            assertEquals(PublicationPhase.RECORDED, recoveredEntry.publicationPhase)
+            assertEquals(PublicationTransactionStatus.RECONCILED, recoveredEntry.status)
+            val finalJob = JobStore(File(testDir, "download_jobs.json")).load(recoverActive = true).single()
+            assertEquals(JobState.DONE, finalJob.state)
+            assertEquals(listOf(uri.toString()), finalJob.outputUris)
+        } finally {
+            DownloadTransferRuntime.resetForTesting()
+        }
+    }
+
+    // 4. MediaStore finalization failure / zero affected rows (PUB-02)
+    @Test
+    fun boundary04_mediaStore_finalizationFailureZeroRows_preservesJournalForRetry() {
+        val testDir = tempFolder.newFolder("b04")
+        val ops = TestPublicationStorageOps(testDir)
+        ops.mediaStoreUpdateAffectedRows = 0
+
+        val uri = ops.insertMediaStore(
+            Uri.parse("content://media/external/downloads"),
+            ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, ".vrka_pending_tx_final.mp4")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            },
+            displayName = ".vrka_pending_tx_final.mp4",
+            isPending = true,
+        )!!
+        ops.openOutputStream(uri, "w")!!.use { it.write(ByteArray(500)) }
+
+        val journalFile = File(testDir, "pub_journal.json")
+        val preJournal = PublicationJournal(journalFile)
+        preJournal.recordIntent(
             PublicationEntry(
-                transactionId = txId,
-                jobId = "job-boundary-2",
+                transactionId = "tx-b04",
+                jobId = "job-b04",
                 outputIndex = 0,
                 totalOutputs = 1,
-                intendedFilename = "doc.mp4",
-                pendingFilename = pendingName,
-                stagingPath = "/staging/doc.mp4",
-                expectedSizeBytes = 8000L,
-                providerType = PublicationProviderType.SAF,
-                destinationIdentity = "content://saf/tree",
+                intendedFilename = "final.mp4",
+                pendingFilename = ".vrka_pending_tx_final.mp4",
+                stagingPath = "/staging/final.mp4",
+                expectedSizeBytes = 500L,
+                providerType = PublicationProviderType.MEDIA_STORE,
+                destinationIdentity = "Downloads/VRKA",
                 publicationPhase = PublicationPhase.INTENT_RECORDED,
-                providerUri = null,
             ),
         )
+        preJournal.updateProviderCreated("tx-b04", uri.toString())
+        preJournal.updateDataCopied("tx-b04", 500L)
 
-        // Simulate SAF tree holding orphaned pending document and unrelated document
-        val safTree = mutableMapOf<String, Long>()
-        safTree[pendingName] = 0L
-        safTree["doc.mp4"] = 8000L
+        val job = sampleJob("job-b04", state = JobState.POSTPROCESSING)
+        val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
 
-        // On recovery: search child documents for pendingFilename
-        val discoveredDoc = safTree.keys.firstOrNull { it == pendingName }
-        assertNotNull(discoveredDoc)
+        val finalizationSuccess = manager.publisher.finalizeMediaStore(uri, "final.mp4")
+        assertFalse("Zero affected rows with pending still set must be rejected as failure", finalizationSuccess)
 
-        // Incomplete copy: remove orphaned document, mark interrupted
-        safTree.remove(discoveredDoc)
-        journal.markInterrupted(txId)
+        manager.reconcilePublicationJournalOnStartup()
 
-        assertFalse(safTree.containsKey(pendingName))
-        assertTrue(safTree.containsKey("doc.mp4"))
-        assertEquals(PublicationTransactionStatus.INTERRUPTED, journal.entriesForJob("job-boundary-2").single().status)
+        val entryAfterRecovery = journal.entriesForJob("job-b04").single()
+        assertFalse("Journal must NOT be reconciled when finalization fails", entryAfterRecovery.status == PublicationTransactionStatus.RECONCILED)
+        assertEquals("Journal must remain unreconciled for retry", 1, journal.unreconciledEntries().size)
     }
 
-    // Boundary 3: First playlist output finalized, crash before second output published
+    // 5. SAF rename/finalization failure
     @Test
-    fun boundary03_playlist_firstOutputFinalized_crashBeforeSecondPublished_failsClosed() {
-        val jobsFile = File(tempFolder.root, "download_jobs.json")
-        val journalFile = File(tempFolder.root, "publication_journal.json")
-        val jobStore = JobStore(jobsFile)
-        val journal = PublicationJournal(journalFile)
+    fun boundary05_saf_renameFinalizationFailure_handledSafely() {
+        val testDir = tempFolder.newFolder("b05")
+        val ops = TestPublicationStorageOps(testDir)
+        ops.failSafRename = true
+        val (manager, _) = createHarness(testDir, ops)
 
-        val job = sampleJob("job-playlist-split", state = JobState.POSTPROCESSING, publishStarted = true)
-        jobStore.save(listOf(job))
+        val tree = Uri.parse("content://saf/tree")
+        val uri = ops.createSafDocument(tree, "video/mp4", ".vrka_pending_tx_saf.mp4")!!
 
-        // Entire batch recorded atomically upfront
+        val finalUri = manager.publisher.finalizeSaf(uri, "saf_final.mp4")
+        assertEquals(uri, finalUri)
+    }
+
+    // 6. First output publication in multi-output batch
+    @Test
+    fun boundary06_multiOutputBatch_firstSucceedsSecondFails_failsClosed() {
+        val testDir = tempFolder.newFolder("b06")
+        val ops = TestPublicationStorageOps(testDir)
+
+        val staging1 = File(testDir, "track1.mp3").apply { writeBytes(ByteArray(500)) }
+        val staging2 = File(testDir, "track2.mp3").apply { writeBytes(ByteArray(500)) }
+
+        val uri1 = ops.insertMediaStore(
+            Uri.parse("content://media/external/downloads"),
+            ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, "track1.mp3") },
+            displayName = "track1.mp3",
+            isPending = false,
+        )!!
+        ops.openOutputStream(uri1, "w")!!.use { it.write(ByteArray(500)) }
+
+        val uri2 = ops.insertMediaStore(
+            Uri.parse("content://media/external/downloads"),
+            ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, ".vrka_pending_2_track2.mp3") },
+            displayName = ".vrka_pending_2_track2.mp3",
+            isPending = true,
+        )!!
+
         val batch = listOf(
             PublicationEntry(
-                transactionId = "tx-p1",
-                jobId = "job-playlist-split",
+                transactionId = "tx-b06-1",
+                jobId = "job-b06",
                 outputIndex = 0,
                 totalOutputs = 2,
-                intendedFilename = "track_1.mp3",
-                stagingPath = "/staging/track_1.mp3",
-                expectedSizeBytes = 10000L,
-                providerType = PublicationProviderType.SAF,
-                destinationIdentity = "content://saf/tree",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
+                intendedFilename = "track1.mp3",
+                pendingFilename = ".vrka_pending_1_track1.mp3",
+                stagingPath = staging1.absolutePath,
+                expectedSizeBytes = 500L,
+                providerType = PublicationProviderType.MEDIA_STORE,
+                destinationIdentity = "Downloads/VRKA",
+                publicationPhase = PublicationPhase.FINALIZED,
+                copiedBytes = 500L,
+                providerUri = uri1.toString(),
             ),
             PublicationEntry(
-                transactionId = "tx-p2",
-                jobId = "job-playlist-split",
+                transactionId = "tx-b06-2",
+                jobId = "job-b06",
                 outputIndex = 1,
                 totalOutputs = 2,
-                intendedFilename = "track_2.mp3",
-                stagingPath = "/staging/track_2.mp3",
-                expectedSizeBytes = 20000L,
-                providerType = PublicationProviderType.SAF,
-                destinationIdentity = "content://saf/tree",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
-            ),
-        )
-        journal.recordBatchIntents(batch)
-
-        // Track 1 finalized
-        journal.updateProviderCreated("tx-p1", "content://saf/tree/item1")
-        journal.updateDataCopied("tx-p1", 10000L)
-        journal.updateFinalized("tx-p1")
-
-        // Crash before track 2 is published (tx-p2 remains INTENT_RECORDED)
-        val entries = journal.entriesForJob("job-playlist-split")
-        assertEquals(2, entries.size)
-        assertEquals(2, entries[0].totalOutputs)
-
-        val totalOutputs = entries.first().totalOutputs
-        val isAllPresent = entries.size == totalOutputs
-        val allComplete = isAllPresent && entries.all { it.publicationPhase == PublicationPhase.FINALIZED }
-        assertFalse("Incomplete playlist MUST NOT be detected as all complete", allComplete)
-
-        // Clean up incomplete item, mark interrupted
-        journal.markInterrupted("tx-p2")
-
-        // Reconcile job: must fail closed as FAILED, retain completed URIs, never mark DONE
-        val loaded = jobStore.load(recoverActive = false).single()
-        val completedUris = entries.filter { it.publicationPhase == PublicationPhase.FINALIZED }.map { it.providerUri!! }
-        val failedJob = loaded.copy(
-            state = JobState.FAILED,
-            error = INTERRUPTED_DOWNLOAD_ERROR,
-            detail = "Interrupted during publication (1 of $totalOutputs files published)",
-            outputUris = completedUris,
-            actualFinalFileBytes = 10000L,
-            updatedAt = System.currentTimeMillis(),
-        )
-        jobStore.save(listOf(failedJob))
-        journal.markReconciled("job-playlist-split")
-
-        val stored = jobStore.load().single()
-        assertEquals(JobState.FAILED, stored.state)
-        assertEquals(listOf("content://saf/tree/item1"), stored.outputUris)
-        assertEquals("Interrupted during publication (1 of 2 files published)", stored.detail)
-    }
-
-    // Boundary 4: All output intents recorded, crash before publication begins
-    @Test
-    fun boundary04_playlist_allIntentsRecorded_crashBeforePublicationBegins_failsClosed() {
-        val jobsFile = File(tempFolder.root, "download_jobs.json")
-        val journalFile = File(tempFolder.root, "publication_journal.json")
-        val jobStore = JobStore(jobsFile)
-        val journal = PublicationJournal(journalFile)
-
-        val job = sampleJob("job-p-init", state = JobState.POSTPROCESSING, publishStarted = true)
-        jobStore.save(listOf(job))
-
-        val batch = (0..2).map { i ->
-            PublicationEntry(
-                transactionId = "tx-init-$i",
-                jobId = "job-p-init",
-                outputIndex = i,
-                totalOutputs = 3,
-                intendedFilename = "song_$i.mp3",
-                stagingPath = "/staging/song_$i.mp3",
-                expectedSizeBytes = 15000L,
+                intendedFilename = "track2.mp3",
+                pendingFilename = ".vrka_pending_2_track2.mp3",
+                stagingPath = staging2.absolutePath,
+                expectedSizeBytes = 500L,
                 providerType = PublicationProviderType.MEDIA_STORE,
                 destinationIdentity = "Downloads/VRKA",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
+                publicationPhase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+                providerUri = uri2.toString(),
+            ),
+        )
+        val journalFile = File(testDir, "pub_journal.json")
+        val preJournal = PublicationJournal(journalFile)
+        preJournal.recordBatchIntents(batch)
+        preJournal.updateProviderCreated("tx-b06-1", uri1.toString())
+        preJournal.updateDataCopied("tx-b06-1", 500L)
+        preJournal.updateFinalized("tx-b06-1")
+        preJournal.updateProviderCreated("tx-b06-2", uri2.toString())
+
+        val job = sampleJob("job-b06", state = JobState.POSTPROCESSING)
+        val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
+
+        manager.reconcilePublicationJournalOnStartup()
+
+        val jobsFile = File(testDir, "download_jobs.json")
+        val finalJob = JobStore(jobsFile).load().single()
+        assertEquals(JobState.FAILED, finalJob.state)
+        assertEquals(listOf(uri1.toString()), finalJob.outputUris)
+        assertFalse("Partial unfinalized track2 must be deleted", ops.fileExists(uri2))
+        assertTrue("Finalized track1 must be retained", ops.fileExists(uri1))
+    }
+
+    // 7. Terminal JobStore save failure (PUB-01)
+    @Test
+    fun boundary07_terminalJobStoreSaveFailure_retainsJournalAndStaging_reconcilesOnRestart() = runBlocking {
+        DownloadTransferRuntime.markTransferJobInvoked()
+        try {
+            val testDir = tempFolder.newFolder("b07")
+            val ops = TestPublicationStorageOps(testDir)
+            val uri = ops.insertMediaStore(
+                Uri.parse("content://media/external/downloads"),
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, "video.mp4")
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                },
+                displayName = "video.mp4",
+                isPending = false,
+            )!!
+            ops.openOutputStream(uri, "w")!!.use { it.write(ByteArray(200)) }
+
+            val fileOps = TestJobStoreFileOps()
+            val job = sampleJob("job-b07", state = JobState.POSTPROCESSING)
+            val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job), jobStoreFileOps = fileOps)
+
+            val stagingDir = File(testDir, "files/staging/job-b07").apply { mkdirs() }
+            val stagingFile = File(stagingDir, "video.mp4").apply { writeBytes(ByteArray(200)) }
+
+            journal.recordIntent(
+                PublicationEntry(
+                    transactionId = "tx-b07",
+                    jobId = "job-b07",
+                    outputIndex = 0,
+                    totalOutputs = 1,
+                    intendedFilename = "video.mp4",
+                    pendingFilename = ".vrka_pending_tx-b07_video.mp4",
+                    stagingPath = stagingFile.absolutePath,
+                    expectedSizeBytes = 200L,
+                    providerType = PublicationProviderType.MEDIA_STORE,
+                    destinationIdentity = "Downloads/VRKA",
+                    publicationPhase = PublicationPhase.INTENT_RECORDED,
+                ),
             )
+            journal.updateProviderCreated("tx-b07", uri.toString())
+            journal.updateDataCopied("tx-b07", 200L)
+            journal.updateFinalized("tx-b07")
+
+            fileOps.failMove = true
+            val committed = manager.commitTerminalPublishedJob(
+                jobId = "job-b07",
+                detail = "Saved to Downloads/VRKA",
+                downloadedBytes = 200L,
+                reportedTotalBytes = 200L,
+                reportedTotalIsExact = true,
+                actualFinalFileBytes = 200L,
+                outputUris = listOf(uri.toString()),
+            )
+            assertFalse("commitTerminalPublishedJob must return false when JobStore save fails", committed)
+            assertEquals("Journal MUST NOT be marked reconciled on save failure", 1, journal.unreconciledEntries().size)
+            assertTrue("Staging file MUST NOT be cleaned up when terminal persistence fails", stagingFile.exists())
+
+            fileOps.failMove = false
+            manager.reconcilePublicationJournalOnStartup()
+
+            assertEquals("On next startup with working store, journal is reconciled", 0, journal.unreconciledEntries().size)
+            val jobsFile = File(testDir, "download_jobs.json")
+            val loaded = JobStore(jobsFile).load(recoverActive = true).single()
+            assertEquals(JobState.DONE, loaded.state)
+            assertEquals(listOf(uri.toString()), loaded.outputUris)
+        } finally {
+            DownloadTransferRuntime.resetForTesting()
         }
-        journal.recordBatchIntents(batch)
-
-        // Process killed before any provider insertion
-        val entries = journal.entriesForJob("job-p-init")
-        assertEquals(3, entries.size)
-        assertTrue(entries.all { it.providerUri == null })
-        assertTrue(entries.all { it.publicationPhase == PublicationPhase.INTENT_RECORDED })
-
-        // Recovery: none completed, marks all interrupted
-        entries.forEach { journal.markInterrupted(it.transactionId) }
-
-        val loaded = jobStore.load(recoverActive = false).single()
-        val reconciledJob = loaded.copy(
-            state = JobState.FAILED,
-            error = INTERRUPTED_DOWNLOAD_ERROR,
-            detail = "Interrupted during publication",
-            outputUris = emptyList(),
-            updatedAt = System.currentTimeMillis(),
-        )
-        jobStore.save(listOf(reconciledJob))
-        journal.markReconciled("job-p-init")
-
-        val stored = jobStore.load().single()
-        assertEquals(JobState.FAILED, stored.state)
-        assertTrue(stored.outputUris.isEmpty())
-        assertEquals("Interrupted during publication", stored.detail)
     }
 
-    // Boundary 5: Crash during file copy (partial bytes)
+    // 8. Journal persistence failure
     @Test
-    fun boundary05_duringFileCopy_interruptedPartialData_cleanedUp() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val journal = PublicationJournal(journalFile)
+    fun boundary08_journalPersistenceFailure_handledSafely() {
+        val testDir = tempFolder.newFolder("b08")
+        val journalFile = File(testDir, "journal.json")
+        val journalOps = TestJobStoreFileOps(failWrite = true)
+        val journal = PublicationJournal(journalFile, journalOps)
 
-        val txId = "tx-boundary-5"
-        journal.recordIntent(
-            PublicationEntry(
-                transactionId = txId,
-                jobId = "job-boundary-5",
-                outputIndex = 0,
-                totalOutputs = 1,
-                intendedFilename = "partial.mp4",
-                stagingPath = "/staging/partial.mp4",
-                expectedSizeBytes = 10000L,
-                providerType = PublicationProviderType.SAF,
-                destinationIdentity = "content://saf/tree",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
-            ),
-        )
-        journal.updateProviderCreated(txId, "content://saf/tree/document/part1")
-        journal.updateDataCopied(txId, 3000L) // Partial copy
-
-        val entry = journal.entriesForJob("job-boundary-5").single()
-        assertTrue(entry.copiedBytes < entry.expectedSizeBytes)
-
-        // Recovery detects partial copy, marks interrupted
-        journal.markInterrupted(txId)
-        val recovered = journal.entriesForJob("job-boundary-5").single()
-        assertEquals(PublicationTransactionStatus.INTERRUPTED, recovered.status)
+        var caught = false
+        try {
+            journal.recordIntent(
+                PublicationEntry(
+                    transactionId = "tx-b08",
+                    jobId = "job-b08",
+                    outputIndex = 0,
+                    totalOutputs = 1,
+                    intendedFilename = "v.mp4",
+                    pendingFilename = ".pending_v.mp4",
+                    stagingPath = "/staging/v.mp4",
+                    expectedSizeBytes = 100L,
+                    providerType = PublicationProviderType.MEDIA_STORE,
+                    destinationIdentity = "Downloads/VRKA",
+                    publicationPhase = PublicationPhase.INTENT_RECORDED,
+                ),
+            )
+        } catch (e: Exception) {
+            caught = true
+        }
+        assertTrue("Writing to unwritable journal must fail safely", caught)
     }
 
-    // Boundary 6: Crash after copy completes before journal update
+    // 9. Interruption before journal reconciliation
     @Test
-    fun boundary06_afterCopyCompletion_beforeJournalUpdate_recoversToDone() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val journal = PublicationJournal(journalFile)
+    fun boundary09_interruptionBeforeJournalReconciliation_startupReconcilesCleanly() {
+        val testDir = tempFolder.newFolder("b09")
+        val ops = TestPublicationStorageOps(testDir)
+        val uri = "content://media/external/downloads/999"
+        val job = sampleJob("job-b09", state = JobState.DONE, outputUris = listOf(uri))
 
-        val txId = "tx-boundary-6"
-        journal.recordIntent(
+        val journalFile = File(testDir, "pub_journal.json")
+        val preJournal = PublicationJournal(journalFile)
+        preJournal.recordIntent(
             PublicationEntry(
-                transactionId = txId,
-                jobId = "job-boundary-6",
+                transactionId = "tx-b09",
+                jobId = "job-b09",
                 outputIndex = 0,
                 totalOutputs = 1,
-                intendedFilename = "complete.mp4",
-                stagingPath = "/staging/complete.mp4",
-                expectedSizeBytes = 10000L,
+                intendedFilename = "v.mp4",
+                pendingFilename = ".pending_v.mp4",
+                stagingPath = "/staging/v.mp4",
+                expectedSizeBytes = 300L,
                 providerType = PublicationProviderType.MEDIA_STORE,
                 destinationIdentity = "Downloads/VRKA",
                 publicationPhase = PublicationPhase.INTENT_RECORDED,
             ),
         )
-        journal.updateProviderCreated(txId, "content://media/external/downloads/301")
+        preJournal.updateProviderCreated("tx-b09", uri)
+        preJournal.updateDataCopied("tx-b09", 300L)
+        preJournal.updateFinalized("tx-b09")
 
-        // Provider has 10000 bytes on disk, but journal was killed before updateDataCopied
-        val actualProviderBytes = 10000L
-        val entry = journal.entriesForJob("job-boundary-6").single()
-        if (actualProviderBytes == entry.expectedSizeBytes) {
-            journal.updateDataCopied(txId, actualProviderBytes)
-            journal.updateFinalized(txId)
-        }
+        val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
 
-        val finalized = journal.entriesForJob("job-boundary-6").single()
-        assertEquals(PublicationPhase.FINALIZED, finalized.publicationPhase)
-        assertEquals(PublicationTransactionStatus.COMPLETED, finalized.status)
+        manager.reconcilePublicationJournalOnStartup()
+
+        assertTrue("Journal must be marked reconciled when job is already verified DONE", journal.unreconciledEntries().isEmpty())
+        val jobsFile = File(testDir, "download_jobs.json")
+        val loaded = JobStore(jobsFile).load().single()
+        assertEquals(JobState.DONE, loaded.state)
     }
 
-    // Boundary 7: Crash after MediaStore finalization before FINALIZED journal persistence
+    // 10. Interruption after durable terminal JobStore persistence (6-step verification)
     @Test
-    fun boundary07_mediaStore_afterFinalization_beforeFinalizedJournalPersistence_recoversToDone() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val journal = PublicationJournal(journalFile)
+    fun boundary10_durablePersistenceOrdering_stagingCleanedOnlyAfterReconciliation() = runBlocking {
+        DownloadTransferRuntime.markTransferJobInvoked()
+        try {
+            val testDir = tempFolder.newFolder("b10")
+            val ops = TestPublicationStorageOps(testDir)
+            val uri = ops.insertMediaStore(
+                Uri.parse("content://media/external/downloads"),
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, "video.mp4")
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                },
+                displayName = "video.mp4",
+                isPending = false,
+            )!!
+            ops.openOutputStream(uri, "w")!!.use { it.write(ByteArray(100)) }
 
-        val txId = "tx-boundary-7"
-        journal.recordIntent(
-            PublicationEntry(
-                transactionId = txId,
-                jobId = "job-boundary-7",
-                outputIndex = 0,
-                totalOutputs = 1,
-                intendedFilename = "finalized_store.mp4",
-                stagingPath = "/staging/finalized_store.mp4",
-                expectedSizeBytes = 20480L,
-                providerType = PublicationProviderType.MEDIA_STORE,
-                destinationIdentity = "Downloads/VRKA",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
-            ),
-        )
-        journal.updateProviderCreated(txId, "content://media/external/downloads/701")
-        journal.updateDataCopied(txId, 20480L)
+            val stagingDir = File(testDir, "files/staging/job-b10").apply { mkdirs() }
+            val stagingFile = File(stagingDir, "video.mp4").apply { writeBytes(ByteArray(100)) }
 
-        // Process killed right after MediaStore IS_PENDING set to 0, before journal.updateFinalized
-        val entry = journal.entriesForJob("job-boundary-7").single()
-        assertEquals(PublicationPhase.DATA_COPIED, entry.publicationPhase)
+            val journalFile = File(testDir, "pub_journal.json")
+            val preJournal = PublicationJournal(journalFile)
+            preJournal.recordIntent(
+                PublicationEntry(
+                    transactionId = "tx-b10",
+                    jobId = "job-b10",
+                    outputIndex = 0,
+                    totalOutputs = 1,
+                    intendedFilename = "video.mp4",
+                    pendingFilename = ".vrka_pending_tx-b10_video.mp4",
+                    stagingPath = stagingFile.absolutePath,
+                    expectedSizeBytes = 100L,
+                    providerType = PublicationProviderType.MEDIA_STORE,
+                    destinationIdentity = "Downloads/VRKA",
+                    publicationPhase = PublicationPhase.INTENT_RECORDED,
+                ),
+            )
+            preJournal.updateProviderCreated("tx-b10", uri.toString())
+            preJournal.updateDataCopied("tx-b10", 100L)
+            preJournal.updateFinalized("tx-b10")
 
-        // On recovery, verifies copiedBytes == expectedSizeBytes, advances to FINALIZED
-        if (entry.copiedBytes == entry.expectedSizeBytes) {
-            journal.updateFinalized(txId)
-        }
+            val job = sampleJob("job-b10", state = JobState.POSTPROCESSING)
+            val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
 
-        val recovered = journal.entriesForJob("job-boundary-7").single()
-        assertEquals(PublicationPhase.FINALIZED, recovered.publicationPhase)
-        assertEquals(PublicationTransactionStatus.COMPLETED, recovered.status)
-    }
-
-    // Boundary 8: Crash after SAF completion before journal update
-    @Test
-    fun boundary08_saf_afterCompletion_beforeJournalUpdate_recoversToDone() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val journal = PublicationJournal(journalFile)
-
-        val txId = "tx-boundary-8"
-        journal.recordIntent(
-            PublicationEntry(
-                transactionId = txId,
-                jobId = "job-boundary-8",
-                outputIndex = 0,
-                totalOutputs = 1,
-                intendedFilename = "saf_complete.mp4",
-                stagingPath = "/staging/saf_complete.mp4",
-                expectedSizeBytes = 40960L,
-                providerType = PublicationProviderType.SAF,
-                destinationIdentity = "content://saf/tree",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
-            ),
-        )
-        journal.updateProviderCreated(txId, "content://saf/tree/document/801")
-        journal.updateDataCopied(txId, 40960L)
-
-        val entry = journal.entriesForJob("job-boundary-8").single()
-        assertEquals(PublicationPhase.DATA_COPIED, entry.publicationPhase)
-
-        // Recovery finalizes SAF with renamed or original URI
-        val renamedUri = "content://saf/tree/document/saf_complete.mp4"
-        journal.updateFinalized(txId, renamedUri)
-
-        val recovered = journal.entriesForJob("job-boundary-8").single()
-        assertEquals(PublicationPhase.FINALIZED, recovered.publicationPhase)
-        assertEquals(renamedUri, recovered.providerUri)
-    }
-
-    // Boundary 9: Crash after terminal JobStore save before journal reconciliation
-    @Test
-    fun boundary09_crashAfterTerminalJobStoreSave_beforeJournalReconciliation_idempotentDone() {
-        val jobsFile = File(tempFolder.root, "download_jobs.json")
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val jobStore = JobStore(jobsFile)
-        val journal = PublicationJournal(journalFile)
-
-        // Job is already DONE in JobStore
-        val job = sampleJob("job-terminal-save", state = JobState.DONE, outputUris = listOf("content://media/901"))
-        jobStore.save(listOf(job))
-
-        // Journal still has unreconciled FINALIZED entry
-        journal.recordIntent(
-            PublicationEntry(
-                transactionId = "tx-boundary-9",
-                jobId = "job-terminal-save",
-                outputIndex = 0,
-                totalOutputs = 1,
-                intendedFilename = "video.mp4",
-                stagingPath = "/staging/video.mp4",
-                expectedSizeBytes = 50000L,
-                providerType = PublicationProviderType.MEDIA_STORE,
-                destinationIdentity = "Downloads/VRKA",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
-            ),
-        )
-        journal.updateProviderCreated("tx-boundary-9", "content://media/901")
-        journal.updateDataCopied("tx-boundary-9", 50000L)
-        journal.updateFinalized("tx-boundary-9")
-
-        // Recovery: sees job is already DONE, reconciles journal cleanly
-        journal.markReconciled("job-terminal-save")
-
-        assertTrue(journal.unreconciledEntries().isEmpty())
-        val stored = jobStore.load().single()
-        assertEquals(JobState.DONE, stored.state)
-    }
-
-    // Boundary 10: Crash after journal reconciliation attempt before JobStore save (JobStore save failure)
-    @Test
-    fun boundary10_crashAfterReconciliationAttempt_jobStoreSaveFailure_retainsJournalAndStaging() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val journal = PublicationJournal(journalFile)
-
-        val stagingDir = File(tempFolder.root, "staging/job-b10").apply { mkdirs() }
-        val stagingFile = File(stagingDir, "video.mp4").apply { writeBytes(ByteArray(100)) }
-
-        journal.recordIntent(
-            PublicationEntry(
-                transactionId = "tx-boundary-10",
+            val committed = manager.commitTerminalPublishedJob(
                 jobId = "job-b10",
+                detail = "Saved to Downloads/VRKA",
+                downloadedBytes = 100L,
+                reportedTotalBytes = 100L,
+                reportedTotalIsExact = true,
+                actualFinalFileBytes = 100L,
+                outputUris = listOf(uri.toString()),
+            )
+            assertTrue("When JobStore succeeds, commitTerminalPublishedJob returns true", committed)
+            assertEquals("Journal is reconciled", 0, journal.unreconciledEntries().size)
+            assertFalse("Staging is cleaned up after successful durable commit", stagingFile.exists())
+        } finally {
+            DownloadTransferRuntime.resetForTesting()
+        }
+    }
+
+    // 11. Failed partial-output deletion (PUB-03)
+    @Test
+    fun boundary11_failedPartialOutputDeletion_marksCleanupPending_preservesJournal() {
+        val testDir = tempFolder.newFolder("b11")
+        val ops = TestPublicationStorageOps(testDir)
+        ops.failDelete = true
+
+        val uri = ops.insertMediaStore(
+            Uri.parse("content://media/external/downloads"),
+            ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, ".vrka_pending_b11.mp4") },
+            displayName = ".vrka_pending_b11.mp4",
+            isPending = true,
+        )!!
+
+        val journalFile = File(testDir, "pub_journal.json")
+        val preJournal = PublicationJournal(journalFile)
+        preJournal.recordIntent(
+            PublicationEntry(
+                transactionId = "tx-b11",
+                jobId = "job-b11",
                 outputIndex = 0,
                 totalOutputs = 1,
-                intendedFilename = "video.mp4",
-                stagingPath = stagingFile.absolutePath,
-                expectedSizeBytes = 100L,
+                intendedFilename = "b11.mp4",
+                pendingFilename = ".vrka_pending_b11.mp4",
+                stagingPath = "/staging/b11.mp4",
+                expectedSizeBytes = 5000L,
                 providerType = PublicationProviderType.MEDIA_STORE,
                 destinationIdentity = "Downloads/VRKA",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
+                publicationPhase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+                providerUri = uri.toString(),
             ),
         )
-        journal.updateProviderCreated("tx-boundary-10", "content://media/1001")
-        journal.updateDataCopied("tx-boundary-10", 100L)
-        journal.updateFinalized("tx-boundary-10")
 
-        // Invariant: If JobStore save fails, journal MUST NOT be marked reconciled, staging MUST NOT be cleaned
-        val persistSuccess = false
-        if (persistSuccess) {
-            journal.markReconciled("job-b10")
-            stagingDir.deleteRecursively()
-        }
+        val job = sampleJob("job-b11", state = JobState.POSTPROCESSING)
+        val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
 
-        // Journal and staging MUST remain intact
-        assertEquals(1, journal.unreconciledEntries().size)
-        assertTrue(stagingFile.exists())
+        manager.reconcilePublicationJournalOnStartup()
+
+        val entry = journal.entriesForJob("job-b11").single()
+        assertEquals(PublicationTransactionStatus.CLEANUP_PENDING, entry.status)
+        assertEquals("Journal must NOT reconcile CLEANUP_PENDING entry", 1, journal.unreconciledEntries().size)
+
+        val jobsFile = File(testDir, "download_jobs.json")
+        val loadedJob = JobStore(jobsFile).load().single()
+        assertEquals(JobState.FAILED, loadedJob.state)
+        assertTrue("Detail must indicate pending cleanup", loadedJob.detail.contains("cleanup pending"))
     }
 
-    // Boundary 11: Corrupt journal recovery & bounded copy creation
+    // 12. Repeated cleanup and recovery attempts (PUB-03)
     @Test
-    fun boundary11_corruptJournalRecovery_createsBoundedRecoveryCopy_max3() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        journalFile.writeText("{ malformed json content !!!")
+    fun boundary12_repeatedCleanupAttempts_subsequentPassDeletesAndReconciles() {
+        val testDir = tempFolder.newFolder("b12")
+        val ops = TestPublicationStorageOps(testDir)
+        ops.failDelete = true
 
-        val journal = PublicationJournal(journalFile)
-        val loadResult = journal.loadWithStatus()
+        val uri = ops.insertMediaStore(
+            Uri.parse("content://media/external/downloads"),
+            ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, ".vrka_pending_b12.mp4") },
+            displayName = ".vrka_pending_b12.mp4",
+            isPending = true,
+        )!!
 
-        assertEquals(PublicationJournalLoadState.CORRUPT, loadResult.state)
-        assertNotNull(loadResult.recoveryCopy)
-        assertTrue(loadResult.recoveryCopy!!.exists())
-
-        // Multiple corrupt occurrences create bounded copies, pruning to max 3
-        for (i in 1..5) {
-            journalFile.writeText("{ malformed repetition $i")
-            journal.loadWithStatus()
-            Thread.sleep(10) // Ensure distinct timestamps
-        }
-
-        val corruptFiles = tempFolder.root.listFiles { f -> f.name.startsWith("pub_journal.corrupt-") } ?: emptyArray()
-        assertEquals(3, corruptFiles.size)
-    }
-
-    // Boundary 12: JobStore write failure during reconciliation (retains journal and staging)
-    @Test
-    fun boundary12_reconciliationPersistenceOrdering_jobStoreFailureRetainsJournalAndStaging() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val journal = PublicationJournal(journalFile)
-
-        val stagingDir = File(tempFolder.root, "staging/job-b12").apply { mkdirs() }
-        val stagingFile = File(stagingDir, "track.mp3").apply { writeBytes(ByteArray(200)) }
-
-        journal.recordIntent(
+        val journalFile = File(testDir, "pub_journal.json")
+        val preJournal = PublicationJournal(journalFile)
+        preJournal.recordIntent(
             PublicationEntry(
-                transactionId = "tx-boundary-12",
+                transactionId = "tx-b12",
                 jobId = "job-b12",
                 outputIndex = 0,
                 totalOutputs = 1,
-                intendedFilename = "track.mp3",
-                stagingPath = stagingFile.absolutePath,
+                intendedFilename = "b12.mp4",
+                pendingFilename = ".vrka_pending_b12.mp4",
+                stagingPath = "/staging/b12.mp4",
+                expectedSizeBytes = 3000L,
+                providerType = PublicationProviderType.MEDIA_STORE,
+                destinationIdentity = "Downloads/VRKA",
+                publicationPhase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+                providerUri = uri.toString(),
+            ),
+        )
+
+        val job = sampleJob("job-b12", state = JobState.POSTPROCESSING)
+        val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
+
+        manager.reconcilePublicationJournalOnStartup()
+        assertEquals(PublicationTransactionStatus.CLEANUP_PENDING, journal.entriesForJob("job-b12").single().status)
+
+        ops.failDelete = false
+        manager.reconcilePublicationJournalOnStartup()
+
+        val entryPass2 = journal.entriesForJob("job-b12").single()
+        assertEquals(PublicationTransactionStatus.RECONCILED, entryPass2.status)
+        assertEquals(0, journal.unreconciledEntries().size)
+    }
+
+    // 13. Corrupt and unknown journal values (PUB-04)
+    @Test
+    fun boundary13_corruptAndUnknownJournalValues_strictlyRejected_boundedBackups() {
+        val testDir = tempFolder.newFolder("b13")
+        val journalFile = File(testDir, "pub_journal.json")
+
+        val malformedJson = """
+            {
+              "version": 1,
+              "entries": [
+                {
+                  "transactionId": "tx-bad",
+                  "jobId": "job-bad",
+                  "outputIndex": 0,
+                  "totalOutputs": 1,
+                  "intendedFilename": "bad.mp4",
+                  "pendingFilename": ".pending_bad.mp4",
+                  "stagingPath": "/staging/bad.mp4",
+                  "expectedSizeBytes": 100,
+                  "providerType": "UNSUPPORTED_PROVIDER_TYPE",
+                  "destinationIdentity": "custom",
+                  "publicationPhase": "INTENT_RECORDED",
+                  "status": "PENDING"
+                }
+              ]
+            }
+        """.trimIndent()
+        journalFile.writeText(malformedJson)
+
+        val journal = PublicationJournal(journalFile)
+        val result = journal.loadWithStatus()
+
+        assertEquals("Unknown provider type MUST be rejected as CORRUPT", PublicationJournalLoadState.CORRUPT, result.state)
+        assertTrue(result.entries.isEmpty())
+        assertNotNull(result.recoveryCopy)
+        assertTrue(result.recoveryCopy!!.exists())
+
+        for (i in 1..5) {
+            journalFile.writeText("""{"version": 1, "entries": "invalid_array_$i"}""")
+            journal.loadWithStatus()
+            Thread.sleep(10)
+        }
+        val corruptFiles = testDir.listFiles { f -> f.name.startsWith("pub_journal.corrupt-") } ?: emptyArray()
+        assertEquals("Corrupt snapshots must be bounded to at most 3", 3, corruptFiles.size)
+    }
+
+    // 14. Repeated application restart during reconciliation (idempotence)
+    @Test
+    fun boundary14_repeatedApplicationRestart_isIdempotent() {
+        val testDir = tempFolder.newFolder("b14")
+        val ops = TestPublicationStorageOps(testDir)
+        val uri = "content://media/external/downloads/1414"
+        val job = sampleJob("job-b14", state = JobState.DONE, outputUris = listOf(uri))
+
+        val journalFile = File(testDir, "pub_journal.json")
+        val preJournal = PublicationJournal(journalFile)
+        preJournal.recordIntent(
+            PublicationEntry(
+                transactionId = "tx-b14",
+                jobId = "job-b14",
+                outputIndex = 0,
+                totalOutputs = 1,
+                intendedFilename = "idem.mp4",
+                pendingFilename = ".pending_idem.mp4",
+                stagingPath = "/staging/idem.mp4",
+                expectedSizeBytes = 1200L,
+                providerType = PublicationProviderType.MEDIA_STORE,
+                destinationIdentity = "Downloads/VRKA",
+                publicationPhase = PublicationPhase.INTENT_RECORDED,
+            ),
+        )
+        preJournal.updateProviderCreated("tx-b14", uri)
+        preJournal.updateDataCopied("tx-b14", 1200L)
+        preJournal.updateFinalized("tx-b14")
+
+        val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
+
+        manager.reconcilePublicationJournalOnStartup()
+        assertEquals(0, journal.unreconciledEntries().size)
+
+        manager.reconcilePublicationJournalOnStartup()
+        assertEquals(0, journal.unreconciledEntries().size)
+
+        manager.reconcilePublicationJournalOnStartup()
+        assertEquals(0, journal.unreconciledEntries().size)
+
+        val jobsFile = File(testDir, "download_jobs.json")
+        val stored = JobStore(jobsFile).load().single()
+        assertEquals(JobState.DONE, stored.state)
+        assertEquals(listOf(uri), stored.outputUris)
+    }
+
+    // 15. Multi-output batch partial publication with SAF / MediaStore
+    @Test
+    fun boundary15_multiOutputBatch_partialPublicationSaf_failsClosedCleanly() {
+        val testDir = tempFolder.newFolder("b15")
+        val ops = TestPublicationStorageOps(testDir)
+        val tree = Uri.parse("content://saf/tree")
+
+        val uri1 = ops.createSafDocument(tree, "video/mp4", ".vrka_pending_1.mp4")!!
+        ops.openOutputStream(uri1, "w")!!.use { it.write(ByteArray(100)) }
+        ops.renameSafDocument(uri1, "track1.mp4")
+
+        val uri2 = ops.createSafDocument(tree, "video/mp4", ".vrka_pending_2.mp4")!!
+
+        val batch = listOf(
+            PublicationEntry(
+                transactionId = "tx-b15-1",
+                jobId = "job-b15",
+                outputIndex = 0,
+                totalOutputs = 3,
+                intendedFilename = "track1.mp4",
+                pendingFilename = ".vrka_pending_1.mp4",
+                stagingPath = "/staging/track1.mp4",
+                expectedSizeBytes = 100L,
+                providerType = PublicationProviderType.SAF,
+                destinationIdentity = tree.toString(),
+                publicationPhase = PublicationPhase.FINALIZED,
+                copiedBytes = 100L,
+                providerUri = uri1.toString(),
+            ),
+            PublicationEntry(
+                transactionId = "tx-b15-2",
+                jobId = "job-b15",
+                outputIndex = 1,
+                totalOutputs = 3,
+                intendedFilename = "track2.mp4",
+                pendingFilename = ".vrka_pending_2.mp4",
+                stagingPath = "/staging/track2.mp4",
                 expectedSizeBytes = 200L,
                 providerType = PublicationProviderType.SAF,
-                destinationIdentity = "content://saf/tree",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
+                destinationIdentity = tree.toString(),
+                publicationPhase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+                providerUri = uri2.toString(),
             ),
-        )
-        journal.updateProviderCreated("tx-boundary-12", "content://saf/1201")
-        journal.updateDataCopied("tx-boundary-12", 200L)
-        journal.updateFinalized("tx-boundary-12")
-
-        // 6-step ordering check: Step 4 fails
-        val mockJobStoreSave = { false } // Failed save!
-        val step4Succeeded = mockJobStoreSave()
-        assertFalse(step4Succeeded)
-
-        // Steps 5 & 6 only execute if step 4 passed
-        if (step4Succeeded) {
-            journal.markReconciled("job-b12")
-            stagingDir.deleteRecursively()
-        }
-
-        // Verify preservation
-        assertEquals(1, journal.unreconciledEntries().size)
-        assertTrue(stagingFile.exists())
-    }
-
-    // Boundary 13: Repeated startup reconciliation idempotence
-    @Test
-    fun boundary13_repeatedStartupReconciliation_isIdempotent() {
-        val jobsFile = File(tempFolder.root, "download_jobs.json")
-        val journalFile = File(tempFolder.root, "publication_journal.json")
-        val jobStore = JobStore(jobsFile)
-        val journal = PublicationJournal(journalFile)
-
-        val job = sampleJob("job-idem-13", state = JobState.DONE, outputUris = listOf("content://downloads/13"))
-        jobStore.save(listOf(job))
-
-        journal.recordIntent(
             PublicationEntry(
-                transactionId = "tx-idem-13",
-                jobId = "job-idem-13",
-                outputIndex = 0,
-                totalOutputs = 1,
-                intendedFilename = "test.mp4",
-                stagingPath = "/staging/test.mp4",
-                expectedSizeBytes = 1000L,
-                providerType = PublicationProviderType.MEDIA_STORE,
-                destinationIdentity = "Downloads/VRKA",
+                transactionId = "tx-b15-3",
+                jobId = "job-b15",
+                outputIndex = 2,
+                totalOutputs = 3,
+                intendedFilename = "track3.mp4",
+                pendingFilename = ".vrka_pending_3.mp4",
+                stagingPath = "/staging/track3.mp4",
+                expectedSizeBytes = 300L,
+                providerType = PublicationProviderType.SAF,
+                destinationIdentity = tree.toString(),
                 publicationPhase = PublicationPhase.INTENT_RECORDED,
             ),
         )
-        journal.updateProviderCreated("tx-idem-13", "content://downloads/13")
-        journal.updateDataCopied("tx-idem-13", 1000L)
-        journal.updateFinalized("tx-idem-13")
+        val journalFile = File(testDir, "pub_journal.json")
+        val preJournal = PublicationJournal(journalFile)
+        preJournal.recordBatchIntents(batch)
+        preJournal.updateProviderCreated("tx-b15-1", uri1.toString())
+        preJournal.updateDataCopied("tx-b15-1", 100L)
+        preJournal.updateFinalized("tx-b15-1", uri1.toString())
+        preJournal.updateProviderCreated("tx-b15-2", uri2.toString())
 
-        // Pass 1
-        journal.markReconciled("job-idem-13")
-        assertEquals(0, journal.unreconciledEntries().size)
+        val job = sampleJob("job-b15", state = JobState.POSTPROCESSING)
+        val (manager, journal) = createHarness(testDir, ops, initialJobs = listOf(job))
 
-        // Pass 2
-        journal.markReconciled("job-idem-13")
-        assertEquals(0, journal.unreconciledEntries().size)
+        manager.reconcilePublicationJournalOnStartup()
 
-        // Pass 3
-        journal.markReconciled("job-idem-13")
-        assertEquals(0, journal.unreconciledEntries().size)
-
-        assertEquals(1, jobStore.load().size)
-        assertEquals(JobState.DONE, jobStore.load().single().state)
-    }
-
-    // Boundary 14: Duplicate/unrelated provider files with similar names (never deleted)
-    @Test
-    fun boundary14_unrelatedProviderFilesWithSimilarNames_neverDeleted() {
-        val journalFile = File(tempFolder.root, "pub_journal.json")
-        val journal = PublicationJournal(journalFile)
-
-        val myTxId = "tx-target-14"
-        val myPendingName = ".vrka_pending_${myTxId}_film.mp4"
-
-        journal.recordIntent(
-            PublicationEntry(
-                transactionId = myTxId,
-                jobId = "job-target-14",
-                outputIndex = 0,
-                totalOutputs = 1,
-                intendedFilename = "film.mp4",
-                pendingFilename = myPendingName,
-                stagingPath = "/staging/film.mp4",
-                expectedSizeBytes = 50000L,
-                providerType = PublicationProviderType.MEDIA_STORE,
-                destinationIdentity = "Downloads/VRKA",
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
-            ),
-        )
-
-        // Simulated directory holding target file and unrelated user files
-        val filesOnDisk = mutableMapOf(
-            myPendingName to 500L, // Partial target
-            "film.mp4" to 50000L, // Unrelated user file!
-            ".vrka_pending_otherTx_film.mp4" to 2000L, // Another job's pending file!
-            "film (2).mp4" to 30000L, // Unrelated user file!
-        )
-
-        // Recovery only matches entry.pendingFilename
-        val toDelete = filesOnDisk.keys.filter { it == myPendingName }
-        assertEquals(listOf(myPendingName), toDelete)
-
-        toDelete.forEach { filesOnDisk.remove(it) }
-        journal.markInterrupted(myTxId)
-
-        // Target pending file removed
-        assertFalse(filesOnDisk.containsKey(myPendingName))
-        // ALL unrelated files remain completely intact!
-        assertTrue(filesOnDisk.containsKey("film.mp4"))
-        assertTrue(filesOnDisk.containsKey(".vrka_pending_otherTx_film.mp4"))
-        assertTrue(filesOnDisk.containsKey("film (2).mp4"))
+        val jobsFile = File(testDir, "download_jobs.json")
+        val finalJob = JobStore(jobsFile).load().single()
+        assertEquals(JobState.FAILED, finalJob.state)
+        assertEquals(listOf(uri1.toString()), finalJob.outputUris)
+        assertTrue("Completed track 1 document must be preserved", ops.fileExists(uri1))
+        assertFalse("Incomplete track 2 pending document must be deleted", ops.fileExists(uri2))
     }
 }

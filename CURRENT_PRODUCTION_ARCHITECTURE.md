@@ -64,7 +64,7 @@ VRKA Android 5.1.2 retains complete interface localization across **14 distinct 
         ┌──────────────────┴──────────────────┐
         ▼                                     ▼
 ┌──────────────────────────┐      ┌──────────────────────────┐
-│  DownloadJobStore (DB)   │      │ Foreground DownloadService│
+│  JobStore (JSON Storage) │      │ Foreground DownloadService│
 │  State & Progress Sync   │      │ Notification & Workers   │
 └──────────────────────────┘      └──────────────────────────┘
 ```
@@ -72,7 +72,7 @@ VRKA Android 5.1.2 retains complete interface localization across **14 distinct 
 ### 3.1 Normal Download Flow
 1. **Intake & Request Construction**:
    - The user inputs a URL directly or shares a link via the Android Share Sheet.
-   - `VrkaDownloadManager` creates a job entry in `DownloadJobStore`.
+   - `VrkaDownloadManager` creates a job entry in `JobStore`.
    - `DownloadRequestFactory` constructs argument lists (`argv`) for `yt-dlp` without invoking a shell.
    - HTTP headers (`Referer`, `Origin`, custom headers) are validated against RFC 7230 token specifications and CRLF injection rejection. Sensitive tokens and cookies are redacted (`[REDACTED]`) from logs, crash reports, and UI state.
 2. **Extraction & Transfer**:
@@ -83,7 +83,7 @@ VRKA Android 5.1.2 retains complete interface localization across **14 distinct 
    - If H.264 Compatibility Mode is active and the video codec is not H.264, `FFmpeg` transcodes video via `libx264` while copying audio/subtitle tracks.
 4. **Validation & MediaStore Export**:
    - Staged files are verified: non-zero byte size, valid container headers, and expected format.
-   - `OutputPublisher` publishes the final file to the user's destination directory (`Downloads/VRKA` or user-selected SAF tree) and updates `DownloadHistoryStore`.
+   - `OutputPublisher` publishes the final file to the user's destination directory (`Downloads/VRKA` or user-selected SAF tree) and updates `JobStore` (where completed records serve as download history).
 
 ---
 
