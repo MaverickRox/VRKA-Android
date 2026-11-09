@@ -449,20 +449,20 @@ class ReleaseManifestVerifierTest {
     }
 
     @Test
-    fun v511ToV512UpgradeVerificationWithPinnedKey() {
+    fun testValidV511ToV512UpgradeAcceptedByManifestVerifier() {
         val manifestFile = listOf(
             File("VRKA-Android-v5.1.2.manifest.json"),
             File("../VRKA-Android-v5.1.2.manifest.json"),
             File("../../VRKA-Android-v5.1.2.manifest.json"),
         ).firstOrNull { it.exists() }
-        assertNotNull(manifestFile)
+        assertNotNull("The published v5.1.2 manifest must be present in the repository", manifestFile)
         val signatureFile = File(manifestFile!!.path + ".asc")
         val manifestBytes = manifestFile.readBytes()
         val signatureBytes = signatureFile.readBytes()
         val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
         val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt)!!
 
-        // Upgrading an installed v5.1.1 (versionCode 50101, storedRevision 4) to v5.1.2 succeeds
+        // Upgrading an installed v5.1.1 (versionCode 50101, storedRevision 4) to v5.1.2 (versionCode 50102, revision 5) succeeds
         val accepted = pinnedVerifier.verifyAndParseManifest(
             manifestBytes = manifestBytes,
             signatureBytes = signatureBytes,
@@ -475,8 +475,23 @@ class ReleaseManifestVerifierTest {
         )
         assertEquals(50102L, accepted.versionCode)
         assertEquals(5L, accepted.metadataRevision)
+    }
 
-        // Downgrade protection: rejected if installed versionCode >= manifest versionCode
+    @Test
+    fun testManifestVerifierRejectsLowerVersionDowngrade() {
+        val manifestFile = listOf(
+            File("VRKA-Android-v5.1.2.manifest.json"),
+            File("../VRKA-Android-v5.1.2.manifest.json"),
+            File("../../VRKA-Android-v5.1.2.manifest.json"),
+        ).firstOrNull { it.exists() }
+        assertNotNull(manifestFile)
+        val signatureFile = File(manifestFile!!.path + ".asc")
+        val manifestBytes = manifestFile.readBytes()
+        val signatureBytes = signatureFile.readBytes()
+        val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
+        val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt)!!
+
+        // Downgrade protection: rejected if installed versionCode > manifest versionCode
         val downgradeErr = assertThrows(ManifestValidationException::class.java) {
             pinnedVerifier.verifyAndParseManifest(
                 manifestBytes = manifestBytes,
@@ -490,8 +505,23 @@ class ReleaseManifestVerifierTest {
             )
         }
         assertTrue(downgradeErr.message!!.contains("downgrade rejected"))
+    }
 
-        // Rollback protection: rejected if stored revision is higher than manifest revision
+    @Test
+    fun testManifestVerifierRejectsRevisionRollback() {
+        val manifestFile = listOf(
+            File("VRKA-Android-v5.1.2.manifest.json"),
+            File("../VRKA-Android-v5.1.2.manifest.json"),
+            File("../../VRKA-Android-v5.1.2.manifest.json"),
+        ).firstOrNull { it.exists() }
+        assertNotNull(manifestFile)
+        val signatureFile = File(manifestFile!!.path + ".asc")
+        val manifestBytes = manifestFile.readBytes()
+        val signatureBytes = signatureFile.readBytes()
+        val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
+        val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt)!!
+
+        // Rollback protection: rejected if stored revision is higher than manifest revision (stored 6 > manifest 5)
         val rollbackErr = assertThrows(ManifestValidationException::class.java) {
             pinnedVerifier.verifyAndParseManifest(
                 manifestBytes = manifestBytes,
@@ -505,5 +535,50 @@ class ReleaseManifestVerifierTest {
             )
         }
         assertTrue(rollbackErr.message!!.contains("rollback detected"))
+    }
+
+    @Test
+    fun testManifestVerifierRejectsInvalidPackageOrTagMetadata() {
+        val manifestFile = listOf(
+            File("VRKA-Android-v5.1.2.manifest.json"),
+            File("../VRKA-Android-v5.1.2.manifest.json"),
+            File("../../VRKA-Android-v5.1.2.manifest.json"),
+        ).firstOrNull { it.exists() }
+        assertNotNull(manifestFile)
+        val signatureFile = File(manifestFile!!.path + ".asc")
+        val manifestBytes = manifestFile.readBytes()
+        val signatureBytes = signatureFile.readBytes()
+        val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
+        val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt)!!
+
+        // Application package mismatch
+        val packageErr = assertThrows(ManifestValidationException::class.java) {
+            pinnedVerifier.verifyAndParseManifest(
+                manifestBytes = manifestBytes,
+                signatureBytes = signatureBytes,
+                currentInstalledPackage = "com.untrusted.spoofed",
+                currentInstalledVersionCode = 50101L,
+                currentStoredRevision = 4L,
+                expectedReleaseTag = "v5.1.2",
+                currentTimeMillis = issuedEpoch + 1_000L,
+                publicKey = pinnedPublicKey,
+            )
+        }
+        assertTrue(packageErr.message!!.contains("Application ID mismatch"))
+
+        // Release tag mismatch
+        val tagErr = assertThrows(ManifestValidationException::class.java) {
+            pinnedVerifier.verifyAndParseManifest(
+                manifestBytes = manifestBytes,
+                signatureBytes = signatureBytes,
+                currentInstalledPackage = "com.mvrk.vrka",
+                currentInstalledVersionCode = 50101L,
+                currentStoredRevision = 4L,
+                expectedReleaseTag = "v5.1.3",
+                currentTimeMillis = issuedEpoch + 1_000L,
+                publicKey = pinnedPublicKey,
+            )
+        }
+        assertTrue(tagErr.message!!.contains("Release tag mismatch"))
     }
 }

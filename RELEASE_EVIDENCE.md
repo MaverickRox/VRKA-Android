@@ -4,13 +4,14 @@
 
 **Source version:** `5.1.2` (`versionCode` 50102)
 **Source revision:** `main` (Official release published at https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2).
-**Validation state:** JVM unit tests (751 tests in 73 suites, 0 failures), Android test-source compilation, debug/devRelease/release builds, release-variant Kotlin compilation, lint, APK metadata, deterministic publication failure-injection tests, and maintainer-reported physical-device upgrade validation. Emulator inspection was performed but runtime testing could not complete due to an authorization boundary; automated test suites and deterministic simulations passed.
+**Validation state:** JVM unit tests (747 tests in 73 suites at release time, 758 tests on `main`, 0 failures), Android test-source compilation, debug/devRelease/release builds, release-variant Kotlin compilation, lint, APK metadata, deterministic publication failure-injection tests, and maintainer-reported physical-device upgrade validation. Emulator inspection was performed but runtime testing could not complete due to an authorization boundary; automated test suites and deterministic simulations passed.
 
 ## Automated checks
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Full JVM unit tests | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 751 tests in 73 suites; 0 failures, 0 errors, 0 skipped |
+| Full JVM unit tests (release-time validation) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 747 tests in 73 suites; 0 failures, 0 errors, 0 skipped |
+| Full JVM unit tests (post-release on `main`) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 758 tests in 73 suites; 0 failures, 0 errors, 0 skipped (including updater upgrade/downgrade/rollback regression tests) |
 | Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
 | Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS (instrumentation not executed) |
 | Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS |
@@ -37,9 +38,9 @@ Toolchain: Gradle 9.4.1 wrapper, Android Gradle Plugin 9.2.0, OpenJDK 21.0.12, J
 
 ## Device Validation & Emulator Boundary
 
-- **Maintainer-Reported Physical Device Upgrade:** On November 9, 2026, the maintainer personally confirmed that updating an existing v5.1.1 installation to v5.1.2 on a physical Android phone was successful. This verifies that the v5.1.1-to-v5.1.2 upgrade package and signing identity are usable on real hardware. Unverified aspects such as automated instrumentation or comprehensive multi-device testing remain bounded. Historical v5.1.1 OnePlus 11 hardware testing is preserved below as historical evidence.
+- **Maintainer-Reported Physical Device Upgrade:** On November 9, 2026, the maintainer personally confirmed that updating an existing v5.1.1 installation to v5.1.2 on a physical Android phone was successful. This verifies that the v5.1.1-to-v5.1.2 upgrade package and signing identity are usable on real hardware. Successful installation/update was confirmed; however, broader functional testing, UI walkthroughs, and automated instrumentation were not performed as part of this validation. Comprehensive multi-device testing was not conducted. Historical v5.1.1 OnePlus 11 hardware testing is preserved below as historical evidence.
 - **Emulator Boundary:** Host emulator environment and WHPX virtualization acceleration were inspected and functional. An API 36 headless emulator was launched, but runtime application testing could not complete due to an ADB authorization boundary on the host machine. The application was **not** successfully tested inside that emulator.
-- **Automated & Failure-Injection Verification:** Comprehensive JVM unit test suite (751 tests in 73 suites, 0 failures) completely exercises format selection, size estimation, URL sanitization, updater cryptography, and all 14 publication failure boundaries.
+- **Automated & Failure-Injection Verification:** Comprehensive JVM unit test suite (747 tests at release time, 758 tests across 73 suites on `main`, 0 failures) completely exercises format selection, size estimation, URL sanitization, updater cryptography, and all 14 publication failure boundaries.
 - **Platform Boundaries:** Authoritative subsystem verification classifications and unverified platform boundaries are defined in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
 ---

@@ -1,5 +1,8 @@
 # Known Limitations — VRKA Android 5.1.2
 
+> [!NOTE]
+> **Historical Baseline & Scope**: This document tracks known limitations across VRKA Android releases (originating from baseline release audits through v5.0, v5.1.0, and v5.1.1) and defines the current operational boundaries for official production release **v5.1.2**. For current production architecture and security policies, see [CURRENT_PRODUCTION_ARCHITECTURE.md](CURRENT_PRODUCTION_ARCHITECTURE.md), [README.md](README.md), and [SECURITY.md](SECURITY.md).
+
 > [!IMPORTANT]
 > **v5.0.2 USERS STILL NEED THE ONE-TIME MANUAL UPGRADE.** The v5.0.2 client has an `APK verification failed: APK filename does not match the expected release` check that cannot update itself. Download and install `VRKA-Android-v5.1.2.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) over v5.0.2 without uninstalling. Application data and settings are preserved. This warning remains until affected users have a published client that can update normally.
 

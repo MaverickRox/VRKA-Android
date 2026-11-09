@@ -1,3 +1,81 @@
+# VRKA Android 5.1.2 — Post-Release Updater Security Review
+
+**Date:** 2026-11-09
+**Scope:** In-app updater architecture, cryptographic authenticity, integrity verification, rollback/downgrade protections, and platform installation handoff for VRKA Android 5.1.2.
+
+> [!NOTE]
+> **Methodology and Scope Boundary**:
+> This review is based on static code inspection of the updater subsystem (`AppUpdateManager`, `ReleaseManifestVerifier`, `AppUpdateDownloadWorker`), automated hermetic unit tests (including cryptographic signature verification and failure injection), and maintainer-confirmed real-device installation of v5.1.2 over v5.1.1 on physical Android hardware.
+>
+> This evaluation is **not** a penetration test, adversarial dynamic runtime assessment, or formal external security certification.
+
+## 1. HTTPS Release Metadata Retrieval
+- **Transport Security**: Release metadata is fetched exclusively over TLS/HTTPS via `validateHttpsUrl()`. The URL parser strictly rejects unencrypted `http://`, URLs with embedded credentials (userinfo), non-standard port specifications (allowing only default or 443), and URI fragments.
+- **Approved Host Allowlisting**: Metadata and release asset requests are strictly restricted to approved GitHub hosts: `api.github.com`, `github.com`, and `objects.githubusercontent.com`.
+- **Redirect Enforcement**: Multi-hop redirects are governed by `validateRedirectTarget()` and `canFollowRedirect()`. Redirect chains are strictly limited to `MAX_REDIRECTS = 3`, protocol downgrades to cleartext HTTP are prohibited, and destination hostnames are re-verified against the allowlist on every redirect hop.
+
+## 2. Exact Release Manifest and Asset Selection
+- **Canonical Release Naming**: The updater strictly matches canonical release tags (`v{major}.{minor}.{patch}`) and expects release artifacts adhering strictly to canonical naming conventions:
+  - Manifest: `VRKA-Android-v{version}.manifest.json`
+  - Detached Signature: `VRKA-Android-v{version}.manifest.json.asc`
+  - Release APK: `VRKA-Android-v{version}.apk`
+- **Strict Asset Association**: Manifest parsing binds the release metadata directly to the expected release asset. Releases with malformed filenames, non-canonical suffixes, or unexpected asset combinations are discarded upfront by `isValidDownloadTarget()` and `parseReleaseJson()`.
+
+## 3. Pinned OpenPGP Verification
+- **Pinned Trust Anchor**: The release manifest verifier relies on an in-tree 4096-bit RSA OpenPGP public key (`0xD519380BEBA1B9F7`, full fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`) embedded directly in the application's compiled resources (`vrka_release_pubkey.asc`).
+- **Cryptographic Algorithm Policy**: Cryptographic signature validation uses Bouncy Castle and enforces strict modern cryptographic algorithm policies:
+  - Weak hash algorithms (MD5, SHA-1, RIPEMD160) are unconditionally rejected. Only SHA-256 (and approved SHA-2 family digests) are permitted.
+  - Insecure or deprecated public key algorithms (such as DSA) are rejected. RSA 4096-bit is enforced.
+- **Issuer Fingerprint Subpacket Enforcement**: Detached OpenPGP signatures (`.asc`) must include an Issuer Fingerprint signature subpacket that strictly matches the pinned release key fingerprint.
+- **Temporal Validity and Clock Skew Protection**: The manifest's `issued_at` timestamp is parsed using strict ISO-8601 UTC parsing (`java.time.Instant`). The verifier rejects manifests with forward clock skew exceeding 1 hour and rejects expired manifests where `expires_at` has elapsed, preventing metadata freeze attacks.
+
+## 4. Manifest Revision Rollback Protection
+- **Monotonic Metadata Revisions**: Each signed release manifest declares a monotonically increasing `metadata_revision` (v5.1.1 used revision 4; v5.1.2 uses revision 5).
+- **Anti-Rollback Enforcement**: `ReleaseManifestVerifier` compares the manifest revision against the locally persisted `currentStoredRevision`. If `manifest.metadataRevision < currentStoredRevision`, verification immediately aborts with `ManifestValidationException: Metadata revision rollback detected`, preventing replay of superseded release manifests.
+
+## 5. Version-Code Anti-Downgrade Checks
+- **Multi-Tier Downgrade Defense**:
+  - **Manifest Layer**: `ReleaseManifestVerifier` verifies that `manifest.versionCode >= currentInstalledVersionCode`.
+  - **Updater Logic Layer**: `AppUpdateManager.validateInstallMetadata()` enforces that `apkVersionCode > installedVersionCode` and that the semantic version `apkVersionParsed.isNewerThan(installedVersionParsed)`.
+  - **Same-Version & Lower-Version Rejection**: Attempts to reinstall the identical version (e.g., 5.1.2 / 50102 over 5.1.2 / 50102) or an older version (e.g., 5.1.1 / 50101 over 5.1.2 / 50102) are rejected with explicit verification errors.
+  - **Android OS Layer**: The Android Package Manager natively enforces signature matching and rejects version-code downgrades without explicit uninstallation or privileged adb flags.
+
+## 6. APK SHA-256 Verification
+- **Cryptographic Digest Assertion**: The signed release manifest declares the authoritative SHA-256 checksum of the target APK as a 64-character lowercase hexadecimal string.
+- **Streamed Hash Calculation**: During download in `AppUpdateDownloadWorker`, bytes are streamed to an isolated temporary staging file (`.download.tmp`) while simultaneously computing the SHA-256 hash using `MessageDigest.getInstance("SHA-256")`.
+- **Integrity Validation Before Promotion**: If the computed checksum does not match the manifest's digest, the download is aborted and the temporary file is deleted immediately. Promotion to the canonical filename occurs only after digest verification succeeds.
+
+## 7. APK Production Certificate Pinning
+- **Manifest Certificate Fingerprint**: The release manifest declares the SHA-256 hash of the release signing certificate (`9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`).
+- **Pre-Install Signature Extraction**: Prior to prompting the user or initiating handoff, `AppUpdateManager.verifyApkSigner()` extracts the signing certificates from the staged APK using Android's `PackageManager.getPackageArchiveInfo()`.
+- **Certificate Pin Matching**: The SHA-256 digest of the staged APK's signing certificate is computed and verified to match both the release manifest and the hardcoded production trust anchor `EXPECTED_CERT_SHA256`. Signer sets between the running application and the update package are verified to be identical (`haveSameSignerSet()`).
+
+## 8. Package Identity and Version Metadata Checks
+- **Archive Inspection**: `AppUpdateManager.validateInstallMetadata()` parses the staged package archive to verify:
+  - **Package Name Parity**: `apkPackageName` matches the installed application ID (`com.mvrk.vrka`). Third-party or spoofed packages are rejected.
+  - **Version Name Synchronization**: The internal `apkVersionName` must strictly match the filename convention `VRKA-Android-v${apkVersionName}.apk`.
+  - **Non-Debuggable Enforcement**: Production builds enforce that the update package is not signed with debug keys or marked with `FLAG_DEBUGGABLE`.
+
+## 9. Private Staging and Package-Installer Handoff
+- **Sandboxed Storage**: Downloaded APKs and temporary chunks are stored strictly in the application's internal private storage (`context.filesDir/updates/`), preventing tampering or replacement by unauthorized third-party apps on the device.
+- **Atomic Promotion**: The update file is promoted from `.download.tmp` to the canonical APK filename only after full byte-level SHA-256 and cryptographic manifest validation pass.
+- **Secure FileProvider Handoff**: The file is handed off to the platform package installer via Android `FileProvider` (`com.mvrk.vrka.fileprovider`) using a scoped content URI with read-only grant (`FLAG_GRANT_READ_URI_PERMISSION`). No world-readable files or raw file URIs are exposed.
+- **Install Permission Gating**: The updater checks `packageManager.canRequestPackageInstalls()`. If ungranted, it directs the user to the system permission screen rather than silently crashing or attempting unauthorized execution.
+
+## 10. Android API Compatibility Boundaries
+- **Signing API Branching**: The verifier cleanly handles Android's signature verification evolution:
+  - On API 28+ (Android 9 Pie and newer), it queries `SigningInfo` via `GET_SIGNING_CERTIFICATES` (handling certificate history and lineage).
+  - On API 26–27 (Android 8.0/8.1 Oreo), it falls back to legacy `GET_SIGNATURES`.
+- **Foreground Service Compatibility**: Download operations running in `AppUpdateDownloadWorker` comply with Android 10+ (API 29+) foreground service type constraints (`dataSync`) and respect Android 13+ (API 33+) notification permissions.
+- **Package Installation Intent**: Compatible with modern Android package installer intents (`ACTION_INSTALL_PACKAGE` / `ACTION_VIEW`) across all supported API levels (API 26 through API 36).
+
+## 11. Evidentiary Basis and Boundaries
+- **Code Inspection**: Every verification check, regex pattern, error boundary, and cryptographic policy was verified via source review of `AppUpdateManager.kt`, `ReleaseManifestVerifier.kt`, `AppUpdateDownloadWorker.kt`, and `AndroidManifest.xml`.
+- **Automated Tests**: Comprehensive JVM test suite (747 tests at release time, 758 tests across 73 suites on `main`) deterministically verifies valid upgrades, same-version rejections, downgrade attempts, rollback attempts, invalid metadata, tampering, and signature validation without external dependencies.
+- **Physical Device Observations**: The maintainer confirmed that an existing v5.1.1 installation on a physical Android device updated cleanly to v5.1.2 using the production-signed release package. Broader dynamic instrumentation, automated UI test runs, or formal third-party penetration testing were not conducted.
+
+---
+
 # VRKA Android 5.1.2 — Release Security Review
 
 **Date:** 2026-11-09
