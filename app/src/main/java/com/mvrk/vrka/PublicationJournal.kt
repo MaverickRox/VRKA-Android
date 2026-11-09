@@ -27,12 +27,28 @@ internal enum class PublicationTransactionStatus {
     RECONCILED,
 }
 
+internal enum class PublicationJournalLoadState {
+    MISSING,
+    OK,
+    EMPTY,
+    CORRUPT,
+    READ_FAILED,
+}
+
+internal data class PublicationJournalLoadResult(
+    val entries: List<PublicationEntry>,
+    val state: PublicationJournalLoadState,
+    val recoveryCopy: File? = null,
+    val detail: String = "",
+)
+
 internal data class PublicationEntry(
     val transactionId: String,
     val jobId: String,
     val outputIndex: Int,
     val totalOutputs: Int,
     val intendedFilename: String,
+    val pendingFilename: String = ".vrka_pending_${transactionId}_$intendedFilename",
     val stagingPath: String,
     val expectedSizeBytes: Long,
     val providerType: PublicationProviderType,
@@ -60,18 +76,26 @@ internal class PublicationJournal(
 ) {
     private val lock = Any()
 
+    @Volatile
+    var lastLoadResult: PublicationJournalLoadResult? = null
+        private set
+
     fun recordIntent(entry: PublicationEntry): Unit = synchronized(lock) {
+        recordBatchIntents(listOf(entry))
+    }
+
+    fun recordBatchIntents(batch: List<PublicationEntry>): Unit = synchronized(lock) {
         val entries = loadEntries().toMutableList()
-        val index = entries.indexOfFirst { it.transactionId == entry.transactionId }
-        val updated = entry.copy(
-            publicationPhase = PublicationPhase.INTENT_RECORDED,
-            status = PublicationTransactionStatus.PENDING,
-            updatedAt = System.currentTimeMillis(),
-        )
-        if (index >= 0) {
-            entries[index] = updated
-        } else {
-            entries.add(updated)
+        val updatedBatch = batch.map { entry ->
+            entry.copy(
+                publicationPhase = PublicationPhase.INTENT_RECORDED,
+                status = PublicationTransactionStatus.PENDING,
+                updatedAt = System.currentTimeMillis(),
+            )
+        }
+        for (item in updatedBatch) {
+            val idx = entries.indexOfFirst { it.transactionId == item.transactionId }
+            if (idx >= 0) entries[idx] = item else entries.add(item)
         }
         saveEntries(entries)
     }
@@ -107,11 +131,12 @@ internal class PublicationJournal(
         }
     }
 
-    fun updateFinalized(transactionId: String): Unit = synchronized(lock) {
+    fun updateFinalized(transactionId: String, newUri: String? = null): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
                 publicationPhase = PublicationPhase.FINALIZED,
                 status = PublicationTransactionStatus.COMPLETED,
+                providerUri = newUri ?: it.providerUri,
                 updatedAt = System.currentTimeMillis(),
             )
         }
@@ -150,15 +175,12 @@ internal class PublicationJournal(
         val entries = loadEntries().toMutableList()
         var changed = false
         for (i in entries.indices) {
-            if (entries[i].jobId == jobId &&
-                (entries[i].status == PublicationTransactionStatus.COMPLETED ||
-                    entries[i].status == PublicationTransactionStatus.RECONCILED ||
-                    entries[i].publicationPhase == PublicationPhase.FINALIZED ||
-                    entries[i].publicationPhase == PublicationPhase.RECORDED)
-            ) {
+            if (entries[i].jobId == jobId) {
                 entries[i] = entries[i].copy(
                     status = PublicationTransactionStatus.RECONCILED,
-                    publicationPhase = PublicationPhase.RECORDED,
+                    publicationPhase = if (entries[i].status == PublicationTransactionStatus.COMPLETED ||
+                        entries[i].publicationPhase == PublicationPhase.FINALIZED
+                    ) PublicationPhase.RECORDED else entries[i].publicationPhase,
                     updatedAt = System.currentTimeMillis(),
                 )
                 changed = true
@@ -188,6 +210,91 @@ internal class PublicationJournal(
         loadEntries()
     }
 
+    fun loadWithStatus(): PublicationJournalLoadResult = synchronized(lock) {
+        if (!target.isFile) {
+            val res = PublicationJournalLoadResult(emptyList(), PublicationJournalLoadState.MISSING)
+            lastLoadResult = res
+            return res
+        }
+        val text = try {
+            ops.readText(target)
+        } catch (error: Throwable) {
+            val res = PublicationJournalLoadResult(
+                emptyList(),
+                PublicationJournalLoadState.READ_FAILED,
+                detail = error.message.orEmpty().take(MAX_DETAIL_CHARS),
+            )
+            lastLoadResult = res
+            return res
+        }
+        if (text.isBlank()) {
+            val res = PublicationJournalLoadResult(emptyList(), PublicationJournalLoadState.EMPTY)
+            lastLoadResult = res
+            return res
+        }
+        val trimmed = text.trim().removePrefix("\uFEFF")
+        val root = runCatching { JSONObject(trimmed) }.getOrNull()
+        if (root == null) {
+            val res = preserveAndReport(
+                text,
+                PublicationJournalLoadResult(
+                    emptyList(),
+                    PublicationJournalLoadState.CORRUPT,
+                    detail = "JSON could not be parsed as a root object",
+                ),
+            )
+            lastLoadResult = res
+            return res
+        }
+        val array = root.optJSONArray("entries")
+        if (array == null) {
+            val res = preserveAndReport(
+                text,
+                PublicationJournalLoadResult(
+                    emptyList(),
+                    PublicationJournalLoadState.CORRUPT,
+                    detail = "JSON root has no entries array",
+                ),
+            )
+            lastLoadResult = res
+            return res
+        }
+        val result = mutableListOf<PublicationEntry>()
+        var skipped = 0
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i)
+            if (obj == null) {
+                skipped++
+                continue
+            }
+            val decoded = decode(obj)
+            if (decoded != null) {
+                result.add(decoded)
+            } else {
+                skipped++
+            }
+        }
+        val state = if (skipped > 0) PublicationJournalLoadState.CORRUPT else PublicationJournalLoadState.OK
+        val res = if (skipped > 0) {
+            preserveAndReport(
+                text,
+                PublicationJournalLoadResult(
+                    result,
+                    state,
+                    detail = "skipped $skipped invalid entry record(s)",
+                ),
+            )
+        } else {
+            PublicationJournalLoadResult(result, PublicationJournalLoadState.OK)
+        }
+        lastLoadResult = res
+        return res
+    }
+
+    private fun loadEntries(): List<PublicationEntry> {
+        return loadWithStatus().entries
+    }
+
     private fun mutateEntry(transactionId: String, transform: (PublicationEntry) -> PublicationEntry) {
         val entries = loadEntries().toMutableList()
         val index = entries.indexOfFirst { it.transactionId == transactionId }
@@ -197,18 +304,39 @@ internal class PublicationJournal(
         }
     }
 
-    private fun loadEntries(): List<PublicationEntry> {
-        if (!target.isFile) return emptyList()
-        val text = runCatching { ops.readText(target) }.getOrNull() ?: return emptyList()
-        if (text.isBlank()) return emptyList()
-        val root = runCatching { JSONObject(text.trim().removePrefix("\uFEFF")) }.getOrNull() ?: return emptyList()
-        val array = root.optJSONArray("entries") ?: return emptyList()
-        val result = mutableListOf<PublicationEntry>()
-        for (i in 0 until array.length()) {
-            val obj = array.optJSONObject(i) ?: continue
-            decode(obj)?.let { result.add(it) }
+    private fun preserveAndReport(
+        originalText: String,
+        result: PublicationJournalLoadResult,
+    ): PublicationJournalLoadResult {
+        val copy = runCatching { writeRecoveryCopy(originalText) }.getOrNull()
+        return result.copy(recoveryCopy = copy)
+    }
+
+    private fun writeRecoveryCopy(originalText: String): File? {
+        val parent = target.parentFile ?: return null
+        if (!parent.isDirectory) parent.mkdirs()
+        pruneRecoveryCopies(parent)
+        val base = target.name.substringBeforeLast('.', target.name)
+        var stamp = System.currentTimeMillis()
+        var copy = File(parent, "$base.corrupt-$stamp.json")
+        while (copy.exists()) {
+            stamp++
+            copy = File(parent, "$base.corrupt-$stamp.json")
         }
-        return result
+        return runCatching {
+            ops.writeText(copy, originalText)
+            copy
+        }.getOrNull()
+    }
+
+    private fun pruneRecoveryCopies(parent: File) {
+        val base = target.name.substringBeforeLast('.', target.name)
+        val copies = (parent.listFiles { file -> file.isFile && file.name.startsWith("$base.corrupt-") } ?: emptyArray())
+            .sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.name })
+            .toMutableList()
+        while (copies.size >= MAX_RECOVERY_COPIES) {
+            copies.removeAt(0).delete()
+        }
     }
 
     private fun saveEntries(entries: List<PublicationEntry>) {
@@ -249,6 +377,7 @@ internal class PublicationJournal(
         .put("outputIndex", entry.outputIndex)
         .put("totalOutputs", entry.totalOutputs)
         .put("intendedFilename", entry.intendedFilename)
+        .put("pendingFilename", entry.pendingFilename)
         .put("stagingPath", entry.stagingPath)
         .put("expectedSizeBytes", entry.expectedSizeBytes)
         .put("providerType", entry.providerType.name)
@@ -267,6 +396,7 @@ internal class PublicationJournal(
         val outputIndex = obj.optInt("outputIndex", 0)
         val totalOutputs = obj.optInt("totalOutputs", 1)
         val intendedFilename = obj.optString("intendedFilename")
+        val pendingFilename = obj.optString("pendingFilename").ifBlank { ".vrka_pending_${transactionId}_$intendedFilename" }
         val stagingPath = obj.optString("stagingPath")
         val expectedSizeBytes = obj.optLong("expectedSizeBytes", 0L)
         val providerType = runCatching {
@@ -290,6 +420,7 @@ internal class PublicationJournal(
             outputIndex = outputIndex,
             totalOutputs = totalOutputs,
             intendedFilename = intendedFilename,
+            pendingFilename = pendingFilename,
             stagingPath = stagingPath,
             expectedSizeBytes = expectedSizeBytes,
             providerType = providerType,
@@ -306,5 +437,7 @@ internal class PublicationJournal(
 
     companion object {
         private const val MAX_JOURNAL_ENTRIES = 200
+        private const val MAX_RECOVERY_COPIES = 3
+        private const val MAX_DETAIL_CHARS = 300
     }
 }

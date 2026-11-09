@@ -55,13 +55,60 @@ internal class OutputPublisher(
         ) { context.getString(R.string.error_destination_required) }
 
         val effectiveJobId = jobId.ifBlank { "standalone-${System.currentTimeMillis()}" }
+        val batchEntries = prepareBatchEntries(files, destination, effectiveJobId)
+        activeJournal.recordBatchIntents(batchEntries)
+
         val published = if (destination != null) {
-            publishToTreeBatch(files, Uri.parse(destination), effectiveJobId, shouldContinue, onPublished)
+            publishToTreeBatch(files, Uri.parse(destination), batchEntries, shouldContinue, onPublished)
         } else {
-            publishToDownloadsBatch(files, effectiveJobId, shouldContinue, onPublished)
+            publishToDownloadsBatch(files, batchEntries, shouldContinue, onPublished)
         }
         files.forEach { (file, _) -> if (!file.delete()) file.deleteOnExit() }
         published
+    }
+
+    private fun prepareBatchEntries(
+        files: List<Pair<File, String>>,
+        destinationTreeUri: String?,
+        jobId: String,
+    ): List<PublicationEntry> {
+        val existingSafNames = if (destinationTreeUri != null) {
+            existingNames(Uri.parse(destinationTreeUri))
+        } else {
+            null
+        }
+        val providerType = if (destinationTreeUri != null) {
+            PublicationProviderType.SAF
+        } else {
+            PublicationProviderType.MEDIA_STORE
+        }
+        val destIdentity = destinationTreeUri ?: "Downloads/VRKA"
+
+        return files.mapIndexed { index, (file, requestedName) ->
+            val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
+            val finalName = if (existingSafNames != null) {
+                val allocated = OutputNameAllocator.next(existingSafNames, safeName)
+                existingSafNames += allocated
+                allocated
+            } else {
+                safeName
+            }
+            val txId = UUID.randomUUID().toString()
+            val pendingName = ".vrka_pending_${txId}_$finalName"
+            PublicationEntry(
+                transactionId = txId,
+                jobId = jobId,
+                outputIndex = index,
+                totalOutputs = files.size,
+                intendedFilename = finalName,
+                pendingFilename = pendingName,
+                stagingPath = file.absolutePath,
+                expectedSizeBytes = file.length(),
+                providerType = providerType,
+                destinationIdentity = destIdentity,
+                publicationPhase = PublicationPhase.INTENT_RECORDED,
+            )
+        }
     }
 
     fun delete(uriText: String): Boolean = runCatching {
@@ -89,20 +136,89 @@ internal class OutputPublisher(
         context.contentResolver.openInputStream(uri)?.use { true } ?: false
     }.getOrDefault(false)
 
+    fun getFileSize(uriText: String): Long = runCatching {
+        val uri = Uri.parse(uriText)
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else -1L
+        } ?: -1L
+    }.getOrDefault(-1L)
+
+    fun findPendingMediaStoreUri(pendingFilename: String): Uri? = runCatching {
+        if (pendingFilename.isBlank()) return null
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+        val projection = arrayOf(MediaStore.MediaColumns._ID)
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+        val selectionArgs = arrayOf(pendingFilename)
+        context.contentResolver.query(collection, projection, selection, selectionArgs, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                val id = cursor.getLong(0)
+                android.content.ContentUris.withAppendedId(collection, id)
+            } else {
+                null
+            }
+        }
+    }.getOrNull()
+
+    fun findPendingSafUri(tree: Uri, pendingFilename: String): Uri? = runCatching {
+        if (pendingFilename.isBlank()) return null
+        val resolver = context.contentResolver
+        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        resolver.query(
+            children,
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            while (cursor.moveToNext()) {
+                if (nameCol >= 0 && idCol >= 0) {
+                    val name = cursor.getString(nameCol)
+                    if (name == pendingFilename) {
+                        val docId = cursor.getString(idCol)
+                        return DocumentsContract.buildDocumentUriUsingTree(tree, docId)
+                    }
+                }
+            }
+            null
+        }
+    }.getOrNull()
+
+    fun finalizeMediaStore(uri: Uri, finalName: String): Boolean = runCatching {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, finalName)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }
+        }
+        context.contentResolver.update(uri, values, null, null) > 0
+    }.getOrDefault(false)
+
+    fun finalizeSaf(uri: Uri, finalName: String): Uri {
+        return runCatching {
+            DocumentsContract.renameDocument(context.contentResolver, uri, finalName) ?: uri
+        }.getOrDefault(uri)
+    }
+
     private fun publishToDownloads(
         file: File,
-        name: String,
-        transactionId: String,
+        entry: PublicationEntry,
     ): PublishedOutput {
         val resolver = context.contentResolver
-        val mime = mimeType(name)
+        val mime = mimeType(entry.intendedFilename)
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Downloads.EXTERNAL_CONTENT_URI
         } else {
             MediaStore.Files.getContentUri("external")
         }
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, entry.pendingFilename)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(
@@ -115,7 +231,7 @@ internal class OutputPublisher(
         val uri = checkNotNull(resolver.insert(collection, values)) {
             "Android could not create the Downloads entry."
         }
-        activeJournal.updateProviderCreated(transactionId, uri.toString())
+        activeJournal.updateProviderCreated(entry.transactionId, uri.toString())
         try {
             val bytes = resolver.openOutputStream(uri, "w").use { output ->
                 checkNotNull(output) { "Android could not open the Downloads entry." }
@@ -124,20 +240,13 @@ internal class OutputPublisher(
             if (file.length() > 0L && bytes != file.length()) {
                 throw java.io.IOException("Publication size mismatch: expected ${file.length()} bytes, wrote $bytes bytes")
             }
-            activeJournal.updateDataCopied(transactionId, bytes)
-            activeJournal.updateValidated(transactionId)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                resolver.update(
-                    uri,
-                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
-                    null,
-                    null,
-                )
-            }
-            activeJournal.updateFinalized(transactionId)
+            activeJournal.updateDataCopied(entry.transactionId, bytes)
+            activeJournal.updateValidated(entry.transactionId)
+            finalizeMediaStore(uri, entry.intendedFilename)
+            activeJournal.updateFinalized(entry.transactionId)
             return PublishedOutput(uri, bytes, file.extension)
         } catch (error: Throwable) {
-            activeJournal.markFailed(transactionId, error.message.orEmpty())
+            activeJournal.markFailed(entry.transactionId, error.message.orEmpty())
             resolver.delete(uri, null, null)
             throw error
         }
@@ -145,37 +254,21 @@ internal class OutputPublisher(
 
     private fun publishToDownloadsBatch(
         files: List<Pair<File, String>>,
-        jobId: String,
+        batchEntries: List<PublicationEntry>,
         shouldContinue: () -> Boolean,
         onPublished: (index: Int, total: Int) -> Unit,
     ): List<PublishedOutput> {
         val created = mutableListOf<Uri>()
         val currentTransactions = mutableListOf<String>()
         try {
-            return files.mapIndexed { index, (file, requestedName) ->
+            return files.mapIndexed { index, (file, _) ->
                 if (!shouldContinue()) throw java.util.concurrent.CancellationException("Publication cancelled")
-                val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
-                val transactionId = UUID.randomUUID().toString()
-                currentTransactions += transactionId
-                val expectedBytes = file.length()
-                val entry = PublicationEntry(
-                    transactionId = transactionId,
-                    jobId = jobId,
-                    outputIndex = index,
-                    totalOutputs = files.size,
-                    intendedFilename = safeName,
-                    stagingPath = file.absolutePath,
-                    expectedSizeBytes = expectedBytes,
-                    providerType = PublicationProviderType.MEDIA_STORE,
-                    destinationIdentity = "Downloads/VRKA",
-                    publicationPhase = PublicationPhase.INTENT_RECORDED,
-                )
-                activeJournal.recordIntent(entry)
+                val entry = batchEntries[index]
+                currentTransactions += entry.transactionId
 
                 val result = publishToDownloads(
                     file = file,
-                    name = safeName,
-                    transactionId = transactionId,
+                    entry = entry,
                 )
                 created += result.uri
                 onPublished(index, files.size)
@@ -193,44 +286,26 @@ internal class OutputPublisher(
     private fun publishToTreeBatch(
         files: List<Pair<File, String>>,
         tree: Uri,
-        jobId: String,
+        batchEntries: List<PublicationEntry>,
         shouldContinue: () -> Boolean,
         onPublished: (index: Int, total: Int) -> Unit,
     ): List<PublishedOutput> {
         val resolver = context.contentResolver
         val parentId = DocumentsContract.getTreeDocumentId(tree)
         val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
-        val existing = existingNames(tree)
         val created = mutableListOf<Uri>()
         val currentTransactions = mutableListOf<String>()
         try {
-            return files.mapIndexed { index, (file, requestedName) ->
+            return files.mapIndexed { index, (file, _) ->
                 if (!shouldContinue()) throw java.util.concurrent.CancellationException("Publication cancelled")
-                val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
-                val name = OutputNameAllocator.next(existing, safeName)
-                existing += name
-                val transactionId = UUID.randomUUID().toString()
-                currentTransactions += transactionId
-                val expectedBytes = file.length()
-                val entry = PublicationEntry(
-                    transactionId = transactionId,
-                    jobId = jobId,
-                    outputIndex = index,
-                    totalOutputs = files.size,
-                    intendedFilename = name,
-                    stagingPath = file.absolutePath,
-                    expectedSizeBytes = expectedBytes,
-                    providerType = PublicationProviderType.SAF,
-                    destinationIdentity = tree.toString(),
-                    publicationPhase = PublicationPhase.INTENT_RECORDED,
-                )
-                activeJournal.recordIntent(entry)
+                val entry = batchEntries[index]
+                currentTransactions += entry.transactionId
 
                 val uri = checkNotNull(
-                    DocumentsContract.createDocument(resolver, parent, mimeType(name), name),
+                    DocumentsContract.createDocument(resolver, parent, mimeType(entry.intendedFilename), entry.pendingFilename),
                 ) { "The selected folder refused the new file." }
                 created += uri
-                activeJournal.updateProviderCreated(transactionId, uri.toString())
+                activeJournal.updateProviderCreated(entry.transactionId, uri.toString())
 
                 val bytes = try {
                     resolver.openOutputStream(uri, "w").use { output ->
@@ -238,21 +313,22 @@ internal class OutputPublisher(
                         file.inputStream().buffered().use { input -> input.copyTo(output) }
                     }
                 } catch (error: Throwable) {
-                    activeJournal.markFailed(transactionId, error.message.orEmpty())
+                    activeJournal.markFailed(entry.transactionId, error.message.orEmpty())
                     DocumentsContract.deleteDocument(resolver, uri)
                     throw error
                 }
                 if (file.length() > 0L && bytes != file.length()) {
                     val mismatch = java.io.IOException("SAF output size mismatch: expected ${file.length()} bytes, wrote $bytes bytes")
-                    activeJournal.markFailed(transactionId, mismatch.message.orEmpty())
+                    activeJournal.markFailed(entry.transactionId, mismatch.message.orEmpty())
                     DocumentsContract.deleteDocument(resolver, uri)
                     throw mismatch
                 }
-                activeJournal.updateDataCopied(transactionId, bytes)
-                activeJournal.updateValidated(transactionId)
-                activeJournal.updateFinalized(transactionId)
+                activeJournal.updateDataCopied(entry.transactionId, bytes)
+                activeJournal.updateValidated(entry.transactionId)
+                val finalUri = finalizeSaf(uri, entry.intendedFilename)
+                activeJournal.updateFinalized(entry.transactionId, finalUri.toString())
                 onPublished(index, files.size)
-                PublishedOutput(uri, bytes, file.extension)
+                PublishedOutput(finalUri, bytes, file.extension)
             }
         } catch (error: Throwable) {
             currentTransactions.forEach { txId ->
