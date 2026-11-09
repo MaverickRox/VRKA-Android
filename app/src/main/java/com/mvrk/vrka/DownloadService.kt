@@ -58,6 +58,9 @@ class DownloadService : Service() {
                 syncNotifications(manager.jobs.value)
             }
             ACTION_STOP_IF_IDLE -> {
+                if (manager.storageStatus.value.readiness != com.mvrk.vrka.storage.StorageReadiness.READY) {
+                    return START_NOT_STICKY
+                }
                 if (manager.jobs.value.none { it.state.isForegroundWork }) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     clearJobNotifications()

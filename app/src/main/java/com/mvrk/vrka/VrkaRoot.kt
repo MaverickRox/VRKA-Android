@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.compose.collectAsLazyPagingItems
 import com.mvrk.vrka.ui.AppUpdateDialog
 import com.mvrk.vrka.update.AppUpdateCheckState
 import com.mvrk.vrka.update.AppReleaseInfo
@@ -76,6 +77,15 @@ fun VrkaRoot(
 ) {
     val context = LocalContext.current
     val jobs by manager.jobs.collectAsStateWithLifecycle()
+    val storageStatus by manager.storageStatus.collectAsStateWithLifecycle()
+    val historyPager = remember(manager) { manager.historyPager() }
+    val historyFlow = historyPager?.flow
+    val pagedHistory = if (historyFlow != null) historyFlow.collectAsLazyPagingItems() else null
+    val historyCount = remember(jobs) { jobs.count { it.state.isTerminal } }
+    var historyTotal by remember { mutableStateOf(historyCount) }
+    LaunchedEffect(pagedHistory?.itemCount, jobs) {
+        historyTotal = if (pagedHistory != null) manager.terminalJobCount() else historyCount
+    }
     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
@@ -92,6 +102,15 @@ fun VrkaRoot(
     var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     var pendingAppUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
     val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(storageStatus.readiness) {
+        when (storageStatus.readiness.name) {
+            "INITIALIZING", "MIGRATING" -> snackbar.showSnackbar("Preparing local storage")
+            "MIGRATION_FAILED", "STORAGE_FAILED" -> snackbar.showSnackbar(
+                storageStatus.message.ifBlank { "Local storage is unavailable" },
+            )
+            else -> Unit
+        }
+    }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -102,7 +121,12 @@ fun VrkaRoot(
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
-        pendingDownload?.let { manager.enqueue(it.request, it.estimate) }
+        pendingDownload?.let {
+            val result = manager.enqueue(it.request, it.estimate)
+            if (result is EnqueueResult.Rejected) {
+                scope.launch { snackbar.showSnackbar(result.message) }
+            }
+        }
         pendingDownload = null
         pendingAppUpdate?.let(manager.appUpdateManager::downloadAndInstall)
         pendingAppUpdate = null
@@ -118,7 +142,10 @@ fun VrkaRoot(
             pendingDownload = PendingDownload(request, estimate)
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            manager.enqueue(request, estimate)
+            val result = manager.enqueue(request, estimate)
+            if (result is EnqueueResult.Rejected) {
+                scope.launch { snackbar.showSnackbar(result.message) }
+            }
         }
         scope.launch {
             pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
@@ -270,11 +297,14 @@ fun VrkaRoot(
                             }
                             VrkaDestination.HISTORY -> {
                                 JobsScreen(
-                                    jobs = historyJobs,
+                                    jobs = if (pagedHistory == null) historyJobs else emptyList(),
                                     emptyMessage = stringResource(R.string.history_empty_message),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
+                                    pagedJobs = pagedHistory,
+                                    totalJobCount = historyTotal,
+                                    onLoadAllIds = { manager.allTerminalJobIds() },
                                     onCancel = manager::cancel,
                                     onRetry = manager::retry,
                                     onOpen = manager::openOutput,

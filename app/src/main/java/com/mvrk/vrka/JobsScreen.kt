@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +55,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.paging.compose.LazyPagingItems
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
@@ -62,6 +65,9 @@ internal fun JobsScreen(
     jobs: List<DownloadJob>,
     emptyMessage: String,
     modifier: Modifier = Modifier,
+    pagedJobs: LazyPagingItems<DownloadJob>? = null,
+    totalJobCount: Int = jobs.size,
+    onLoadAllIds: (suspend () -> List<String>)? = null,
     onCancel: (String) -> Unit,
     onRetry: (String) -> Unit,
     onOpen: (String) -> Unit,
@@ -78,6 +84,8 @@ internal fun JobsScreen(
 ) {
     val context = LocalContext.current
     val isHistory = onClear != null || onClearAll != null
+    val scope = rememberCoroutineScope()
+    val displayCount = if (pagedJobs != null) totalJobCount else jobs.size
     var pendingFolderJobId by remember { mutableStateOf<String?>(null) }
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedJobIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -104,6 +112,32 @@ internal fun JobsScreen(
         pendingFolderJobId = null
     }
 
+    val jobRow: @androidx.compose.runtime.Composable (DownloadJob) -> Unit = { job ->
+        JobCard(
+            job = job,
+            isSelectionMode = isSelectionMode,
+            isSelected = job.id in selectedJobIds,
+            onToggleSelect = {
+                selectedJobIds = if (job.id in selectedJobIds) {
+                    selectedJobIds - job.id
+                } else {
+                    selectedJobIds + job.id
+                }
+            },
+            onCancel = { onCancel(job.id) },
+            onRetry = { onRetry(job.id) },
+            onOpen = onOpen,
+            onShare = onShare,
+            onDelete = { singleDeleteTarget = job },
+            onShowFallback = onShowFallback?.let { fn -> { fn(job.id) } },
+            onChooseFolder = {
+                pendingFolderJobId = job.id
+                folderPicker.launch(null)
+            },
+        )
+    }
+
+
     Column(modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -120,11 +154,17 @@ internal fun JobsScreen(
                     color = VrkaTokens.TextPrimary,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val allSelected = jobs.isNotEmpty() && selectedJobIds.size == jobs.size
+                    val allSelected = displayCount > 0 && selectedJobIds.size >= displayCount
                     VrkaTextButton(
                         text = if (allSelected) stringResource(R.string.btn_deselect_all) else stringResource(R.string.btn_select_all),
                         onClick = {
-                            selectedJobIds = if (allSelected) emptySet() else jobs.map { it.id }.toSet()
+                            if (allSelected) {
+                                selectedJobIds = emptySet()
+                            } else {
+                                scope.launch {
+                                    selectedJobIds = (onLoadAllIds?.invoke() ?: jobs.map { it.id }).toSet()
+                                }
+                            }
                         },
                         color = VrkaTokens.AccentLight,
                     )
@@ -144,7 +184,7 @@ internal fun JobsScreen(
                     fontWeight = FontWeight.Bold,
                     color = VrkaTokens.TextPrimary,
                 )
-                if (isHistory && jobs.isNotEmpty()) {
+                if (isHistory && displayCount > 0) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         VrkaTextButton(
                             text = stringResource(R.string.btn_select),
@@ -185,7 +225,7 @@ internal fun JobsScreen(
             }
         }
 
-        if (jobs.isEmpty()) {
+        if (displayCount == 0) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -233,29 +273,12 @@ internal fun JobsScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(jobs, key = DownloadJob::id) { job ->
-                    JobCard(
-                        job = job,
-                        isSelectionMode = isSelectionMode,
-                        isSelected = job.id in selectedJobIds,
-                        onToggleSelect = {
-                            selectedJobIds = if (job.id in selectedJobIds) {
-                                selectedJobIds - job.id
-                            } else {
-                                selectedJobIds + job.id
-                            }
-                        },
-                        onCancel = { onCancel(job.id) },
-                        onRetry = { onRetry(job.id) },
-                        onOpen = onOpen,
-                        onShare = onShare,
-                        onDelete = { singleDeleteTarget = job },
-                        onShowFallback = onShowFallback?.let { fn -> { fn(job.id) } },
-                        onChooseFolder = {
-                            pendingFolderJobId = job.id
-                            folderPicker.launch(null)
-                        },
-                    )
+                if (pagedJobs != null) {
+                    items(count = pagedJobs.itemCount, key = { index -> pagedJobs.peek(index)?.id ?: "loading-$index" }) { index ->
+                        pagedJobs[index]?.let { jobRow(it) }
+                    }
+                } else {
+                    items(jobs, key = DownloadJob::id) { jobRow(it) }
                 }
             }
         }
