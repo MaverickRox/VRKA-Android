@@ -17,7 +17,7 @@
 | Debug APK | `./gradlew assembleDebug` | PASS |
 | Development release APK (R8, debug keystore) | `./gradlew assembleDevRelease` | PASS |
 | Lint | `./gradlew lintDebug` | PASS: 277 warnings, 3 hints, 0 errors/fatal. Warnings in modified files are existing `UseKtx`, `LocalContextResourcesRead` and `ModifierParameter` patterns; the corrected estimator, JobStore, diagnostics, updater, destination and new accessibility code add no new lint ID |
-| CI workflow execution | GitHub Actions CI on `main` | PASS: 100% build & test pass (Run ID `42510821254`, duration 11m 19s) |
+| CI workflow execution | GitHub Actions CI on `main` | PASS: 100% build & test pass (Run ID `42517854024` on commit `ecc3a49`, duration 8m 14s; includes `testDebugUnitTest`, `lintDebug`, `compileDebugAndroidTestKotlin`, `assembleDebug`, `assembleDevRelease`) |
 
 Result: `BUILD SUCCESSFUL` for every command. The definitive unit run exited `0`; stdout and stderr were captured to `/tmp/vrka-unit-stdout.txt` and `/tmp/vrka-unit-stderr.txt`, and the XML report timestamps came from that same run (newest `2026-11-08 23:11:01`). The unit suite ran with an empty temporary `user.home`; the temporary home contained no `.vrka` directory. A regression test scans the unit-test sources to ensure no test references the production signing key. All previously key-gated cryptographic tests now run on every normal run with generated temporary OpenPGP keys.
 
@@ -54,6 +54,8 @@ Tested on connected physical OnePlus 11 (CPH2447, Android 16 / SDK 36, arm64-v8a
   - Initiated playback of "Big Buck Bunny: the Dark Truths" (HLS) and verified first-party `VRKA Media Detector` intercepted 11 candidate streams with uBlock Origin filtering.
 - Captured full-resolution (1440x3216), keyboard-free physical device screenshots in `docs/screenshots/v5.1.1/` and produced clean frameless AMOLED product showcase `vrka-v5.1.1-showcase.png` (no phone frames or simulated hardware).
 
+*Note: Authoritative device-validation findings, subsystem classifications, and platform boundaries (including unverified completed live Browser Fallback transfers, unexecuted Android instrumentation tests on hardware, and unverified API 26–28 SAF on physical hardware) are defined in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).*
+
 ## Published v5.1.0 manifest integrity resolution
 
 The v5.1.0 manifest hash discrepancy was investigated against every authoritative source:
@@ -71,7 +73,7 @@ The canonical published hash is therefore `F1A47B342061F5149B293E1361695F12B69E5
 
 ## v5.1.0 → v5.1.1 in-app update
 
-The signed-updater path from v5.1.0 to v5.1.1 has **not** been tested because no signed v5.1.1 manifest or APK exists. It must not be claimed as working until a production-signed candidate is published and the in-app upgrade is exercised.
+The signed in-app updater download and verification pipeline was verified through hermetic end-to-end unit tests (`ReleasePipelineEndToEndTest`), but an in-place upgrade executed from an installed v5.1.0 client has not been exercised on hardware. The official v5.1.1 release assets (`VRKA-Android-v5.1.1.apk`, `VRKA-Android-v5.1.1.manifest.json`, `VRKA-Android-v5.1.1.manifest.json.asc`, and `SHA256SUMS`) are published on GitHub Releases. Users upgrading from v5.0.2 still require a one-time manual install due to the historical v5.0.2 filename validation defect.
 
 ## Actual-resolution marker validation
 

@@ -10,6 +10,7 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import java.io.File
 import java.net.URLConnection
+import java.util.UUID
 
 internal data class PublishedOutput(
     val uri: Uri,
@@ -20,14 +21,19 @@ internal data class PublishedOutput(
 internal class OutputPublisher(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
+    journal: PublicationJournal? = null,
 ) {
     private val publishLock = Any()
+    val activeJournal: PublicationJournal by lazy {
+        journal ?: PublicationJournal(File(context.filesDir, "publication_journal.json"))
+    }
 
     fun publish(
         file: File,
         requestedName: String = file.name,
         destinationTreeUri: String? = null,
-    ): PublishedOutput = publishAll(listOf(file to requestedName), destinationTreeUri).single()
+        jobId: String = "",
+    ): PublishedOutput = publishAll(listOf(file to requestedName), destinationTreeUri, jobId = jobId).single()
 
     /**
      * Publishes a batch while querying a SAF destination folder only once. The previous
@@ -36,6 +42,7 @@ internal class OutputPublisher(
     fun publishAll(
         files: List<Pair<File, String>>,
         destinationTreeUri: String? = null,
+        jobId: String = "",
         shouldContinue: () -> Boolean = { true },
         onPublished: (index: Int, total: Int) -> Unit = { _, _ -> },
     ): List<PublishedOutput> = synchronized(publishLock) {
@@ -47,10 +54,11 @@ internal class OutputPublisher(
             destination != null || !DestinationPolicy.requiresSafDestination(Build.VERSION.SDK_INT),
         ) { context.getString(R.string.error_destination_required) }
 
+        val effectiveJobId = jobId.ifBlank { "standalone-${System.currentTimeMillis()}" }
         val published = if (destination != null) {
-            publishToTreeBatch(files, Uri.parse(destination), shouldContinue, onPublished)
+            publishToTreeBatch(files, Uri.parse(destination), effectiveJobId, shouldContinue, onPublished)
         } else {
-            publishToDownloadsBatch(files, shouldContinue, onPublished)
+            publishToDownloadsBatch(files, effectiveJobId, shouldContinue, onPublished)
         }
         files.forEach { (file, _) -> if (!file.delete()) file.deleteOnExit() }
         published
@@ -81,7 +89,11 @@ internal class OutputPublisher(
         context.contentResolver.openInputStream(uri)?.use { true } ?: false
     }.getOrDefault(false)
 
-    private fun publishToDownloads(file: File, name: String): PublishedOutput {
+    private fun publishToDownloads(
+        file: File,
+        name: String,
+        transactionId: String,
+    ): PublishedOutput {
         val resolver = context.contentResolver
         val mime = mimeType(name)
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -103,11 +115,17 @@ internal class OutputPublisher(
         val uri = checkNotNull(resolver.insert(collection, values)) {
             "Android could not create the Downloads entry."
         }
+        activeJournal.updateProviderCreated(transactionId, uri.toString())
         try {
             val bytes = resolver.openOutputStream(uri, "w").use { output ->
                 checkNotNull(output) { "Android could not open the Downloads entry." }
                 file.inputStream().buffered().use { input -> input.copyTo(output) }
             }
+            if (file.length() > 0L && bytes != file.length()) {
+                throw java.io.IOException("Publication size mismatch: expected ${file.length()} bytes, wrote $bytes bytes")
+            }
+            activeJournal.updateDataCopied(transactionId, bytes)
+            activeJournal.updateValidated(transactionId)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 resolver.update(
                     uri,
@@ -116,8 +134,10 @@ internal class OutputPublisher(
                     null,
                 )
             }
+            activeJournal.updateFinalized(transactionId)
             return PublishedOutput(uri, bytes, file.extension)
         } catch (error: Throwable) {
+            activeJournal.markFailed(transactionId, error.message.orEmpty())
             resolver.delete(uri, null, null)
             throw error
         }
@@ -125,22 +145,46 @@ internal class OutputPublisher(
 
     private fun publishToDownloadsBatch(
         files: List<Pair<File, String>>,
+        jobId: String,
         shouldContinue: () -> Boolean,
         onPublished: (index: Int, total: Int) -> Unit,
     ): List<PublishedOutput> {
         val created = mutableListOf<Uri>()
+        val currentTransactions = mutableListOf<String>()
         try {
             return files.mapIndexed { index, (file, requestedName) ->
                 if (!shouldContinue()) throw java.util.concurrent.CancellationException("Publication cancelled")
+                val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
+                val transactionId = UUID.randomUUID().toString()
+                currentTransactions += transactionId
+                val expectedBytes = file.length()
+                val entry = PublicationEntry(
+                    transactionId = transactionId,
+                    jobId = jobId,
+                    outputIndex = index,
+                    totalOutputs = files.size,
+                    intendedFilename = safeName,
+                    stagingPath = file.absolutePath,
+                    expectedSizeBytes = expectedBytes,
+                    providerType = PublicationProviderType.MEDIA_STORE,
+                    destinationIdentity = "Downloads/VRKA",
+                    publicationPhase = PublicationPhase.INTENT_RECORDED,
+                )
+                activeJournal.recordIntent(entry)
+
                 val result = publishToDownloads(
-                    file,
-                    SafeOutputNames.sanitize(requestedName, file.extension),
+                    file = file,
+                    name = safeName,
+                    transactionId = transactionId,
                 )
                 created += result.uri
                 onPublished(index, files.size)
                 result
             }
         } catch (error: Throwable) {
+            currentTransactions.forEach { txId ->
+                activeJournal.markFailed(txId, error.message.orEmpty())
+            }
             created.forEach { uri -> runCatching { context.contentResolver.delete(uri, null, null) } }
             throw error
         }
@@ -149,6 +193,7 @@ internal class OutputPublisher(
     private fun publishToTreeBatch(
         files: List<Pair<File, String>>,
         tree: Uri,
+        jobId: String,
         shouldContinue: () -> Boolean,
         onPublished: (index: Int, total: Int) -> Unit,
     ): List<PublishedOutput> {
@@ -157,29 +202,62 @@ internal class OutputPublisher(
         val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
         val existing = existingNames(tree)
         val created = mutableListOf<Uri>()
+        val currentTransactions = mutableListOf<String>()
         try {
             return files.mapIndexed { index, (file, requestedName) ->
                 if (!shouldContinue()) throw java.util.concurrent.CancellationException("Publication cancelled")
                 val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
                 val name = OutputNameAllocator.next(existing, safeName)
                 existing += name
+                val transactionId = UUID.randomUUID().toString()
+                currentTransactions += transactionId
+                val expectedBytes = file.length()
+                val entry = PublicationEntry(
+                    transactionId = transactionId,
+                    jobId = jobId,
+                    outputIndex = index,
+                    totalOutputs = files.size,
+                    intendedFilename = name,
+                    stagingPath = file.absolutePath,
+                    expectedSizeBytes = expectedBytes,
+                    providerType = PublicationProviderType.SAF,
+                    destinationIdentity = tree.toString(),
+                    publicationPhase = PublicationPhase.INTENT_RECORDED,
+                )
+                activeJournal.recordIntent(entry)
+
                 val uri = checkNotNull(
                     DocumentsContract.createDocument(resolver, parent, mimeType(name), name),
                 ) { "The selected folder refused the new file." }
                 created += uri
+                activeJournal.updateProviderCreated(transactionId, uri.toString())
+
                 val bytes = try {
                     resolver.openOutputStream(uri, "w").use { output ->
                         checkNotNull(output) { "The selected folder could not be written." }
                         file.inputStream().buffered().use { input -> input.copyTo(output) }
                     }
                 } catch (error: Throwable) {
+                    activeJournal.markFailed(transactionId, error.message.orEmpty())
                     DocumentsContract.deleteDocument(resolver, uri)
                     throw error
                 }
+                if (file.length() > 0L && bytes != file.length()) {
+                    val mismatch = java.io.IOException("SAF output size mismatch: expected ${file.length()} bytes, wrote $bytes bytes")
+                    activeJournal.markFailed(transactionId, mismatch.message.orEmpty())
+                    DocumentsContract.deleteDocument(resolver, uri)
+                    throw mismatch
+                }
+                activeJournal.updateDataCopied(transactionId, bytes)
+                activeJournal.updateValidated(transactionId)
+                activeJournal.updateFinalized(transactionId)
                 onPublished(index, files.size)
                 PublishedOutput(uri, bytes, file.extension)
             }
         } catch (error: Throwable) {
+            currentTransactions.forEach { txId ->
+                activeJournal.markFailed(txId, error.message.orEmpty())
+            }
             created.forEach { uri -> runCatching { DocumentsContract.deleteDocument(resolver, uri) } }
             throw error
         }
@@ -226,6 +304,7 @@ internal class OutputPublisher(
                     else -> "application/octet-stream"
                 }
         }
+
         fun hasPersistedTreePermission(context: Context, treeUri: Uri): Boolean = runCatching {
             val persisted = context.contentResolver.persistedUriPermissions
             persisted.any { it.uri == treeUri && it.isWritePermission }

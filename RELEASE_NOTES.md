@@ -39,7 +39,7 @@ VRKA Android 5.1.1 is a focused reliability release. It keeps the two merged UI 
 - **Signing Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
 - **OpenPGP Trust Anchor:** Key ID `0xD519380BEBA1B9F7`, Fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`
 - **Automated Tests:** 732 JVM unit tests across 72 suites (0 failures, 0 errors, 0 skipped), lint passed (0 errors/fatal).
-- **Physical Device Validation:** Verified on OnePlus 11 (Android 16, SDK 36, arm64-v8a) via ADB: 4K/2K/Best estimate synchronization confirmed (~54.75 MB), neutral "Downloading media" state observed, and final 52.2 MiB output validated in Downloads/VRKA.
+- **Physical Device Validation:** Verified on OnePlus 11 (Android 16, SDK 36, arm64-v8a) via ADB: 4K/2K/Best estimate synchronization confirmed (~54.75 MB), neutral "Downloading media" state observed, and final 52.2 MiB output validated in Downloads/VRKA. Comprehensive subsystem verification classifications and platform boundaries are authoritatively documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
 ---
 

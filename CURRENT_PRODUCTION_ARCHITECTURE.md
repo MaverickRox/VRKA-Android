@@ -1,6 +1,6 @@
 # VRKA Android 5.1.1 — Current Production Architecture
 
-This document defines the current architecture for VRKA Android 5.1.1 (local candidate). It is grounded in the source code on the `main` branch plus the local v5.1.1 working-tree changes. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Sections that describe v5.1.0 behavior remain accurate except where the v5.1.1 reliability notes below supersede them.
+This document defines the architecture of the official, published VRKA Android v5.1.1 release (commit f656e5c4e3a145847faa52186b6aa21625447a4, tag 5.1.1) and clearly distinguishes it from subsequent post-v5.1.1 source-level hardening on main. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Subsystem verification and physical device validation evidence are authoritatively documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
 ---
 
@@ -227,3 +227,19 @@ The UI is built with **Jetpack Compose** using design tokens (`VrkaTokens`):
 - **Recoverable Job Storage**: `JobStore` writes a versioned JSON object through a temporary file and atomic move, returns explicit save results, and on malformed input preserves a bounded recovery copy while salvaging valid records. In-flight recovery and terminal-state handling are unchanged.
 - **API-Range Destination Policy**: API 29+ publishes through `MediaStore.Downloads` (`Downloads/VRKA`); API 26–28 require a granted SAF tree before a job starts and return to the folder prompt if permission is revoked.
 - **Dynamic Typography**: Monospace Space Mono (`VRKA Font`) and clean System (`Roboto`) font switching.
+
+---
+
+## 9. Post-v5.1.1 Source-Level Hardening on main
+
+The official published release binary (VRKA-Android-v5.1.1.apk) is fixed and immutable. Subsequent engineering work committed to the main branch introduces unreleased reliability and crash-recovery hardening:
+
+1. **Durable Per-Output Publication Journal (PublicationJournal.kt)**:
+   - Persists a durable publication intent before calling ContentResolver or SAF document creation.
+   - Durably tracks pending provider object creation, byte copy count, media validation, and finalization.
+   - Eliminates the crash window where process termination between provider export and JobStore terminal write could leave published files on disk without History records.
+   - On application startup, `reconcilePublicationJournalOnStartup()` inspects unreconciled transactions: fully completed outputs are restored to `JobState.DONE` in History, while incomplete/interrupted files are safely purged to prevent orphaned or corrupt media files.
+2. **Unified Publication Marker**:
+   - Synchronously persists publishStarted = true for both normal yt-dlp acquisitions and MediaEngine Browser Fallback paths before outputs leave staging, guaranteeing fail-closed semantics across all transfer modes.
+3. **Reconciled Verification Records**:
+   - Authoritative consolidation in DEVICE_VALIDATION.md detailing physical OnePlus 11 hardware testing and explicit platform boundaries.
