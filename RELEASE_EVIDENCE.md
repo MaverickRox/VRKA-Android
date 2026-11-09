@@ -1,5 +1,14 @@
 # VRKA Android 5.1.2 — Release Evidence
 
+> [!NOTE]
+> **Unreleased `main` storage work.** This document records the published v5.1.2 artifact and
+> its release evidence. The Room/SQLite storage architecture, legacy migration, startup gate,
+> SAF/MediaStore protocol changes, and emulator provider tests on unreleased `main` do not alter
+> the v5.1.2 tag, APK, manifest, signature, checksums, or version metadata. Unreleased
+> verification is recorded in [TEST_RESULTS.md](TEST_RESULTS.md),
+> [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md), and
+> [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md).
+
 **Verification date:** 2026-11-09
 
 **Source version:** `5.1.2` (`versionCode` 50102)

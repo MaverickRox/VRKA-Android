@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug-only provider used by SAF instrumentation tests. Never packaged in release. -->
+        <provider
+            android:name="com.mvrk.vrka.TestDocumentsProvider"
+            android:authorities="com.mvrk.vrka.phase0docs"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

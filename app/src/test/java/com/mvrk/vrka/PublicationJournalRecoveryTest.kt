@@ -24,6 +24,7 @@ import java.io.File
 import java.io.IOException
 import java.io.OutputStream
 import java.lang.reflect.Proxy
+import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -206,6 +207,33 @@ class PublicationJournalRecoveryTest {
 
         override fun queryDisplayName(uri: Uri): String? =
             mediaItems[uri.toString()]?.displayName ?: safItems[uri.toString()]?.displayName
+
+        override fun readBack(uri: Uri): ProviderReadback? {
+            val file = mediaItems[uri.toString()]?.file ?: safItems[uri.toString()]?.file ?: return null
+            val bytes = file.readBytes()
+            val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { "%02x".format(it) }
+            return ProviderReadback(bytes.size.toLong(), digest)
+        }
+
+        override fun querySafCapabilities(tree: Uri): SafCapabilities = SafCapabilities(
+            canCreate = true,
+            canEnumerate = true,
+            hasReliableDocumentIdentity = true,
+            canRename = !failRename,
+            canReadBack = true,
+        )
+
+        override fun findSafDocumentUriByName(tree: Uri, displayName: String): UriLookupResult {
+            if (failProviderQuery) throw IOException("Simulated provider query failure")
+            if (permissionRevoked) throw SecurityException("SAF permission revoked")
+            val matches = safItems.values.filter { it.tree == tree && it.displayName == displayName }
+            return when (matches.size) {
+                0 -> UriLookupResult.DefinitelyAbsent
+                1 -> UriLookupResult.Found(matches.single().uri)
+                else -> UriLookupResult.Unknown("Multiple documents match the final name")
+            }
+        }
 
         override fun findPendingMediaStoreUri(pendingFilename: String): UriLookupResult {
             if (failProviderQuery) throw IOException("Simulated provider query failure")
@@ -559,6 +587,7 @@ class PublicationJournalRecoveryTest {
         createdAt: Long = System.currentTimeMillis(),
         createProviderObject: Boolean = true,
         finalizeProvider: Boolean = true,
+        writtenSize: Long = size,
     ): SeededTransaction {
         val entry = pendingEntry(
             jobId = jobId,
@@ -592,7 +621,7 @@ class PublicationJournalRecoveryTest {
                 entry.pendingFilename,
             )!!
         }
-        ops.openOutputStream(uri, "w")!!.use { it.write(ByteArray(size.toInt())) }
+        ops.openOutputStream(uri, "w")!!.use { it.write(ByteArray(writtenSize.toInt())) }
         journal.updateProviderCreated(txId, uri.toString())
         if (phase == PublicationPhase.PROVIDER_OBJECT_CREATED) {
             return SeededTransaction(entry.copy(providerUri = uri.toString(), publicationPhase = phase), uri)
@@ -863,6 +892,30 @@ class PublicationJournalRecoveryTest {
     // ---------------------------------------------------------------------------------------
 
     @Test
+    fun completedProviderCopyBeforeJournalUpdate_isVerifiedAndRecovered() {
+        val dir = tempFolder.newFolder("completed-copy")
+        val ops = TestPublicationStorageOps(dir)
+        val harness = createHarness(dir, ops, initialJobs = listOf(sampleJob("job-complete-copy")))
+        val seeded = seedTransaction(
+            harness.journal,
+            harness.publisher,
+            ops,
+            harness.stagingRoot,
+            "job-complete-copy",
+            "tx-complete-copy",
+            finalName = "video.mp4",
+            phase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+        )
+
+        val fresh = harness.restart()
+        fresh.manager.reconcilePublicationJournalOnStartup()
+
+        assertEquals(JobState.DONE, storedJob(dir, "job-complete-copy")!!.state)
+        assertTrue(fresh.journal.unreconciledEntries().isEmpty())
+        assertTrue("The completed provider output must be preserved", ops.fileExists(seeded.uri!!))
+    }
+
+    @Test
     fun mediaStorePendingRowDuringRecovery_isFinalizedAndVerified() {
         val dir = tempFolder.newFolder("pending-row")
         val ops = TestPublicationStorageOps(dir)
@@ -1036,6 +1089,7 @@ class PublicationJournalRecoveryTest {
             "tx-delete",
             finalName = "video.mp4",
             phase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            writtenSize = 64,
         )
         ops.failDelete = true
 
@@ -1068,6 +1122,7 @@ class PublicationJournalRecoveryTest {
             "job-throw",
             "tx-throw",
             phase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            writtenSize = 64,
         )
         ops.throwOnDelete = true
 

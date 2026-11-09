@@ -1,4 +1,40 @@
-# VRKA Android 5.1.2 — Test Results
+# VRKA Android — Test Results
+
+## Unreleased `main`: unified Room storage architecture
+
+Date: 2026-11-09. This section covers unreleased development work and does not describe the
+published v5.1.2 APK.
+
+| Check | Command | Result |
+|---|---|---|
+| Full JVM unit tests | `./gradlew --no-daemon --rerun-tasks testDebugUnitTest` | PASS: 800 tests in 77 suites; 0 failures, 0 errors, 0 skipped |
+| Legacy migration corpus | `--tests com.mvrk.vrka.storage.LegacyMigrationFixtureTest` | PASS: 80 cases / 75 files; manifest SHA-256 verified; originals unchanged; integrity and FK checks; repeated import idempotent |
+| Room repository | `--tests com.mvrk.vrka.storage.RoomStorageRepositoryTest` | PASS: full-field round trip, atomic terminal commit, stale attempt rejection, unverified-output rejection, paging, cleanup obligations, reopen |
+| Publication orchestration | `--tests com.mvrk.vrka.storage.RoomPublicationOrchestrationTest` | PASS: publish→commit→fresh runtime, incomplete batch not DONE |
+| Queue admission | `--tests com.mvrk.vrka.QueueAdmissionTest` | PASS: invalid URL, full queue, durable-write failure rollback |
+| Legacy publication journal | `--tests com.mvrk.vrka.PublicationJournalRecoveryTest` | PASS: 33 tests across strict parsing, recovery, cleanup, and terminal ordering |
+| Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
+| Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS |
+| Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS without production signing credentials |
+| Lint | `./gradlew lintDebug` | PASS: 0 errors; 303 warnings and 4 hints (all non-fatal) |
+| MediaStore instrumentation (API 36 emulator) | `connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.PublicationStorageIntegrationTest` | PASS: 2 tests |
+| SAF protocol instrumentation (API 36 emulator) | `connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.SafPublicationIntegrationTest` | PASS: 10 tests |
+
+SAF instrumentation covers: in-place rename; rename returning a replacement document ID with
+recovery from the interruption window before URI persistence; null rename return verified by
+re-query; unsupported/throw rename failing without publication; provider-modified marker;
+duplicate final-name candidates preserved without deletion; destination child-enumeration
+failure rejected before creation; provider readback failure preventing finalization; failed
+deletion retried and completed on a later startup; and revoked permission preserving the
+transaction until access returns.
+
+The fixture corpus lives in `app/src/test/resources/phase0-fixtures` (80 cases, 75 files across
+v5.1.0/v5.1.1/v5.1.2/unreleased baseline). Independent verification against the Phase 0 scratch
+corpus confirmed all 75 file hashes matched both `CORPUS_MANIFEST.json` and the scratch copies.
+
+---
+
+# Historical: VRKA Android 5.1.2 — Test Results
 
 Date: 2026-11-09
 

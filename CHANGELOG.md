@@ -2,18 +2,48 @@
 
 All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
 
-## [Unreleased] - Publication integrity remediation on `main`
+## [Unreleased] - Unified Room storage architecture on `main`
 
-This unreleased work strengthens publication durability and provider safety beyond the published v5.1.2 APK. It does not modify any release tag, manifest, signature, checksum, public key, version metadata, or APK.
+This unreleased work replaces the separate JSON transaction authorities with one Room/SQLite
+database and strengthens publication durability and provider safety beyond the published v5.1.2
+APK. It does not modify any release tag, manifest, signature, checksum, public key, version
+metadata, or APK. See [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) and
+[docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md).
 
-- **JobStore durability:** retention never evicts nonterminal jobs or jobs pinned by unresolved publication transactions; manager-level serialization and read-back verification prevent stale or lost terminal snapshots.
-- **Terminal commit:** the completing job is pinned and verified from the durable file before the exact attempt's journal transactions are retired and staging is removed. Failures preserve recovery data.
-- **Provider verification:** MediaStore finalization requires the row, expected name, and `IS_PENDING = 0`; missing pending columns are unverifiable, never finalized. Recovery re-verifies finalized entries before `DONE`.
-- **Cleanup safety:** tri-state provider discovery, ownership-checked deletion, transaction-scoped reconciliation, durable `CLEANUP_PENDING` retries, and staging cleanup retry records.
-- **Journal integrity:** strict schema/field/batch/URI validation, multi-attempt segmentation, bounded quarantine, and fail-closed isolation.
-- **OpenPGP policy:** only SHA-256/SHA-384/SHA-512; RSA-only; hashed issuer fingerprint must exactly match the pinned key. Published v5.1.1 and v5.1.2 signatures still verify.
+- **Single durable authority:** Room 2.8.5 + KSP 2.3.13 (built-in Kotlin preserved) stores
+  `jobs`, `attempts`, `publication_batches`, `publication_outputs`, `cleanup_tasks`,
+  `migration_ledger`, and `migration_records`. The existing `StateFlow` cache remains a cache,
+  refreshed only after committed database transactions; media bytes stay in staging/providers.
+- **Identities and atomic completion:** every retry has an attempt ID, every batch a batch ID,
+  and every output a transaction ID. The terminal DONE projection, exact ordered outputs,
+  reconciliation, and staging cleanup task commit in one database transaction, followed by a
+  fresh read. Stale callbacks and unverified outputs cannot commit.
+- **Crash-safe legacy import:** explicit v5.1.0, v5.1.1, v5.1.2, and unreleased-baseline
+  profiles; source hashes and ledger; deterministic IDs; bounded chunks; transactional resume;
+  raw preservation of ambiguous records; WAL/foreign-key/integrity verification; originals and
+  snapshots retained. A 80-case/75-file fixture corpus generated from the actual tagged
+  encoders is committed and verified by the test suite.
+- **Startup gate:** `StorageRuntime` publishes INITIALIZING/MIGRATING/READY (or
+  MIGRATION_FAILED/STORAGE_FAILED); enqueue, services, transfer worker, and UI entry points
+  consult it. Migration failure blocks new work instead of starting empty.
+- **Provider protocols:** MediaStore publication persists the row before copying, requires
+  readback size/SHA-256 agreement, and requires a re-queried finalized row; SAF publication uses
+  transaction-marked names, provider capability preflight, readback verification, unique
+  final-name verification, replacement-URI rediscovery, and non-destructive recovery when the
+  provider rewrites, duplicates, or hides the marker.
+- **Cleanup, paging and admission:** durable staging and provider cleanup obligations with
+  retry/backoff/dead-letter; History is paged (30 rows) and retained until user deletion; enqueue
+  rejects invalid URLs, a full queue, insufficient space, storage that is not ready, or a failed
+  durable write.
+- **JobStore durability and journal integrity:** retention never evicts nonterminal jobs or jobs
+  pinned by unresolved publication transactions; strict journal schema/field/batch/URI
+  validation; transaction-scoped reconciliation; no arbitrary 128-entry cleanup eviction.
+- **OpenPGP policy:** only SHA-256/SHA-384/SHA-512; RSA-only; hashed issuer fingerprint must
+  exactly match the pinned key. Published v5.1.1 and v5.1.2 signatures still verify.
 
-Verification: 784 JVM tests in 73 suites pass; lint reports 0 errors; release-variant and Android test-source compilation pass; two real MediaStore instrumentation tests pass on an API 36 emulator.
+Verification: 800 JVM tests across 77 suites pass with 0 failures/errors/skips; lint reports 0
+errors; debug, release-variant, and Android test-source compilation pass; 12 real provider
+instrumentation tests pass on an API 36 emulator (10 SAF protocol/recovery + 2 MediaStore).
 
 ## [5.1.2] - 2026-11-09
 

@@ -2,6 +2,16 @@
 
 This document defines the architecture of the official, published VRKA Android v5.1.2 release (tag v5.1.2) and documents the production architectural pillars and crash-recovery hardening. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Subsystem verification and physical device validation evidence are authoritatively documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
+> [!NOTE]
+> **Unreleased `main` storage changes are not part of v5.1.2.** The published v5.1.2 APK still
+> uses the JSON `JobStore`, `PublicationJournal`, and `StagingCleanupStore` described in this
+> document. The unreleased `main` branch replaces those transaction authorities with a single
+> Room/SQLite database, a crash-safe legacy importer, a startup gate, and durable
+> publication/cleanup tables. That architecture and its migration are documented separately in
+> [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) and
+> [docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md). Nothing in those documents changes the
+> published artifact, its signature, or its evidence.
+
 ---
 
 ## 1. Architectural Overview
