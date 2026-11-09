@@ -1,6 +1,7 @@
 package com.mvrk.vrka
 
 import android.net.Uri
+import com.mvrk.vrka.storage.PublicationStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -11,11 +12,28 @@ internal enum class PublicationProviderType {
 }
 
 internal enum class PublicationPhase {
+    STAGING,
+    READY,
+    PREPARED,
     INTENT_RECORDED,
+    CREATE_REQUESTED,
     PROVIDER_OBJECT_CREATED,
+    CREATED,
+    COPYING,
     DATA_COPIED,
+    COPIED,
     OUTPUT_VALIDATED,
+    VERIFIED,
+    FINALIZE_REQUESTED,
     FINALIZED,
+    PUBLISHED,
+    COMMITTED_RECONCILED,
+    STAGING_CLEANUP_PENDING,
+    CLOSED,
+    CLEANUP_PENDING,
+    RECOVERY_REQUIRED,
+    PERMISSION_REQUIRED,
+    ABORTED,
     RECORDED,
 }
 
@@ -68,6 +86,14 @@ internal data class PublicationEntry(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val errorMessage: String? = null,
+    val attemptNumber: Int = 1,
+    val attemptId: String = "",
+    val batchId: String = "",
+    val expectedSha256: String? = null,
+    val observedSha256: String? = null,
+    val verificationLevel: String = "",
+    val providerDocumentId: String? = null,
+    val providerCapabilitiesJson: String? = null,
 )
 
 /**
@@ -81,18 +107,18 @@ internal data class PublicationEntry(
 internal class PublicationJournal(
     private val target: File,
     private val ops: JobStoreFileOps = DefaultJobStoreFileOps,
-) {
+) : PublicationStore {
     private val lock = Any()
 
     @Volatile
-    var lastLoadResult: PublicationJournalLoadResult? = null
+    override var lastLoadResult: PublicationJournalLoadResult? = null
         private set
 
-    fun recordIntent(entry: PublicationEntry): Unit = synchronized(lock) {
+    override fun recordIntent(entry: PublicationEntry): Unit = synchronized(lock) {
         recordBatchIntents(listOf(entry))
     }
 
-    fun recordBatchIntents(batch: List<PublicationEntry>): Unit = synchronized(lock) {
+    override fun recordBatchIntents(batch: List<PublicationEntry>): Unit = synchronized(lock) {
         val entries = loadEntries().toMutableList()
         val updatedBatch = batch.map { entry ->
             entry.copy(
@@ -108,7 +134,7 @@ internal class PublicationJournal(
         saveEntries(entries)
     }
 
-    fun updateProviderCreated(transactionId: String, providerUri: String): Unit = synchronized(lock) {
+    override fun updateProviderCreated(transactionId: String, providerUri: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
                 providerUri = providerUri,
@@ -119,7 +145,16 @@ internal class PublicationJournal(
         }
     }
 
-    fun updateDataCopied(transactionId: String, copiedBytes: Long): Unit = synchronized(lock) {
+    override fun updateProviderUri(transactionId: String, providerUri: String): Unit = synchronized(lock) {
+        mutateEntry(transactionId) {
+            it.copy(
+                providerUri = providerUri,
+                updatedAt = System.currentTimeMillis(),
+            )
+        }
+    }
+
+    override fun updateDataCopied(transactionId: String, copiedBytes: Long): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
                 copiedBytes = copiedBytes,
@@ -130,7 +165,7 @@ internal class PublicationJournal(
         }
     }
 
-    fun updateValidated(transactionId: String): Unit = synchronized(lock) {
+    override fun updateValidated(transactionId: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
                 publicationPhase = PublicationPhase.OUTPUT_VALIDATED,
@@ -139,7 +174,21 @@ internal class PublicationJournal(
         }
     }
 
-    fun updateFinalized(transactionId: String, newUri: String? = null): Unit = synchronized(lock) {
+    override fun updateVerification(
+        transactionId: String,
+        verificationLevel: String,
+        observedSha256: String?,
+    ): Unit = synchronized(lock) {
+        mutateEntry(transactionId) {
+            it.copy(
+                verificationLevel = verificationLevel,
+                observedSha256 = observedSha256 ?: it.observedSha256,
+                updatedAt = System.currentTimeMillis(),
+            )
+        }
+    }
+
+    override fun updateFinalized(transactionId: String, newUri: String?): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
                 publicationPhase = PublicationPhase.FINALIZED,
@@ -150,7 +199,11 @@ internal class PublicationJournal(
         }
     }
 
-    fun updateRecorded(transactionId: String): Unit = synchronized(lock) {
+    fun updateFinalized(transactionId: String): Unit = updateFinalized(transactionId, null)
+
+    fun markCleanupPending(transactionId: String): Unit = markCleanupPending(transactionId, null)
+
+    override fun updateRecorded(transactionId: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
                 publicationPhase = PublicationPhase.RECORDED,
@@ -160,7 +213,7 @@ internal class PublicationJournal(
         }
     }
 
-    fun markInterrupted(transactionId: String): Unit = synchronized(lock) {
+    override fun markInterrupted(transactionId: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
                 status = PublicationTransactionStatus.INTERRUPTED,
@@ -169,7 +222,7 @@ internal class PublicationJournal(
         }
     }
 
-    fun markFailed(transactionId: String, error: String): Unit = synchronized(lock) {
+    override fun markFailed(transactionId: String, error: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             // A failed cleanup must stay cleanup-pending: retiring it as FAILED would let a
             // broad reconciliation pass drop the retry obligation.
@@ -185,7 +238,7 @@ internal class PublicationJournal(
         }
     }
 
-    fun markCleanupPending(transactionId: String, error: String? = null): Unit = synchronized(lock) {
+    override fun markCleanupPending(transactionId: String, error: String?): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
                 status = PublicationTransactionStatus.CLEANUP_PENDING,
@@ -195,7 +248,7 @@ internal class PublicationJournal(
         }
     }
 
-    fun updateDeleted(transactionId: String): Unit = synchronized(lock) {
+    override fun updateDeleted(transactionId: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
                 status = PublicationTransactionStatus.INTERRUPTED,
@@ -210,7 +263,7 @@ internal class PublicationJournal(
      * deliberately not supported: a retry reuses the logical job ID, so a job-wide sweep
      * could silently retire failed transactions belonging to an earlier attempt.
      */
-    fun markReconciled(transactionIds: Collection<String>): Unit = synchronized(lock) {
+    override fun markReconciled(transactionIds: Collection<String>): Unit = synchronized(lock) {
         if (transactionIds.isEmpty()) return
         val targets = transactionIds.toSet()
         val entries = loadEntries().toMutableList()
@@ -232,28 +285,28 @@ internal class PublicationJournal(
         if (changed) saveEntries(entries)
     }
 
-    fun clearJob(jobId: String): Unit = synchronized(lock) {
+    override fun clearJob(jobId: String): Unit = synchronized(lock) {
         val entries = loadEntries().filterNot { it.jobId == jobId }
         saveEntries(entries)
     }
 
-    fun clearAll(): Unit = synchronized(lock) {
+    override fun clearAll(): Unit = synchronized(lock) {
         saveEntries(emptyList())
     }
 
-    fun entriesForJob(jobId: String): List<PublicationEntry> = synchronized(lock) {
+    override fun entriesForJob(jobId: String): List<PublicationEntry> = synchronized(lock) {
         loadEntries().filter { it.jobId == jobId }
     }
 
-    fun unreconciledEntries(): List<PublicationEntry> = synchronized(lock) {
+    override fun unreconciledEntries(): List<PublicationEntry> = synchronized(lock) {
         loadEntries().filter { it.status != PublicationTransactionStatus.RECONCILED }
     }
 
-    fun allEntries(): List<PublicationEntry> = synchronized(lock) {
+    override fun allEntries(): List<PublicationEntry> = synchronized(lock) {
         loadEntries()
     }
 
-    fun loadWithStatus(): PublicationJournalLoadResult = synchronized(lock) {
+    override fun loadWithStatus(): PublicationJournalLoadResult = synchronized(lock) {
         if (!target.isFile) {
             val res = PublicationJournalLoadResult(emptyList(), PublicationJournalLoadState.MISSING)
             lastLoadResult = res
@@ -442,6 +495,14 @@ internal class PublicationJournal(
         .put("createdAt", entry.createdAt)
         .put("updatedAt", entry.updatedAt)
         .put("errorMessage", entry.errorMessage)
+        .put("attemptNumber", entry.attemptNumber)
+        .put("attemptId", entry.attemptId)
+        .put("batchId", entry.batchId)
+        .put("expectedSha256", entry.expectedSha256)
+        .put("observedSha256", entry.observedSha256)
+        .put("verificationLevel", entry.verificationLevel)
+        .put("providerDocumentId", entry.providerDocumentId)
+        .put("providerCapabilitiesJson", entry.providerCapabilitiesJson)
 
     private data class DecodeOutcome(
         val entries: List<PublicationEntry>,
@@ -640,6 +701,7 @@ internal class PublicationJournal(
                     return invalid("validated record byte count does not match the expected size")
                 }
             }
+            else -> Unit
         }
 
         val pendingProviderObject = status == PublicationTransactionStatus.CLEANUP_PENDING
@@ -685,6 +747,44 @@ internal class PublicationJournal(
         }
 
         val errorMessage = stringField(obj, "errorMessage")?.take(MAX_DETAIL_CHARS)
+        val attemptNumber = number(obj, "attemptNumber")?.let { value ->
+            val number = value.toInt()
+            if (number < 1 || number > MAX_ATTEMPT_NUMBER) {
+                return invalid("attemptNumber out of range")
+            }
+            number
+        } ?: 1
+        val attemptId = stringField(obj, "attemptId")
+            ?.takeIf { it.length <= MAX_TRANSACTION_ID_CHARS }
+            .orEmpty()
+        if (attemptId.isNotBlank() && attemptId != "$jobId:attempt:$attemptNumber") {
+            return invalid("attemptId does not match the logical job and attempt")
+        }
+        val batchId = stringField(obj, "batchId")
+            ?.takeIf { it.length <= MAX_TRANSACTION_ID_CHARS }
+            .orEmpty()
+        if (batchId.isNotBlank() && !isSafeIdentifier(batchId, MAX_TRANSACTION_ID_CHARS)) {
+            return invalid("invalid batchId")
+        }
+        val expectedSha256 = optionalSha256(obj, "expectedSha256")
+            ?: if (obj.has("expectedSha256") && !obj.isNull("expectedSha256")) {
+                return invalid("invalid expectedSha256")
+            } else {
+                null
+            }
+        val observedSha256 = optionalSha256(obj, "observedSha256")
+            ?: if (obj.has("observedSha256") && !obj.isNull("observedSha256")) {
+                return invalid("invalid observedSha256")
+            } else {
+                null
+            }
+        val verificationLevel = stringField(obj, "verificationLevel")
+            ?.takeIf { it.length <= MAX_DETAIL_CHARS }
+            .orEmpty()
+        val providerDocumentId = stringField(obj, "providerDocumentId")
+            ?.takeIf { it.length <= MAX_TRANSACTION_ID_CHARS }
+        val providerCapabilitiesJson = stringField(obj, "providerCapabilitiesJson")
+            ?.takeIf { it.length <= MAX_DETAIL_CHARS }
         return RecordResult.Valid(
             PublicationEntry(
                 transactionId = transactionId,
@@ -704,8 +804,21 @@ internal class PublicationJournal(
                 createdAt = createdAt,
                 updatedAt = updatedAt,
                 errorMessage = errorMessage,
+                attemptNumber = attemptNumber,
+                attemptId = attemptId,
+                batchId = batchId,
+                expectedSha256 = expectedSha256,
+                observedSha256 = observedSha256,
+                verificationLevel = verificationLevel,
+                providerDocumentId = providerDocumentId,
+                providerCapabilitiesJson = providerCapabilitiesJson,
             ),
         )
+    }
+
+    private fun optionalSha256(obj: JSONObject, name: String): String? {
+        val value = stringField(obj, name) ?: return null
+        return value.takeIf { it.length == 64 && it.all { char -> char.isDigit() || char.lowercaseChar() in 'a'..'f' } }
     }
 
     private fun number(obj: JSONObject, name: String): Number? {
@@ -753,6 +866,7 @@ internal class PublicationJournal(
         private const val MAX_FILENAME_CHARS = 255
         private const val MAX_TRANSACTION_ID_CHARS = 128
         private const val MAX_JOB_ID_CHARS = 256
+        private const val MAX_ATTEMPT_NUMBER = 1_000_000
         private const val MAX_PATH_CHARS = 4096
         private const val MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000L
     }

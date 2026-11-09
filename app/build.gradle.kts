@@ -5,6 +5,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
 }
 
 val signingPropertiesFile = providers.environmentVariable("VRKA_SIGNING_PROPERTIES")
@@ -72,6 +73,7 @@ extensions.configure<ApplicationExtension> {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
     }
 
     packaging {
@@ -171,6 +173,15 @@ tasks.matching { it.name in listOf("validateSigningRelease", "packageRelease") }
 }
 
 dependencies {
+    val roomVersion = "2.8.5"
+    val pagingVersion = "3.5.3"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    implementation("androidx.room:room-paging:$roomVersion")
+    implementation("androidx.paging:paging-runtime:$pagingVersion")
+    implementation("androidx.paging:paging-compose:$pagingVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
+
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
     implementation("androidx.core:core-ktx:1.18.0")
@@ -188,6 +199,8 @@ dependencies {
     testImplementation("org.json:json:20240303")
     testImplementation("xpp3:xpp3:1.1.4c")
     testImplementation("xmlpull:xmlpull:1.1.3.1")
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("androidx.test:core:1.6.1")
 
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
@@ -207,8 +220,20 @@ dependencies {
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.room:room-testing:2.8.5")
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    jvmArgs(
+        "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+        "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+    )
+}

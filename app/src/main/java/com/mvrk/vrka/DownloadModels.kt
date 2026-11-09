@@ -177,6 +177,9 @@ data class DownloadJob(
     // Persisted before the first file is handed to MediaStore/DocumentsProvider. A job that
     // died after this point is not auto-resumed because its outputs may already be published.
     val publishStarted: Boolean = false,
+    // Durable storage metadata. These are not part of the legacy JSON contract.
+    val recoveryRequired: Boolean = false,
+    val legacyVerification: String = "",
 )
 
 @Immutable
