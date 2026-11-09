@@ -17,6 +17,60 @@ internal data class PublishedOutput(
     val uri: Uri,
     val bytes: Long,
     val extension: String,
+    val transactionId: String = "",
+)
+
+/**
+ * Result of locating a provider object. A provider that cannot be queried must never be
+ * reported as "absent": absence authorizes cleanup and reconciliation, an unknown result
+ * only authorizes a later retry.
+ */
+internal sealed interface UriLookupResult {
+    data class Found(val uri: Uri) : UriLookupResult
+    object DefinitelyAbsent : UriLookupResult
+    data class Unknown(val detail: String) : UriLookupResult
+}
+
+internal enum class ProviderObjectStatus {
+    /** Row exists, final display name is applied, and (API 29+) IS_PENDING is cleared. */
+    VERIFIED,
+
+    /** Row exists under this transaction's unique pending name, or is still pending. */
+    PENDING,
+
+    /** The row does not exist. */
+    ABSENT,
+
+    /** The row exists but belongs to a different name or location. */
+    MISMATCH,
+
+    /** The provider could not be queried, or required columns are unavailable. */
+    UNKNOWN,
+}
+
+internal data class ProviderInspection(
+    val status: ProviderObjectStatus,
+    val displayName: String? = null,
+    val detail: String = "",
+)
+
+/** Ownership of a provider object for destructive cleanup purposes. */
+internal enum class ObjectOwnership {
+    OWNED,
+    NOT_OWNED,
+    ABSENT,
+    UNKNOWN,
+}
+
+internal enum class CleanupOutcome {
+    DELETED,
+    ALREADY_ABSENT,
+    RETRY_REQUIRED,
+}
+
+internal data class ProviderFinalization(
+    val inspection: ProviderInspection,
+    val uri: Uri,
 )
 
 internal interface PublicationStorageOps {
@@ -29,11 +83,11 @@ internal interface PublicationStorageOps {
     fun fileExists(uri: Uri): Boolean
     fun getFileSize(uri: Uri): Long
     fun queryDisplayName(uri: Uri): String?
-    fun findPendingMediaStoreUri(pendingFilename: String): Uri?
+    fun findPendingMediaStoreUri(pendingFilename: String): UriLookupResult
 
     // SAF
     fun existingSafNames(tree: Uri): Set<String>
-    fun findPendingSafUri(tree: Uri, pendingFilename: String): Uri?
+    fun findPendingSafUri(tree: Uri, pendingFilename: String): UriLookupResult
     fun createSafDocument(tree: Uri, mimeType: String, pendingFilename: String): Uri?
     fun renameSafDocument(uri: Uri, finalName: String): Uri?
     fun deleteSafDocument(uri: Uri): Boolean
@@ -95,8 +149,8 @@ internal class DefaultPublicationStorageOps(private val context: Context) : Publ
         }
     }.getOrNull()
 
-    override fun findPendingMediaStoreUri(pendingFilename: String): Uri? = runCatching {
-        if (pendingFilename.isBlank()) return null
+    override fun findPendingMediaStoreUri(pendingFilename: String): UriLookupResult {
+        if (pendingFilename.isBlank()) return UriLookupResult.DefinitelyAbsent
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Downloads.EXTERNAL_CONTENT_URI
         } else {
@@ -105,15 +159,22 @@ internal class DefaultPublicationStorageOps(private val context: Context) : Publ
         val projection = arrayOf(MediaStore.MediaColumns._ID)
         val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
         val selectionArgs = arrayOf(pendingFilename)
-        queryMediaStoreCollection(collection, projection, selection, selectionArgs)?.use { cursor ->
-            if (cursor.moveToFirst() && !cursor.isNull(0)) {
-                val id = cursor.getLong(0)
-                android.content.ContentUris.withAppendedId(collection, id)
-            } else {
-                null
+        val cursor = queryMediaStoreCollection(collection, projection, selection, selectionArgs)
+            ?: return UriLookupResult.Unknown("Provider returned no cursor for pending lookup")
+        cursor.use {
+            val matches = mutableListOf<Uri>()
+            while (it.moveToNext()) {
+                if (!it.isNull(0)) {
+                    matches += android.content.ContentUris.withAppendedId(collection, it.getLong(0))
+                }
+            }
+            return when (matches.size) {
+                0 -> UriLookupResult.DefinitelyAbsent
+                1 -> UriLookupResult.Found(matches.single())
+                else -> UriLookupResult.Unknown("Multiple provider rows match the transaction pending name")
             }
         }
-    }.getOrNull()
+    }
 
     override fun existingSafNames(tree: Uri): Set<String> {
         val parentId = DocumentsContract.getTreeDocumentId(tree)
@@ -134,31 +195,37 @@ internal class DefaultPublicationStorageOps(private val context: Context) : Publ
         return existing
     }
 
-    override fun findPendingSafUri(tree: Uri, pendingFilename: String): Uri? = runCatching {
-        if (pendingFilename.isBlank()) return null
+    override fun findPendingSafUri(tree: Uri, pendingFilename: String): UriLookupResult {
+        if (pendingFilename.isBlank()) return UriLookupResult.DefinitelyAbsent
         val parentId = DocumentsContract.getTreeDocumentId(tree)
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
-        context.contentResolver.query(
+        val cursor = context.contentResolver.query(
             children,
             arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
             null,
             null,
             null,
-        )?.use { cursor ->
-            val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-            val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-            while (cursor.moveToNext()) {
-                if (nameCol >= 0 && idCol >= 0) {
-                    val name = cursor.getString(nameCol)
-                    if (name == pendingFilename) {
-                        val docId = cursor.getString(idCol)
-                        return DocumentsContract.buildDocumentUriUsingTree(tree, docId)
-                    }
+        ) ?: return UriLookupResult.Unknown("Provider returned no cursor for SAF lookup")
+        cursor.use {
+            val idCol = it.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = it.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            if (idCol < 0 || nameCol < 0) {
+                return UriLookupResult.Unknown("SAF provider omitted document identity columns")
+            }
+            val matches = mutableListOf<Uri>()
+            while (it.moveToNext()) {
+                if (it.getString(nameCol) == pendingFilename) {
+                    val docId = it.getString(idCol) ?: continue
+                    matches += DocumentsContract.buildDocumentUriUsingTree(tree, docId)
                 }
             }
-            null
+            return when (matches.size) {
+                0 -> UriLookupResult.DefinitelyAbsent
+                1 -> UriLookupResult.Found(matches.single())
+                else -> UriLookupResult.Unknown("Multiple SAF documents match the transaction pending name")
+            }
         }
-    }.getOrNull()
+    }
 
     override fun createSafDocument(tree: Uri, mimeType: String, pendingFilename: String): Uri? = runCatching {
         val parentId = DocumentsContract.getTreeDocumentId(tree)
@@ -180,6 +247,8 @@ internal class OutputPublisher(
     private val settingsRepository: SettingsRepository,
     journal: PublicationJournal? = null,
     internal val ops: PublicationStorageOps = DefaultPublicationStorageOps(context),
+    private val sdkInt: Int = Build.VERSION.SDK_INT,
+    private val mediaStoreCollection: Uri? = null,
 ) {
     private val publishLock = Any()
     val activeJournal: PublicationJournal by lazy {
@@ -209,20 +278,21 @@ internal class OutputPublisher(
         val destination = destinationTreeUri?.takeIf { it.isNotBlank() }
             ?: settingsRepository.settings.value.outputTreeUri.takeIf { it.isNotBlank() }
         require(
-            destination != null || !DestinationPolicy.requiresSafDestination(Build.VERSION.SDK_INT),
+            destination != null || !DestinationPolicy.requiresSafDestination(sdkInt),
         ) { runCatching { context.getString(R.string.error_destination_required) }.getOrNull() ?: "A destination folder is required." }
 
         val effectiveJobId = jobId.ifBlank { "standalone-${System.currentTimeMillis()}" }
         val batchEntries = prepareBatchEntries(files, destination, effectiveJobId)
         activeJournal.recordBatchIntents(batchEntries)
 
-        val published = if (destination != null) {
+        return if (destination != null) {
             publishToTreeBatch(files, Uri.parse(destination), batchEntries, shouldContinue, onPublished)
         } else {
             publishToDownloadsBatch(files, batchEntries, shouldContinue, onPublished)
         }
-        files.forEach { (file, _) -> if (!file.delete()) file.deleteOnExit() }
-        published
+        // Staging files are intentionally not deleted here. They remain the durable recovery
+        // source until the manager confirms the terminal JobStore commit and journal
+        // reconciliation, then removes the whole per-job staging directory.
     }
 
     private fun prepareBatchEntries(
@@ -280,70 +350,243 @@ internal class OutputPublisher(
 
     fun getFileSize(uriText: String): Long = ops.getFileSize(Uri.parse(uriText))
 
-    fun findPendingMediaStoreUri(pendingFilename: String): Uri? =
+    fun findPendingMediaStoreUri(pendingFilename: String): UriLookupResult = try {
         ops.findPendingMediaStoreUri(pendingFilename)
-
-    fun findPendingSafUri(tree: Uri, pendingFilename: String): Uri? =
-        ops.findPendingSafUri(tree, pendingFilename)
-
-    /**
-     * Checks and verifies MediaStore row finalization.
-     * Updates DISPLAY_NAME and clears IS_PENDING (on API 29+).
-     * If the update returns 0 affected rows, it checks whether the row was independently verified
-     * as already finalized. Returns true ONLY when the resulting row is confirmed finalized.
-     */
-    fun finalizeMediaStore(uri: Uri, finalName: String): Boolean {
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, finalName)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.IS_PENDING, 0)
-            }
-        }
-        val affected = runCatching { ops.updateMediaStore(uri, values, displayName = finalName, isPending = false) }.getOrDefault(0)
-        if (affected > 0) {
-            return verifyMediaStoreFinalized(uri, finalName)
-        }
-        return verifyMediaStoreFinalized(uri, finalName)
+    } catch (error: Throwable) {
+        UriLookupResult.Unknown(error.message.orEmpty().take(200))
     }
 
-    fun verifyMediaStoreFinalized(uri: Uri, expectedFinalName: String): Boolean = runCatching {
-        val projection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    fun findPendingSafUri(tree: Uri, pendingFilename: String): UriLookupResult = try {
+        ops.findPendingSafUri(tree, pendingFilename)
+    } catch (error: Throwable) {
+        UriLookupResult.Unknown(error.message.orEmpty().take(200))
+    }
+
+    /**
+     * Verifies the actual provider row, not URI existence. On API 29+ a missing IS_PENDING
+     * column is treated as unverifiable (never as finalized), because the platform supports
+     * the column and its absence means the provider did not answer the required question.
+     */
+    fun inspectMediaStoreOutput(
+        uri: Uri,
+        expectedFinalName: String,
+        expectedPendingName: String? = null,
+    ): ProviderInspection {
+        if (!PublicationUriRules.isMediaStoreUri(uri)) {
+            return ProviderInspection(ProviderObjectStatus.MISMATCH, detail = "URI is not a MediaStore row")
+        }
+        val projection = if (sdkInt >= Build.VERSION_CODES.Q) {
             arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.IS_PENDING)
         } else {
             arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
         }
-        ops.queryMediaStore(uri, projection, null, null)?.use { cursor ->
-            if (!cursor.moveToFirst()) return false
-            val nameCol = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
-            if (nameCol < 0) return false
-            val currentName = cursor.getString(nameCol)
-            if (currentName != expectedFinalName) return false
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val pendingCol = cursor.getColumnIndex(MediaStore.MediaColumns.IS_PENDING)
-                if (pendingCol >= 0) {
-                    val isPending = cursor.getInt(pendingCol)
-                    if (isPending != 0) return false
+        val cursor = try {
+            ops.queryMediaStore(uri, projection, null, null)
+        } catch (error: Throwable) {
+            return ProviderInspection(ProviderObjectStatus.UNKNOWN, detail = error.message.orEmpty().take(200))
+        } ?: return ProviderInspection(ProviderObjectStatus.UNKNOWN, detail = "Provider returned no cursor")
+        cursor.use {
+            if (!it.moveToFirst()) return ProviderInspection(ProviderObjectStatus.ABSENT)
+            val nameColumn = it.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+            if (nameColumn < 0) {
+                return ProviderInspection(ProviderObjectStatus.UNKNOWN, detail = "DISPLAY_NAME column missing")
+            }
+            val name = it.getString(nameColumn)
+                ?: return ProviderInspection(ProviderObjectStatus.UNKNOWN, detail = "DISPLAY_NAME is null")
+            if (sdkInt >= Build.VERSION_CODES.Q) {
+                val pendingColumn = it.getColumnIndex(MediaStore.MediaColumns.IS_PENDING)
+                if (pendingColumn < 0) {
+                    return ProviderInspection(
+                        ProviderObjectStatus.UNKNOWN,
+                        displayName = name,
+                        detail = "IS_PENDING column missing on API ${sdkInt}",
+                    )
+                }
+                val pending = it.getInt(pendingColumn) != 0
+                if (pending) {
+                    return ProviderInspection(ProviderObjectStatus.PENDING, displayName = name)
+                }
+                if (name == expectedPendingName) {
+                    return ProviderInspection(ProviderObjectStatus.PENDING, displayName = name)
+                }
+            } else if (expectedPendingName != null && name == expectedPendingName) {
+                return ProviderInspection(ProviderObjectStatus.PENDING, displayName = name)
+            }
+            return when (name) {
+                expectedFinalName -> ProviderInspection(ProviderObjectStatus.VERIFIED, displayName = name)
+                else -> ProviderInspection(ProviderObjectStatus.MISMATCH, displayName = name)
+            }
+        }
+    }
+
+    fun inspectSafOutput(
+        uri: Uri,
+        expectedFinalName: String,
+        expectedPendingName: String?,
+        tree: Uri,
+    ): ProviderInspection {
+        if (!PublicationUriRules.isDocumentUnderTree(uri, tree)) {
+            return ProviderInspection(ProviderObjectStatus.MISMATCH, detail = "Document is outside the journal SAF tree")
+        }
+        val cursor = try {
+            ops.queryMediaStore(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null)
+        } catch (error: Throwable) {
+            return ProviderInspection(ProviderObjectStatus.UNKNOWN, detail = error.message.orEmpty().take(200))
+        } ?: return ProviderInspection(ProviderObjectStatus.UNKNOWN, detail = "Provider returned no cursor")
+        cursor.use {
+            if (!it.moveToFirst()) return ProviderInspection(ProviderObjectStatus.ABSENT)
+            val nameColumn = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameColumn < 0) {
+                return ProviderInspection(ProviderObjectStatus.UNKNOWN, detail = "DISPLAY_NAME column missing")
+            }
+            val name = it.getString(nameColumn)
+                ?: return ProviderInspection(ProviderObjectStatus.UNKNOWN, detail = "DISPLAY_NAME is null")
+            return when (name) {
+                expectedFinalName -> ProviderInspection(ProviderObjectStatus.VERIFIED, displayName = name)
+                expectedPendingName -> ProviderInspection(ProviderObjectStatus.PENDING, displayName = name)
+                else -> ProviderInspection(ProviderObjectStatus.MISMATCH, displayName = name)
+            }
+        }
+    }
+
+    fun inspectOutput(entry: PublicationEntry): ProviderInspection {
+        val uriText = entry.providerUri ?: return ProviderInspection(ProviderObjectStatus.ABSENT)
+        val uri = runCatching { Uri.parse(uriText) }.getOrNull()
+            ?: return ProviderInspection(ProviderObjectStatus.MISMATCH, detail = "Unparseable provider URI")
+        return when (entry.providerType) {
+            PublicationProviderType.MEDIA_STORE ->
+                inspectMediaStoreOutput(uri, entry.intendedFilename, entry.pendingFilename)
+            PublicationProviderType.SAF -> {
+                val tree = runCatching { Uri.parse(entry.destinationIdentity) }.getOrNull()
+                    ?: return ProviderInspection(ProviderObjectStatus.MISMATCH)
+                inspectSafOutput(uri, entry.intendedFilename, entry.pendingFilename, tree)
+            }
+        }
+    }
+
+    /**
+     * Finalizes the provider row and re-reads it. The returned inspection is authoritative:
+     * an update call succeeding is never sufficient proof of a finalized output.
+     */
+    fun finalizeEntry(entry: PublicationEntry): ProviderFinalization {
+        val uriText = entry.providerUri
+            ?: return ProviderFinalization(ProviderInspection(ProviderObjectStatus.ABSENT), Uri.EMPTY)
+        val uri = runCatching { Uri.parse(uriText) }.getOrNull()
+            ?: return ProviderFinalization(ProviderInspection(ProviderObjectStatus.MISMATCH), Uri.EMPTY)
+        return when (entry.providerType) {
+            PublicationProviderType.MEDIA_STORE -> {
+                finalizeMediaStore(uri, entry.intendedFilename)
+                ProviderFinalization(
+                    inspectMediaStoreOutput(uri, entry.intendedFilename, entry.pendingFilename),
+                    uri,
+                )
+            }
+            PublicationProviderType.SAF -> {
+                val target = finalizeSaf(uri, entry.intendedFilename)
+                val tree = runCatching { Uri.parse(entry.destinationIdentity) }.getOrNull()
+                val inspection = if (tree == null) {
+                    ProviderInspection(ProviderObjectStatus.MISMATCH)
+                } else {
+                    inspectSafOutput(target, entry.intendedFilename, entry.pendingFilename, tree)
+                }
+                ProviderFinalization(inspection, target)
+            }
+        }
+    }
+
+    /**
+     * Destructive cleanup is authorized only for a row carrying this transaction's pending
+     * name and only when that row is the single object discovered under that unique name.
+     * A finalized display name or an unrelated row is never deleted.
+     */
+    fun pendingObjectOwnership(entry: PublicationEntry): ObjectOwnership {
+        if (entry.providerUri == null) return ObjectOwnership.ABSENT
+        val inspection = inspectOutput(entry)
+        if (inspection.status == ProviderObjectStatus.ABSENT) return ObjectOwnership.ABSENT
+        if (inspection.status == ProviderObjectStatus.UNKNOWN) return ObjectOwnership.UNKNOWN
+        if (inspection.status != ProviderObjectStatus.PENDING ||
+            inspection.displayName != entry.pendingFilename
+        ) {
+            return ObjectOwnership.NOT_OWNED
+        }
+        val providerUri = runCatching { Uri.parse(entry.providerUri) }.getOrNull()
+            ?: return ObjectOwnership.NOT_OWNED
+        val discovered = when (entry.providerType) {
+            PublicationProviderType.MEDIA_STORE ->
+                findPendingMediaStoreUri(entry.pendingFilename)
+            PublicationProviderType.SAF -> {
+                val tree = runCatching { Uri.parse(entry.destinationIdentity) }.getOrNull()
+                    ?: return ObjectOwnership.NOT_OWNED
+                findPendingSafUri(tree, entry.pendingFilename)
+            }
+        }
+        return when (discovered) {
+            is UriLookupResult.Found -> {
+                if (discovered.uri == providerUri) ObjectOwnership.OWNED else ObjectOwnership.NOT_OWNED
+            }
+            UriLookupResult.DefinitelyAbsent -> ObjectOwnership.ABSENT
+            is UriLookupResult.Unknown -> ObjectOwnership.UNKNOWN
+        }
+    }
+
+    fun cleanupPendingObject(entry: PublicationEntry): CleanupOutcome {
+        val uriText = entry.providerUri ?: return CleanupOutcome.ALREADY_ABSENT
+        val uri = runCatching { Uri.parse(uriText) }.getOrNull()
+            ?: return CleanupOutcome.RETRY_REQUIRED
+        return when (pendingObjectOwnership(entry)) {
+            ObjectOwnership.ABSENT -> CleanupOutcome.ALREADY_ABSENT
+            ObjectOwnership.NOT_OWNED,
+            ObjectOwnership.UNKNOWN,
+            -> CleanupOutcome.RETRY_REQUIRED
+            ObjectOwnership.OWNED -> {
+                val deleted = try {
+                    when (entry.providerType) {
+                        PublicationProviderType.MEDIA_STORE -> ops.deleteUri(uri)
+                        PublicationProviderType.SAF -> ops.deleteSafDocument(uri)
+                    }
+                } catch (error: Throwable) {
+                    false
+                }
+                if (deleted) {
+                    CleanupOutcome.DELETED
+                } else {
+                    when (inspectOutput(entry).status) {
+                        ProviderObjectStatus.ABSENT -> CleanupOutcome.ALREADY_ABSENT
+                        else -> CleanupOutcome.RETRY_REQUIRED
+                    }
                 }
             }
-            true
-        } ?: false
-    }.getOrDefault(false)
-
-    fun finalizeSaf(uri: Uri, finalName: String): Uri {
-        val renamed = ops.renameSafDocument(uri, finalName)
-        val target = renamed ?: uri
-        if (ops.fileExists(target)) {
-            return target
         }
-        return uri
     }
+
+    /**
+     * Checks and verifies MediaStore row finalization.
+     * Updates DISPLAY_NAME and clears IS_PENDING (on API 29+).
+     * Returns true ONLY when the resulting row is confirmed finalized.
+     */
+    fun finalizeMediaStore(uri: Uri, finalName: String): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, finalName)
+            if (sdkInt >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }
+        }
+        runCatching { ops.updateMediaStore(uri, values, displayName = finalName, isPending = false) }
+        return verifyMediaStoreFinalized(uri, finalName)
+    }
+
+    fun verifyMediaStoreFinalized(uri: Uri, expectedFinalName: String): Boolean =
+        inspectMediaStoreOutput(uri, expectedFinalName).status == ProviderObjectStatus.VERIFIED
+
+    fun finalizeSaf(uri: Uri, finalName: String): Uri =
+        ops.renameSafDocument(uri, finalName) ?: uri
 
     private fun publishToDownloads(
         file: File,
         entry: PublicationEntry,
     ): PublishedOutput {
         val mime = mimeType(entry.intendedFilename)
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val collection = mediaStoreCollection ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Downloads.EXTERNAL_CONTENT_URI
         } else {
             MediaStore.Files.getContentUri("external")
@@ -351,7 +594,7 @@ internal class OutputPublisher(
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, entry.pendingFilename)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (sdkInt >= Build.VERSION_CODES.Q) {
                 put(
                     MediaStore.MediaColumns.RELATIVE_PATH,
                     Environment.DIRECTORY_DOWNLOADS + "/VRKA",
@@ -377,10 +620,18 @@ internal class OutputPublisher(
                 throw java.io.IOException("MediaStore finalization failed for ${entry.intendedFilename}: row update affected 0 rows or verification failed")
             }
             activeJournal.updateFinalized(entry.transactionId)
-            return PublishedOutput(uri, bytes, file.extension)
+            return PublishedOutput(uri, bytes, file.extension, entry.transactionId)
         } catch (error: Throwable) {
-            activeJournal.markFailed(entry.transactionId, error.message.orEmpty())
-            ops.deleteUri(uri)
+            runCatching { activeJournal.markFailed(entry.transactionId, error.message.orEmpty()) }
+            val deleted = runCatching { ops.deleteUri(uri) }.getOrDefault(false)
+            if (!deleted && inspectOutput(entry.copy(providerUri = uri.toString())).status != ProviderObjectStatus.ABSENT) {
+                runCatching {
+                    activeJournal.markCleanupPending(
+                        entry.transactionId,
+                        "Could not delete partial provider output: $uri",
+                    )
+                }
+            }
             throw error
         }
     }
@@ -391,7 +642,7 @@ internal class OutputPublisher(
         shouldContinue: () -> Boolean,
         onPublished: (index: Int, total: Int) -> Unit,
     ): List<PublishedOutput> {
-        val created = mutableListOf<Uri>()
+        val created = mutableListOf<Pair<Uri, String>>()
         val currentTransactions = mutableListOf<String>()
         try {
             return files.mapIndexed { index, (file, _) ->
@@ -403,15 +654,30 @@ internal class OutputPublisher(
                     file = file,
                     entry = entry,
                 )
-                created += result.uri
+                created += result.uri to entry.transactionId
                 onPublished(index, files.size)
                 result
             }
         } catch (error: Throwable) {
             currentTransactions.forEach { txId ->
-                activeJournal.markFailed(txId, error.message.orEmpty())
+                runCatching { activeJournal.markFailed(txId, error.message.orEmpty()) }
             }
-            created.forEach { uri -> runCatching { ops.deleteUri(uri) } }
+            created.forEach { (uri, txId) ->
+                val deleted = runCatching { ops.deleteUri(uri) }.getOrDefault(false)
+                if (!deleted) {
+                    val entry = batchEntries.firstOrNull { it.transactionId == txId }
+                    val absent = entry != null &&
+                        inspectOutput(entry.copy(providerUri = uri.toString())).status == ProviderObjectStatus.ABSENT
+                    if (!absent) {
+                        runCatching {
+                            activeJournal.markCleanupPending(
+                                txId,
+                                "Could not delete partial provider output: $uri",
+                            )
+                        }
+                    }
+                }
+            }
             throw error
         }
     }
@@ -423,7 +689,7 @@ internal class OutputPublisher(
         shouldContinue: () -> Boolean,
         onPublished: (index: Int, total: Int) -> Unit,
     ): List<PublishedOutput> {
-        val created = mutableListOf<Uri>()
+        val created = mutableListOf<Pair<Uri, String>>()
         val currentTransactions = mutableListOf<String>()
         try {
             return files.mapIndexed { index, (file, _) ->
@@ -434,7 +700,7 @@ internal class OutputPublisher(
                 val uri = checkNotNull(
                     ops.createSafDocument(tree, mimeType(entry.intendedFilename), entry.pendingFilename),
                 ) { "The selected folder refused the new file." }
-                created += uri
+                created += uri to entry.transactionId
                 activeJournal.updateProviderCreated(entry.transactionId, uri.toString())
 
                 val bytes = try {
@@ -442,28 +708,65 @@ internal class OutputPublisher(
                         file.inputStream().buffered().use { input -> input.copyTo(output) }
                     }
                 } catch (error: Throwable) {
-                    activeJournal.markFailed(entry.transactionId, error.message.orEmpty())
-                    ops.deleteSafDocument(uri)
+                    runCatching { activeJournal.markFailed(entry.transactionId, error.message.orEmpty()) }
+                    val deleted = runCatching { ops.deleteSafDocument(uri) }.getOrDefault(false)
+                    if (!deleted && inspectOutput(entry.copy(providerUri = uri.toString())).status != ProviderObjectStatus.ABSENT) {
+                        runCatching {
+                            activeJournal.markCleanupPending(
+                                entry.transactionId,
+                                "Could not delete partial SAF output: $uri",
+                            )
+                        }
+                    }
                     throw error
                 }
                 if (file.length() > 0L && bytes != file.length()) {
                     val mismatch = java.io.IOException("SAF output size mismatch: expected ${file.length()} bytes, wrote $bytes bytes")
-                    activeJournal.markFailed(entry.transactionId, mismatch.message.orEmpty())
-                    ops.deleteSafDocument(uri)
+                    runCatching { activeJournal.markFailed(entry.transactionId, mismatch.message.orEmpty()) }
+                    val deleted = runCatching { ops.deleteSafDocument(uri) }.getOrDefault(false)
+                    if (!deleted && inspectOutput(entry.copy(providerUri = uri.toString())).status != ProviderObjectStatus.ABSENT) {
+                        runCatching {
+                            activeJournal.markCleanupPending(
+                                entry.transactionId,
+                                "Could not delete mismatched SAF output: $uri",
+                            )
+                        }
+                    }
                     throw mismatch
                 }
                 activeJournal.updateDataCopied(entry.transactionId, bytes)
                 activeJournal.updateValidated(entry.transactionId)
                 val finalUri = finalizeSaf(uri, entry.intendedFilename)
+                val inspection = inspectSafOutput(finalUri, entry.intendedFilename, entry.pendingFilename, tree)
+                if (inspection.status != ProviderObjectStatus.VERIFIED) {
+                    throw java.io.IOException(
+                        "SAF finalization failed for ${entry.intendedFilename}: ${inspection.status.name} ${inspection.detail}",
+                    )
+                }
                 activeJournal.updateFinalized(entry.transactionId, finalUri.toString())
                 onPublished(index, files.size)
-                PublishedOutput(finalUri, bytes, file.extension)
+                PublishedOutput(finalUri, bytes, file.extension, entry.transactionId)
             }
         } catch (error: Throwable) {
             currentTransactions.forEach { txId ->
-                activeJournal.markFailed(txId, error.message.orEmpty())
+                runCatching { activeJournal.markFailed(txId, error.message.orEmpty()) }
             }
-            created.forEach { uri -> runCatching { ops.deleteSafDocument(uri) } }
+            created.forEach { (uri, txId) ->
+                val deleted = runCatching { ops.deleteSafDocument(uri) }.getOrDefault(false)
+                if (!deleted) {
+                    val entry = batchEntries.firstOrNull { it.transactionId == txId }
+                    val absent = entry != null &&
+                        inspectOutput(entry.copy(providerUri = uri.toString())).status == ProviderObjectStatus.ABSENT
+                    if (!absent) {
+                        runCatching {
+                            activeJournal.markCleanupPending(
+                                txId,
+                                "Could not delete partial SAF output: $uri",
+                            )
+                        }
+                    }
+                }
+            }
             throw error
         }
     }

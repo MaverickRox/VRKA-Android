@@ -95,4 +95,50 @@ internal object TestPgpKeys {
             output.toByteArray()
         }
     }
+
+    /**
+     * Produces a detached signature with precisely controlled issuer subpackets so tests can
+     * distinguish hashed from unhashed fingerprints and mismatched trust identities.
+     */
+    fun signWithIssuerFingerprint(
+        data: ByteArray,
+        key: KeyMaterial,
+        hashAlgorithm: Int = HashAlgorithmTags.SHA256,
+        hashedFingerprintKey: PGPPublicKey? = key.publicKey,
+        unhashedFingerprintKey: PGPPublicKey? = null,
+        issuerKeyId: Long = key.publicKey.keyID,
+    ): ByteArray {
+        ReleaseManifestVerifier.ensureBouncyCastleProvider()
+        val decoder = PGPUtil.getDecoderStream(ByteArrayInputStream(key.secretKeyRing))
+        val collection = PGPSecretKeyRingCollection(
+            decoder,
+            JcaKeyFingerprintCalculator().setProvider("BC"),
+        )
+        val secretKey = collection.asSequence()
+            .flatMap { it.secretKeys.asSequence() }
+            .first { it.isSigningKey }
+        val privateKey = secretKey.extractPrivateKey(
+            JcePBESecretKeyDecryptorBuilder().setProvider("BC").build("".toCharArray()),
+        )
+        val generator = PGPSignatureGenerator(
+            JcaPGPContentSignerBuilder(secretKey.publicKey.algorithm, hashAlgorithm).setProvider("BC"),
+        )
+        generator.init(PGPSignature.BINARY_DOCUMENT, privateKey)
+
+        val hashed = PGPSignatureSubpacketGenerator()
+        hashed.setIssuerKeyID(false, issuerKeyId)
+        hashedFingerprintKey?.let { hashed.setIssuerFingerprint(false, it) }
+        generator.setHashedSubpackets(hashed.generate())
+
+        val unhashed = PGPSignatureSubpacketGenerator()
+        unhashedFingerprintKey?.let { unhashed.setIssuerFingerprint(false, it) }
+        generator.setUnhashedSubpackets(unhashed.generate())
+
+        generator.update(data)
+        val signature = generator.generate()
+        return ByteArrayOutputStream().use { output ->
+            ArmoredOutputStream(output).use { armored -> signature.encode(armored) }
+            output.toByteArray()
+        }
+    }
 }

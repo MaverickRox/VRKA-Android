@@ -630,6 +630,7 @@ class JobStorePersistenceTest {
         var partialWrite = false
         var failReplace = false
         var atomicResult: Boolean = true
+        var silentlySkipMove = false
 
         override fun createTempFile(parent: File, prefix: String): File {
             if (failCreate) throw java.io.IOException("Could not create temporary file")
@@ -646,6 +647,7 @@ class JobStorePersistenceTest {
         }
 
         override fun atomicMove(source: File, target: File): Boolean {
+            if (silentlySkipMove) return true
             if (!atomicResult) return false
             return DefaultJobStoreFileOps.atomicMove(source, target)
         }
@@ -671,5 +673,81 @@ class JobStorePersistenceTest {
         store.save(manyJobs)
         val loaded = store.load()
         assertEquals("Store must cap saved jobs to 250", 250, loaded.size)
+    }
+
+    @Test
+    fun retentionNeverDiscardsANonterminalJobBeyondTheHistoryCap() {
+        val store = createTestStore()
+        val history = (1..300).map { i ->
+            DownloadJob(
+                id = "history-$i",
+                request = sampleRequest(),
+                state = JobState.DONE,
+                updatedAt = 10_000L + i,
+            )
+        }
+        val longRunning = DownloadJob(
+            id = "long-running",
+            request = sampleRequest(),
+            state = JobState.DOWNLOADING,
+            updatedAt = 1L,
+        )
+
+        val result = store.save(history + longRunning)
+        assertTrue(result.success)
+        val loaded = store.load(recoverActive = true)
+        assertEquals(250, loaded.size)
+        assertTrue(
+            "An active download must survive the history cap even when it is the oldest record",
+            loaded.any { it.id == "long-running" },
+        )
+    }
+
+    @Test
+    fun pinnedTerminalJobSurvivesTheHistoryCapUntilItsPublicationIsReconciled() {
+        val store = createTestStore()
+        val history = (1..300).map { i ->
+            DownloadJob(
+                id = "history-$i",
+                request = sampleRequest(),
+                state = JobState.DONE,
+                updatedAt = 10_000L + i,
+            )
+        }
+        val completing = DownloadJob(
+            id = "completing",
+            request = sampleRequest(),
+            state = JobState.DONE,
+            outputUris = listOf("content://media/external/downloads/42"),
+            updatedAt = 1L,
+        )
+
+        val result = store.save(history + completing, pinnedJobIds = setOf("completing"))
+        assertTrue(result.success)
+        val loaded = store.load().associateBy { it.id }
+        assertEquals(250, loaded.size)
+        assertEquals(
+            listOf("content://media/external/downloads/42"),
+            loaded.getValue("completing").outputUris,
+        )
+    }
+
+    @Test
+    fun saveFailsWhenTheFilesystemDoesNotActuallyReplaceTheFile() {
+        val targetFile = File(tempFolder.root, "jobs.json")
+        targetFile.writeText("""{"schemaVersion":2,"jobs":[]}""")
+        val ops = FailingOps().apply { silentlySkipMove = true }
+        val store = JobStore(targetFile, ops)
+
+        val result = store.save(
+            listOf(DownloadJob(id = "terminal", request = sampleRequest(), state = JobState.DONE)),
+            pinnedJobIds = setOf("terminal"),
+        )
+
+        assertFalse("A write that never reached the target must not report success", result.success)
+        assertTrue(
+            result.error.contains("verification", ignoreCase = true) ||
+                result.error.contains("exact", ignoreCase = true),
+        )
     }
 }

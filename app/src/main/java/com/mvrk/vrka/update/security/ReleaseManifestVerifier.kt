@@ -138,25 +138,26 @@ class ReleaseManifestVerifier(
             throw ManifestValidationException("Signature key ID 0x$sigKeyId does not match trusted key ID 0x$trustedKeyId")
         }
 
-        // Algorithm policy enforcement: strictly require SHA-256 or stronger
+        // Algorithm policy enforcement: strict SHA-256/SHA-384/SHA-512 allowlist.
         val hashAlgo = signature.hashAlgorithm
         val isAllowedHash = hashAlgo == HashAlgorithmTags.SHA256 ||
             hashAlgo == HashAlgorithmTags.SHA384 ||
-            hashAlgo == HashAlgorithmTags.SHA512 ||
-            hashAlgo == HashAlgorithmTags.SHA224
+            hashAlgo == HashAlgorithmTags.SHA512
         if (!isAllowedHash) {
             throw ManifestValidationException("Insecure hash algorithm rejected for release signature (tag: $hashAlgo)")
         }
 
         val keyAlgo = signature.keyAlgorithm
-        if (keyAlgo == PublicKeyAlgorithmTags.DSA) {
-            throw ManifestValidationException("Insecure key algorithm rejected: DSA")
+        if (keyAlgo != PublicKeyAlgorithmTags.RSA_GENERAL && keyAlgo != PublicKeyAlgorithmTags.RSA_SIGN) {
+            throw ManifestValidationException("Non-RSA signature key algorithm rejected: $keyAlgo")
         }
 
-        // Issuer fingerprint subpacket enforcement (RFC 4880bis / RFC 9580)
+        // Issuer fingerprint must be authenticated by the hashed subpacket section. An
+        // unhashed fingerprint can be rewritten by an attacker and is never trusted.
         val issuerFpSubpacket = signature.hashedSubPackets?.issuerFingerprint
-            ?: signature.unhashedSubPackets?.issuerFingerprint
-            ?: throw ManifestValidationException("Mandatory issuer fingerprint subpacket missing from release signature")
+            ?: throw ManifestValidationException(
+                "Mandatory issuer fingerprint subpacket missing from the hashed signature subpackets",
+            )
         val subpacketFp = Hex.toHexString(issuerFpSubpacket.fingerprint).uppercase()
         val trustedFp = Hex.toHexString(publicKey.fingerprint).uppercase()
         if (subpacketFp != trustedFp) {

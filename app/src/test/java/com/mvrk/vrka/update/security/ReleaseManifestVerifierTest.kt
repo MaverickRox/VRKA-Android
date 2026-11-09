@@ -216,6 +216,79 @@ class ReleaseManifestVerifierTest {
     }
 
     @Test
+    fun testSha224IsRejectedByTheStrictAllowlist() {
+        val sha224Signature = TestPgpKeys.sign(
+            data = testManifestJson.toByteArray(),
+            key = testKey,
+            hashAlgorithm = HashAlgorithmTags.SHA224,
+        )
+
+        val err = assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyDetachedSignature(
+                dataBytes = testManifestJson.toByteArray(),
+                signatureBytes = sha224Signature,
+                publicKey = testKey.publicKey,
+            )
+        }
+        assertTrue(err.message!!.contains("Insecure hash algorithm rejected"))
+    }
+
+    @Test
+    fun testSha384AndSha512AreAccepted() {
+        for (algorithm in listOf(HashAlgorithmTags.SHA384, HashAlgorithmTags.SHA512)) {
+            val signature = TestPgpKeys.sign(
+                data = testManifestJson.toByteArray(),
+                key = testKey,
+                hashAlgorithm = algorithm,
+            )
+            verifier.verifyDetachedSignature(
+                dataBytes = testManifestJson.toByteArray(),
+                signatureBytes = signature,
+                publicKey = testKey.publicKey,
+            )
+        }
+    }
+
+    @Test
+    fun testUnhashedOnlyIssuerFingerprintIsRejected() {
+        val signature = TestPgpKeys.signWithIssuerFingerprint(
+            data = testManifestJson.toByteArray(),
+            key = testKey,
+            hashedFingerprintKey = null,
+            unhashedFingerprintKey = testKey.publicKey,
+        )
+
+        val err = assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyDetachedSignature(
+                dataBytes = testManifestJson.toByteArray(),
+                signatureBytes = signature,
+                publicKey = testKey.publicKey,
+            )
+        }
+        assertTrue(err.message!!.contains("hashed signature subpackets"))
+    }
+
+    @Test
+    fun testMismatchedHashedIssuerFingerprintIsRejected() {
+        val otherKey = TestPgpKeys.generate()
+        val signature = TestPgpKeys.signWithIssuerFingerprint(
+            data = testManifestJson.toByteArray(),
+            key = testKey,
+            hashedFingerprintKey = otherKey.publicKey,
+            issuerKeyId = testKey.publicKey.keyID,
+        )
+
+        val err = assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyDetachedSignature(
+                dataBytes = testManifestJson.toByteArray(),
+                signatureBytes = signature,
+                publicKey = testKey.publicKey,
+            )
+        }
+        assertTrue(err.message!!.contains("does not match trusted key fingerprint"))
+    }
+
+    @Test
     fun testEndToEndVerifyAndParseManifestWithRealSignature() {
         val manifestBytes = testManifestJson.toByteArray()
         val sigBytes = TestPgpKeys.sign(manifestBytes, testKey)
