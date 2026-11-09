@@ -1,4 +1,47 @@
-# VRKA Android 5.1.1 — Release Notes
+# VRKA Android 5.1.2 — Release Notes
+
+> [!IMPORTANT]
+> **USERS UPGRADING FROM VRKA v5.0.2 STILL REQUIRE A ONE-TIME MANUAL UPGRADE.** The v5.0.2 client cannot repair its own updater due to the legacy filename validation defect. Download and install `VRKA-Android-v5.1.2.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) over v5.0.2 without uninstalling. Application data, queue, history, and settings are preserved.
+
+VRKA Android 5.1.2 is a critical publication durability and crash-recovery release. It eliminates the publication crash window through a durable journal, ensures atomic playlist batching, protects against incomplete storage operations, and enforces strict six-step reconciliation persistence ordering.
+
+## Highlights
+
+1. **Durable Publication Journal** — In-flight storage publication transactions are durably persisted to `PublicationJournal` before files are created in Android storage providers (`MediaStore` or `SAF`), ensuring complete crash recoverability.
+2. **Discoverable Pending Output Identities** — MediaStore and SAF objects use deterministic pending filenames (`.vrka_pending_${transactionId}_${filename}`). On process restart, orphaned objects created before URI persistence are discovered, verified, and either adopted or cleaned up without risk to unrelated files.
+3. **Atomic Playlist Batch Intent Recording** — All publication intents across multi-file playlists are prepared and persisted atomically upfront before provider creation begins. Interrupted playlist transfers fail closed, preserving completed outputs in History while preventing false completion records.
+4. **Strict Six-Step Persistence Ordering** — Reconciliation strictly verifies output file existence on disk, updates in-memory state, and confirms `JobStore` persistence *before* marking journal transactions reconciled and deleting staging data.
+5. **Corrupted Journal Safeguards** — Corrupted journals are preserved in bounded recovery snapshots (`publication_journal.corrupt-$stamp.json`, max 3) and emit diagnostic alerts, never silently treating corrupt state as empty.
+6. **SAF Rename Fallback Guarantees** — Document providers lacking `DocumentsContract.renameDocument` support are gracefully handled without data loss.
+7. **Legacy In-Flight Fail-Closed Fallback** — In-flight jobs started under older releases without journal entries fail closed safely as `FAILED` (`"Interrupted (legacy transfer without publication journal)"`) when output URIs are empty.
+8. **Preserved UI Contributions** — Comet progress glow (PR #10) and Liquid sliding navbar (PR #11) remain fully active and unchanged.
+
+## Scope boundaries
+
+- No new product features or unrelated UI redesigns.
+- yt-dlp remains the extraction engine; FFmpeg remains the processing engine.
+- Package ID (`com.mvrk.vrka`) and production signing identity are unchanged.
+- While passive stream discovery and uBlock filtering in GeckoView were verified, full end-to-end media transfer on anti-bot sites remains an unverified platform boundary.
+
+## Release Verification
+
+- **Production APK:** `VRKA-Android-v5.1.2.apk`
+- **Package ID:** `com.mvrk.vrka`
+- **Version Code:** `50102`
+- **Version Name:** `5.1.2`
+- **File Size:** `157,243,017` bytes (149.96 MB)
+- **SHA-256:** `3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a`
+- **SHA-1:** `81ff63b8b0fd6ff7125d0e1c7b5b689d35a0e87c`
+- **Signing Scheme:** APK Signature Scheme v2 (RSA 4096-bit)
+- **Signing Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
+- **Signing Certificate SHA-1:** `7758980F74A503684BF1A187994E447823D19D7C`
+- **OpenPGP Trust Anchor:** Key ID `0xD519380BEBA1B9F7`, Fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`
+- **Automated Tests:** 747 JVM unit tests across 73 suites (0 failures, 0 errors, 0 skipped), lint passed (0 errors/fatal).
+
+---
+
+# Historical: VRKA Android 5.1.1
+
 
 > [!IMPORTANT]
 > **USERS UPGRADING FROM VRKA v5.0.2 STILL REQUIRE A ONE-TIME MANUAL UPGRADE.** The v5.0.2 client cannot repair its own updater due to the legacy filename validation defect. Download and install `VRKA-Android-v5.1.1.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.1) over v5.0.2 without uninstalling. Application data, queue, history, and settings are preserved.

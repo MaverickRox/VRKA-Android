@@ -1,6 +1,6 @@
-# VRKA Android 5.1.1 — Current Production Architecture
+# VRKA Android 5.1.2 — Current Production Architecture
 
-This document defines the architecture of the official, published VRKA Android v5.1.1 release (commit f656e5c4e3a145847faa52186b6aa21625447a4, tag 5.1.1) and clearly distinguishes it from subsequent post-v5.1.1 source-level hardening on main. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Subsystem verification and physical device validation evidence are authoritatively documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
+This document defines the architecture of the official, published VRKA Android v5.1.2 release (tag v5.1.2) and documents the production architectural pillars and crash-recovery hardening. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Subsystem verification and physical device validation evidence are authoritatively documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
 ---
 
@@ -8,7 +8,7 @@ This document defines the architecture of the official, published VRKA Android v
 
 VRKA Android is a native Android media downloader and passive web stream discovery application built with **Jetpack Compose** and **Kotlin Coroutines**. It operates strictly on-device with zero application telemetry or cloud tracking.
 
-The 5.1.0 release established the following core architectural pillars, retained by 5.1.1:
+The 5.1.0 and 5.1.1 releases established the following core architectural pillars, retained by 5.1.2:
 - **Primary Transfer Engine**: `yt-dlp` is the primary and sole transfer engine for both direct downloads and Browser Fallback acquisitions.
 - **Browser Fallback Engine**: Mozilla `GeckoView` operates in a task-scoped private session to load protected pages and observe media streams.
 - **Media Candidate Discovery**: An internal first-party `VRKA Media Detector` WebExtension passively intercepts media requests and DOM elements, passing candidates to native Kotlin via `GeckoMediaBridge`.
@@ -22,7 +22,7 @@ The 5.1.0 release established the following core architectural pillars, retained
 
 ## 2. Interface Localization & Multilingual Architecture
 
-VRKA Android 5.1.1 retains complete interface localization across **14 distinct languages** plus **System Default**:
+VRKA Android 5.1.2 retains complete interface localization across **14 distinct languages** plus **System Default**:
 
 | Locale Tag | Language | Native Name | Layout Direction | Resource Directory |
 |---|---|---|---|---|
@@ -159,7 +159,7 @@ When direct `yt-dlp` extraction fails due to anti-bot challenges (e.g., Cloudfla
 
 ## 6. Application Self-Updater Subsystem
 
-VRKA Android 5.1.1 retains the independent, cryptographically authenticated self-updater targeting official GitHub releases.
+VRKA Android 5.1.2 retains the independent, cryptographically authenticated self-updater targeting official GitHub releases.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -230,9 +230,9 @@ The UI is built with **Jetpack Compose** using design tokens (`VrkaTokens`):
 
 ---
 
-## 9. Post-v5.1.1 Source-Level Hardening on main
+## 9. v5.1.2 Production Hardening: Publication Crash Recovery & Consistency
 
-The official published release binary (VRKA-Android-v5.1.1.apk) is fixed and immutable. Subsequent engineering work committed to the main branch introduces unreleased reliability and crash-recovery hardening:
+The official published release binary (VRKA-Android-v5.1.2.apk) incorporates critical reliability and crash-recovery hardening:
 
 1. **Durable Per-Output Publication Journal (PublicationJournal.kt)**:
    - Persists a durable publication intent before calling ContentResolver or SAF document creation.

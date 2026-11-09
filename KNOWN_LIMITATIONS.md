@@ -1,7 +1,7 @@
-# Known Limitations — VRKA Android 5.1.1
+# Known Limitations — VRKA Android 5.1.2
 
 > [!IMPORTANT]
-> **v5.0.2 USERS STILL NEED THE ONE-TIME MANUAL UPGRADE.** The v5.0.2 client has an `APK verification failed: APK filename does not match the expected release` check that cannot update itself. Download and install `VRKA-Android-v5.1.1.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.1) over v5.0.2 without uninstalling. Application data and settings are preserved. This warning remains until affected users have a published client that can update normally.
+> **v5.0.2 USERS STILL NEED THE ONE-TIME MANUAL UPGRADE.** The v5.0.2 client has an `APK verification failed: APK filename does not match the expected release` check that cannot update itself. Download and install `VRKA-Android-v5.1.2.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) over v5.0.2 without uninstalling. Application data and settings are preserved. This warning remains until affected users have a published client that can update normally.
 
 - The app and packaged native media libraries target `arm64-v8a`; other ABIs are not shipped.
 - VRKA does not bypass DRM, login, payment, CAPTCHA, consent, or other access controls. Site changes may require a yt-dlp or app update.

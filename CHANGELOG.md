@@ -2,6 +2,26 @@
 
 All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
 
+## [5.1.2] - 2026-11-09
+
+> [!IMPORTANT]
+> **USERS UPGRADING FROM VRKA v5.0.2 STILL REQUIRE A ONE-TIME MANUAL INSTALL.** The v5.0.2 in-app updater cannot repair the code already installed in that old client. Download and install `VRKA-Android-v5.1.2.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) over v5.0.2 without uninstalling. Application data and settings are preserved.
+
+### Publication crash recovery & storage hardening
+- **Durable Publication Journal & Crash Reconciliation**: Introduced `PublicationJournal` with persistent transaction records to eliminate the crash window between provider file publication and terminal `JobStore` persistence. If the process is terminated mid-publication, restart reconciliation detects and adopts completed outputs into History or cleans up incomplete provider objects.
+- **Discoverable Pending Output Identity**: MediaStore and SAF objects use a deterministic recoverable pending filename (`.vrka_pending_${transactionId}_${filename}`) established before creation. Startup recovery discovers orphaned provider rows created before URI persistence, ensuring zero leaked ghost files without affecting unrelated user documents.
+- **Atomic Playlist Batch Intent Recording**: All output intents across multi-file playlist downloads are prepared and persisted atomically upfront before provider creation begins. Interrupted playlist transfers fail closed (`FAILED`, `INTERRUPTED_DOWNLOAD_ERROR`, detail: `"Interrupted during publication (X of Y files published)"`), preserving completed file URIs in History while safely removing partial outputs. Incomplete playlists are never marked `DONE`.
+- **Strict Six-Step Persistence Ordering**: Reconciliation strictly enforces: (1) verify provider output existence, (2) update in-memory job state, (3) persist terminal state to `JobStore`, (4) verify disk persistence succeeded, (5) mark journal transactions `RECONCILED`, and (6) remove staging files. If `JobStore` persistence fails, journal entries and staging are preserved for subsequent retry.
+- **Corrupted Publication Journal Protection**: Journal states are explicitly classified (`MISSING`, `OK`, `EMPTY`, `CORRUPT`, `READ_FAILED`). Corrupted journals trigger automatic preservation in bounded recovery snapshots (`publication_journal.corrupt-$stamp.json`, max 3) and emit diagnostics, preventing unverified state mutations or accidental file deletions.
+- **SAF Rename Fallback Guarantees**: SAF document finalization gracefully handles document providers lacking `DocumentsContract.renameDocument` support, cleanly preserving the document at its created URI to guarantee zero data loss.
+- **Legacy In-Flight Job Fallback**: Persisted in-flight jobs from earlier versions without journal records fail closed safely as `FAILED` (`"Interrupted (legacy transfer without publication journal)"`) when output URIs are empty.
+
+### Validation
+- 747 JVM unit tests across 73 suites pass with 0 failures, 0 errors, and 0 skipped, including 14 deterministic publication-failure boundaries.
+- Android Test and Release Kotlin sources compile cleanly without errors.
+- Release lint reports 0 errors and 0 fatal findings across the codebase.
+- Production release APK (`VRKA-Android-v5.1.2.apk`) built and verified: APK Signature Scheme v2 (RSA 4096-bit, SHA-256 `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`).
+
 ## [5.1.1] - 2026-11-08
 
 > [!IMPORTANT]
