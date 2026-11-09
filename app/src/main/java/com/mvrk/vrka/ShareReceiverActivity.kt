@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -112,7 +113,12 @@ class ShareReceiverActivity : ComponentActivity() {
         ) {
             val download = pendingDownload
             pendingDownload = null
-            if (download != null) manager.enqueue(download.request, download.estimate)
+            if (download != null) {
+                val result = manager.enqueue(download.request, download.estimate)
+                if (result is EnqueueResult.Rejected) {
+                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                }
+            }
             finishAndRemoveTask()
         }
 
@@ -142,7 +148,10 @@ class ShareReceiverActivity : ComponentActivity() {
                                 pendingDownload = PendingDownload(downloadRequest, estimate)
                                 notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             } else {
-                                manager.enqueue(downloadRequest, estimate)
+                                val result = manager.enqueue(downloadRequest, estimate)
+                                if (result is EnqueueResult.Rejected) {
+                                    Toast.makeText(this@ShareReceiverActivity, result.message, Toast.LENGTH_LONG).show()
+                                }
                             }
                         },
                         onDismiss = {

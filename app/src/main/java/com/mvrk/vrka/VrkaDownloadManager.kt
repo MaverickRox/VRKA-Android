@@ -10,6 +10,21 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import com.mvrk.vrka.engine.*
+import com.mvrk.vrka.ContentVerification
+import com.mvrk.vrka.PublicationEntry
+import com.mvrk.vrka.PublicationPhase
+import com.mvrk.vrka.PublicationProviderType
+import com.mvrk.vrka.UriLookupResult
+import com.mvrk.vrka.ProviderObjectStatus
+import com.mvrk.vrka.storage.CleanupStore
+import com.mvrk.vrka.storage.JobPersistence
+import com.mvrk.vrka.storage.RoomStorageRepository
+import com.mvrk.vrka.storage.StorageReadiness
+import com.mvrk.vrka.storage.StorageRuntime
+import com.mvrk.vrka.storage.StorageStatus
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingSource
 import com.mvrk.vrka.update.AppUpdateManager
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -44,6 +59,11 @@ data class HistoryDeletionResult(
     val failedFilesCount: Int = 0,
 )
 
+sealed interface EnqueueResult {
+    data class Accepted(val jobId: String) : EnqueueResult
+    data class Rejected(val reason: String, val message: String) : EnqueueResult
+}
+
 data class ActiveFallbackState(
     val jobId: String,
     val job: DownloadJob,
@@ -62,10 +82,12 @@ class VrkaDownloadManager internal constructor(
     private val context: Context,
     val settingsRepository: SettingsRepository,
     private val scope: CoroutineScope,
-    customStore: JobStore? = null,
+    customStore: JobPersistence? = null,
     customPublisher: OutputPublisher? = null,
+    customRepository: RoomStorageRepository? = null,
+    private val storageRuntime: StorageRuntime? = null,
     customStagingRoot: File? = null,
-    customStagingCleanupStore: StagingCleanupStore? = null,
+    customStagingCleanupStore: CleanupStore? = null,
     private val stagingDelete: (File) -> Boolean = { it.deleteRecursively() },
     autoRecoverOnInit: Boolean = true,
 ) {
@@ -90,23 +112,60 @@ class VrkaDownloadManager internal constructor(
     private val activeEngineTokens = ConcurrentHashMap<String, EngineCancellationToken>()
     private val activeMediaProcesses = ConcurrentHashMap<String, Process>()
     private val initialized = AtomicBoolean(false)
-    private val store = customStore ?: JobStore(context)
+    private val repository = customRepository
+    private val store = customStore ?: repository?.jobPersistence ?: JobStore(context)
     /** Set when a user-initiated transfer job is pending or has already started this process. */
     private val transferJobWasScheduled =
         DownloadTransferRuntime.wasTransferJobInvoked || DownloadTransferScheduler.isScheduled(context)
-    internal val publisher = customPublisher ?: OutputPublisher(context, settingsRepository)
+    internal val publisher = customPublisher ?: OutputPublisher(
+        context = context,
+        settingsRepository = settingsRepository,
+        journal = repository?.publicationStore,
+    )
     private val stagingRoot: File by lazy { customStagingRoot ?: File(context.getExternalFilesDir(null), "staging") }
-    private val stagingCleanupStore = customStagingCleanupStore
+    private val stagingCleanupStore: CleanupStore = customStagingCleanupStore
+        ?: repository?.cleanupStore
         ?: StagingCleanupStore(File(context.filesDir, "staging_cleanup.json"))
+    internal val storageStatus: StateFlow<StorageStatus> = storageRuntime?.status
+        ?: MutableStateFlow(StorageStatus(StorageReadiness.READY)).asStateFlow()
+
+    internal suspend fun awaitStorageReady(): StorageStatus =
+        storageRuntime?.awaitReady() ?: StorageStatus(StorageReadiness.READY)
+
+    internal fun historyPager(): Pager<Int, DownloadJob>? {
+        val repo = repository ?: return null
+        return Pager(
+            config = PagingConfig(pageSize = 30, prefetchDistance = 10, enablePlaceholders = false),
+            pagingSourceFactory = { repo.historyPagingSource() },
+        )
+    }
+
+    internal suspend fun allTerminalJobIds(): List<String> =
+        repository?.terminalJobIds() ?: _jobs.value.filter { it.state.isTerminal }.map { it.id }
+
+    internal suspend fun terminalJobCount(): Int =
+        repository?.terminalCount() ?: _jobs.value.count { it.state.isTerminal }
+
+    private suspend fun refreshCacheFromRepository() {
+        val repo = repository ?: return
+        repo.loadCache()
+        synchronized(_jobs) {
+            _jobs.value = repo.cachedJobs().sortedByDescending(DownloadJob::createdAt)
+        }
+    }
     /** Serializes snapshot selection, retention, write, and durable verification. */
     private val persistenceLock = Any()
     private val speedPattern = Regex("""\bat\s+([^\s]+/s)""", RegexOption.IGNORE_CASE)
 
     private val _jobs = MutableStateFlow<List<DownloadJob>>(
-        runCatching {
-            store.load(recoverActive = transferJobWasScheduled)
-                .sortedByDescending(DownloadJob::createdAt)
-        }.getOrDefault(emptyList())
+        if (repository != null) {
+            repository.cachedJobs().sortedByDescending(DownloadJob::createdAt)
+        } else {
+            runCatching {
+                store.load(recoverActive = transferJobWasScheduled)
+                    .sortedByDescending(DownloadJob::createdAt)
+            }.getOrDefault(emptyList())
+        }
     )
     val jobs: StateFlow<List<DownloadJob>> = _jobs.asStateFlow()
 
@@ -180,7 +239,28 @@ class VrkaDownloadManager internal constructor(
             metadataRepository.clear()
         }
         scope.launch(Dispatchers.IO) {
-            if (autoRecoverOnInit) {
+            if (storageRuntime != null) {
+                val status = storageRuntime.awaitReady()
+                if (status.readiness == StorageReadiness.READY) {
+                    repository?.loadCache()
+                    synchronized(_jobs) {
+                        _jobs.value = repository?.cachedJobs()
+                            ?.sortedByDescending(DownloadJob::createdAt)
+                            .orEmpty()
+                    }
+                    if (autoRecoverOnInit) {
+                        reconcilePublicationJournalOnStartup()
+                        resumeInterruptedWorkIfNeeded()
+                        reportStoreLoadStatus(store.lastLoadResult)
+                    }
+                } else {
+                    reportStoreIssue(
+                        stage = "Storage initialization",
+                        summary = "Storage is unavailable",
+                        detail = status.message.ifBlank { status.readiness.name },
+                    )
+                }
+            } else if (autoRecoverOnInit) {
                 val initial = runCatching {
                     store.load(recoverActive = transferJobWasScheduled)
                         .sortedByDescending(DownloadJob::createdAt)
@@ -436,25 +516,80 @@ class VrkaDownloadManager internal constructor(
                 }
             }
 
-            val inspection = publisher.inspectOutput(entry)
+            var inspection = publisher.inspectOutput(entry)
+            if (entry.providerType == PublicationProviderType.SAF &&
+                (inspection.status == ProviderObjectStatus.ABSENT ||
+                    inspection.status == ProviderObjectStatus.UNKNOWN)
+            ) {
+                when (val rediscovered = recoverStaleSafUri(entry)) {
+                    is RecoveredSafUri.Adopted -> {
+                        entry = rediscovered.entry
+                        inspection = publisher.inspectOutput(entry)
+                    }
+                    RecoveredSafUri.Unknown,
+                    RecoveredSafUri.Unresolved,
+                    -> {
+                        unresolved += entry.transactionId
+                        continue
+                    }
+                    RecoveredSafUri.NotApplicable -> Unit
+                }
+            }
             when (inspection.status) {
-                    ProviderObjectStatus.VERIFIED -> {
-                        val finalized = if (entry.publicationPhase == PublicationPhase.FINALIZED ||
-                            entry.publicationPhase == PublicationPhase.RECORDED
-                        ) {
-                            entry
-                        } else {
-                            persistFinalizedEntry(entry, entry.providerUri!!)
+                ProviderObjectStatus.VERIFIED -> {
+                        val providerUri = entry.providerUri
+                        val tree = runCatching { Uri.parse(entry.destinationIdentity) }.getOrNull()
+                        val unique = entry.providerType != PublicationProviderType.SAF ||
+                            tree == null ||
+                            publisher.safFinalIdentityIsUnique(entry, Uri.parse(providerUri!!))
+                        val content = if (providerUri == null) ContentVerification.UNKNOWN else {
+                            publisher.verifyProviderContent(entry, Uri.parse(providerUri))
                         }
-                        if (finalized == null) {
-                            unresolved += entry.transactionId
-                        } else {
-                            completed[entry.transactionId] = finalized
-                            reconciled += entry.transactionId
+                        when {
+                            !unique || content == ContentVerification.UNKNOWN -> {
+                                unresolved += entry.transactionId
+                            }
+                            content == ContentVerification.MISMATCH -> {
+                                unresolved += entry.transactionId
+                                missingCurrentOutput = true
+                            }
+                            else -> {
+                                val finalized = if (entry.publicationPhase == PublicationPhase.FINALIZED ||
+                                    entry.publicationPhase == PublicationPhase.RECORDED
+                                ) {
+                                    entry
+                                } else {
+                                    persistFinalizedEntry(entry, entry.providerUri!!)
+                                }
+                                if (finalized == null) {
+                                    unresolved += entry.transactionId
+                                } else {
+                                    completed[entry.transactionId] = finalized
+                                    reconciled += entry.transactionId
+                                }
+                            }
                         }
                     }
                     ProviderObjectStatus.PENDING -> {
-                        if (entry.copiedBytes == entry.expectedSizeBytes) {
+                        val providerSize = runCatching {
+                            publisher.getFileSize(entry.providerUri!!)
+                        }.getOrDefault(-1L)
+                        val copyComplete = if (providerSize >= 0L) {
+                            providerSize == entry.expectedSizeBytes
+                        } else {
+                            entry.copiedBytes == entry.expectedSizeBytes
+                        }
+                        if (copyComplete) {
+                            val content = publisher.verifyProviderContent(entry, Uri.parse(entry.providerUri!!))
+                            if (content == ContentVerification.UNKNOWN) {
+                                unresolved += entry.transactionId
+                                continue
+                            }
+                            if (content == ContentVerification.MISMATCH) {
+                                unresolved += entry.transactionId
+                                missingCurrentOutput = true
+                                continue
+                            }
                             val finalization = publisher.finalizeEntry(entry)
                             when (finalization.inspection.status) {
                                 ProviderObjectStatus.VERIFIED -> {
@@ -480,6 +615,10 @@ class VrkaDownloadManager internal constructor(
                                     unresolved += entry.transactionId
                                 }
                             }
+                        } else if (providerSize < 0L) {
+                            // The provider cannot report its size, so a lagging journal
+                            // cannot prove that the copy is incomplete. Preserve it.
+                            unresolved += entry.transactionId
                         } else if (cleanupIncompleteEntry(entry)) {
                             reconciled += entry.transactionId
                         } else {
@@ -586,6 +725,40 @@ class VrkaDownloadManager internal constructor(
         return JobRecoveryPlan(updated, reconciled, unresolved)
     }
 
+    private sealed interface RecoveredSafUri {
+        data class Adopted(val entry: PublicationEntry) : RecoveredSafUri
+        data object NotApplicable : RecoveredSafUri
+        data object Unknown : RecoveredSafUri
+        data object Unresolved : RecoveredSafUri
+    }
+
+    /**
+     * `renameDocument()` may return a replacement URI and invalidate the old one. When the
+     * journaled URI no longer resolves, rediscover exactly one document carrying this
+     * transaction's final-name marker, verify its content against staging, and continue.
+     */
+    private fun recoverStaleSafUri(entry: PublicationEntry): RecoveredSafUri {
+        if (entry.providerType != PublicationProviderType.SAF) return RecoveredSafUri.NotApplicable
+        val tree = runCatching { Uri.parse(entry.destinationIdentity) }.getOrNull()
+            ?: return RecoveredSafUri.Unresolved
+        return when (val found = publisher.findSafUriByName(tree, entry.intendedFilename)) {
+            is UriLookupResult.Found -> {
+                when (publisher.verifyProviderContent(entry, found.uri)) {
+                    ContentVerification.HASH_VERIFIED,
+                    ContentVerification.SIZE_VERIFIED,
+                    -> {
+                        val adopted = adoptDiscoveredEntry(entry, found.uri.toString())
+                        if (adopted == null) RecoveredSafUri.Unresolved else RecoveredSafUri.Adopted(adopted)
+                    }
+                    ContentVerification.MISMATCH -> RecoveredSafUri.Unresolved
+                    ContentVerification.UNKNOWN -> RecoveredSafUri.Unknown
+                }
+            }
+            UriLookupResult.DefinitelyAbsent -> RecoveredSafUri.NotApplicable
+            is UriLookupResult.Unknown -> RecoveredSafUri.Unknown
+        }
+    }
+
     private fun resolveHistoricalEntry(entry: PublicationEntry): Boolean {
         var working = entry
         if (working.providerUri == null) {
@@ -600,14 +773,37 @@ class VrkaDownloadManager internal constructor(
                 is UriLookupResult.Unknown -> return false
             }
         }
-        return when (publisher.inspectOutput(working).status) {
+        var inspection = publisher.inspectOutput(working)
+        if (working.providerUri != null &&
+            (inspection.status == ProviderObjectStatus.ABSENT ||
+                inspection.status == ProviderObjectStatus.UNKNOWN)
+        ) {
+            when (val rediscovered = recoverStaleSafUri(working)) {
+                is RecoveredSafUri.Adopted -> {
+                    working = rediscovered.entry
+                    inspection = publisher.inspectOutput(working)
+                }
+                RecoveredSafUri.Unknown,
+                RecoveredSafUri.Unresolved,
+                -> return false
+                RecoveredSafUri.NotApplicable -> Unit
+            }
+        }
+        return when (inspection.status) {
             ProviderObjectStatus.VERIFIED -> {
+                val providerUri = working.providerUri
+                    ?: return false
+                val unique = working.providerType != PublicationProviderType.SAF ||
+                    publisher.safFinalIdentityIsUnique(working, Uri.parse(providerUri))
+                val content = publisher.verifyProviderContent(working, Uri.parse(providerUri))
+                if (!unique || content == ContentVerification.UNKNOWN) return false
+                if (content == ContentVerification.MISMATCH) return false
                 val finalized = if (working.publicationPhase == PublicationPhase.FINALIZED ||
                     working.publicationPhase == PublicationPhase.RECORDED
                 ) {
                     working
                 } else {
-                    persistFinalizedEntry(working, working.providerUri!!)
+                    persistFinalizedEntry(working, providerUri)
                 }
                 // A previous attempt's finalized file is preserved; only its journal
                 // transaction is retired. No unrelated or user-visible file is deleted.
@@ -627,18 +823,27 @@ class VrkaDownloadManager internal constructor(
     private fun lookupPendingObject(entry: PublicationEntry): UriLookupResult =
         when (entry.providerType) {
             PublicationProviderType.MEDIA_STORE -> publisher.findPendingMediaStoreUri(entry.pendingFilename)
-            PublicationProviderType.SAF -> runCatching { Uri.parse(entry.destinationIdentity) }
-                .getOrNull()
-                ?.let { tree -> publisher.findPendingSafUri(tree, entry.pendingFilename) }
-                ?: UriLookupResult.Unknown("Invalid SAF destination identity")
+            PublicationProviderType.SAF -> {
+                val tree = runCatching { Uri.parse(entry.destinationIdentity) }.getOrNull()
+                    ?: return UriLookupResult.Unknown("Invalid SAF destination identity")
+                when (val pending = publisher.findPendingSafUri(tree, entry.pendingFilename)) {
+                    is UriLookupResult.Found -> pending
+                    is UriLookupResult.Unknown -> pending
+                    UriLookupResult.DefinitelyAbsent -> publisher.findSafUriByName(tree, entry.intendedFilename)
+                }
+            }
         }
 
     private fun adoptDiscoveredEntry(entry: PublicationEntry, providerUri: String): PublicationEntry? =
         runCatching {
-            publisher.activeJournal.updateProviderCreated(entry.transactionId, providerUri)
+            publisher.activeJournal.updateProviderUri(entry.transactionId, providerUri)
             entry.copy(
                 providerUri = providerUri,
-                publicationPhase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+                publicationPhase = if (entry.publicationPhase == PublicationPhase.INTENT_RECORDED) {
+                    PublicationPhase.PROVIDER_OBJECT_CREATED
+                } else {
+                    entry.publicationPhase
+                },
             )
         }.getOrNull()
 
@@ -816,13 +1021,37 @@ class VrkaDownloadManager internal constructor(
         }
     }
 
-    fun enqueue(request: DownloadRequest, estimate: SizeEstimate? = null): String {
-        require(isHttpUrl(request.url)) { "Enter a valid http or https URL." }
+    fun enqueue(request: DownloadRequest, estimate: SizeEstimate? = null): EnqueueResult {
+        if (!isHttpUrl(request.url)) {
+            return EnqueueResult.Rejected("invalid_url", "Enter a valid http or https URL.")
+        }
+        if (repository != null && storageStatus.value.readiness != StorageReadiness.READY) {
+            return EnqueueResult.Rejected(
+                "storage_not_ready",
+                "Storage is still initializing. Try again in a moment.",
+            )
+        }
         val settings = settingsRepository.settings.value
         val selectedTemplate = if (settings.customCommandMode) {
             settings.customCommandTemplates.firstOrNull { it.id == settings.selectedCustomCommandTemplateId }
-                ?: error("Select a valid yt-dlp command template in Settings.")
+                ?: return EnqueueResult.Rejected(
+                    "template_missing",
+                    "Select a valid yt-dlp command template in Settings.",
+                )
         } else null
+        val activeJobs = _jobs.value.count { !it.state.isTerminal }
+        if (activeJobs >= MAX_ADMITTED_JOBS) {
+            return EnqueueResult.Rejected(
+                "queue_capacity",
+                "The queue is full (${MAX_ADMITTED_JOBS} active or queued jobs). Finish or remove a job first.",
+            )
+        }
+        if (runCatching { context.filesDir.usableSpace }.getOrDefault(Long.MAX_VALUE) < MIN_FREE_BYTES) {
+            return EnqueueResult.Rejected(
+                "storage_full",
+                "There is not enough free storage to safely add another download.",
+            )
+        }
         val queuedRequest = request.copy(
             h264CompatibilityMode = settings.h264CompatibilityMode,
             commandTemplateId = selectedTemplate?.id,
@@ -837,9 +1066,16 @@ class VrkaDownloadManager internal constructor(
             estimatedTotalBytes = estimate?.bytes?.takeIf { it > 0L },
             estimatedSizeAccuracy = estimate?.kind ?: SizeEstimateKind.UNAVAILABLE,
         )
-        mutate(persist = true) { listOf(job) + it }
+        mutate(persist = false) { listOf(job) + it }
+        if (!persistJobsNow(setOf(job.id))) {
+            mutate(persist = false) { jobs -> jobs.filterNot { it.id == id } }
+            return EnqueueResult.Rejected(
+                "storage_write_failed",
+                "The download could not be durably saved. No job was added.",
+            )
+        }
         admitToQueue(id)
-        return id
+        return EnqueueResult.Accepted(id)
     }
 
     fun retry(jobId: String): String? {
@@ -955,7 +1191,12 @@ class VrkaDownloadManager internal constructor(
         if (!job.state.isTerminal) return
         scope.launch(Dispatchers.IO) {
             diagnosticStore.clearUrlsForJob(jobId)
-            mutate(persist = true) { jobs -> jobs.filterNot { it.id == jobId } }
+            if (repository != null) {
+                repository.deleteJobs(listOf(jobId))
+                refreshCacheFromRepository()
+            } else {
+                mutate(persist = true) { jobs -> jobs.filterNot { it.id == jobId } }
+            }
         }
     }
 
@@ -969,9 +1210,16 @@ class VrkaDownloadManager internal constructor(
             if (success) deletedFiles++ else failedFiles++
         }
         diagnosticStore.clearUrlsForJob(jobId)
-        mutate(persist = true) { jobs -> jobs.filterNot { it.id == jobId } }
+        val recordDeleted = if (repository != null) {
+            val ok = repository.deleteJobs(listOf(jobId))
+            refreshCacheFromRepository()
+            ok
+        } else {
+            mutate(persist = true) { jobs -> jobs.filterNot { it.id == jobId } }
+            true
+        }
         return HistoryDeletionResult(
-            deletedRecordsCount = 1,
+            deletedRecordsCount = if (recordDeleted) 1 else 0,
             deletedFilesCount = deletedFiles,
             failedFilesCount = failedFiles,
         )
@@ -981,8 +1229,13 @@ class VrkaDownloadManager internal constructor(
         val targetIds = jobIds.toSet()
         scope.launch(Dispatchers.IO) {
             targetIds.forEach { diagnosticStore.clearUrlsForJob(it) }
-            mutate(persist = true) { jobs ->
-                jobs.filterNot { it.id in targetIds && it.state.isTerminal }
+            if (repository != null) {
+                repository.deleteJobs(targetIds)
+                refreshCacheFromRepository()
+            } else {
+                mutate(persist = true) { jobs ->
+                    jobs.filterNot { it.id in targetIds && it.state.isTerminal }
+                }
             }
         }
     }
@@ -999,11 +1252,18 @@ class VrkaDownloadManager internal constructor(
             }
         }
         targetIds.forEach { diagnosticStore.clearUrlsForJob(it) }
-        mutate(persist = true) { jobs ->
-            jobs.filterNot { it.id in targetIds && it.state.isTerminal }
+        val recordsDeleted = if (repository != null) {
+            val ok = repository.deleteJobs(targetIds)
+            refreshCacheFromRepository()
+            if (ok) targetJobs.size else 0
+        } else {
+            mutate(persist = true) { jobs ->
+                jobs.filterNot { it.id in targetIds && it.state.isTerminal }
+            }
+            targetJobs.size
         }
         return HistoryDeletionResult(
-            deletedRecordsCount = targetJobs.size,
+            deletedRecordsCount = recordsDeleted,
             deletedFilesCount = deletedFiles,
             failedFilesCount = failedFiles,
         )
@@ -1022,11 +1282,18 @@ class VrkaDownloadManager internal constructor(
             }
         }
         targetJobs.forEach { diagnosticStore.clearUrlsForJob(it.id) }
-        mutate(persist = true) { jobs ->
-            jobs.filterNot { it.state.isTerminal }
+        val recordsDeleted = if (repository != null) {
+            val ok = repository.deleteJobs(targetJobs.map { it.id })
+            refreshCacheFromRepository()
+            if (ok) targetJobs.size else 0
+        } else {
+            mutate(persist = true) { jobs ->
+                jobs.filterNot { it.state.isTerminal }
+            }
+            targetJobs.size
         }
         return HistoryDeletionResult(
-            deletedRecordsCount = targetJobs.size,
+            deletedRecordsCount = recordsDeleted,
             deletedFilesCount = deletedFiles,
             failedFilesCount = failedFiles,
         )
@@ -1038,8 +1305,14 @@ class VrkaDownloadManager internal constructor(
 
     fun clearFinished() {
         scope.launch(Dispatchers.IO) {
-            _jobs.value.filter { it.state.isTerminal }.forEach { diagnosticStore.clearUrlsForJob(it.id) }
-            mutate(persist = true) { list -> list.filterNot { it.state.isTerminal } }
+            val terminal = _jobs.value.filter { it.state.isTerminal }
+            terminal.forEach { diagnosticStore.clearUrlsForJob(it.id) }
+            if (repository != null) {
+                repository.deleteJobs(terminal.map { it.id })
+                refreshCacheFromRepository()
+            } else {
+                mutate(persist = true) { list -> list.filterNot { it.state.isTerminal } }
+            }
         }
     }
 
@@ -1163,6 +1436,12 @@ class VrkaDownloadManager internal constructor(
                 summary = "Could not save queue and history",
                 detail = result.error.ifBlank { "Unknown storage error" },
             )
+        } else {
+            store.cachedJobs()?.let { persisted ->
+                synchronized(_jobs) {
+                    _jobs.value = persisted.sortedByDescending(DownloadJob::createdAt)
+                }
+            }
         }
         return result.success
     }
@@ -1893,6 +2172,7 @@ class VrkaDownloadManager internal constructor(
         val published = mutableListOf<String>()
         val publishedTransactions = mutableListOf<String>()
         val publishedMedia = mutableListOf<PublishedOutput>()
+        var publishedBatchId = ""
         val planned = outputs.mapIndexed { index, file ->
             file to preferredOutputName(job, file, index, outputs.size)
         }
@@ -1900,6 +2180,7 @@ class VrkaDownloadManager internal constructor(
             files = planned,
             destinationTreeUri = job.request.destinationTreeUri,
             jobId = job.id,
+            attemptNumber = job.attempt,
             shouldContinue = { !isCancelled(job.id) },
             onPublished = { index, total ->
                 update(
@@ -1916,6 +2197,7 @@ class VrkaDownloadManager internal constructor(
         publishedOutputs.forEach { output ->
             published += output.uri.toString()
             publishedTransactions += output.transactionId
+            if (publishedBatchId.isBlank()) publishedBatchId = output.batchId
             if (DownloadAccounting.isMediaExtension(output.extension)) {
                 publishedMedia += output
             }
@@ -1948,6 +2230,8 @@ class VrkaDownloadManager internal constructor(
             outputUris = published,
             transactionIds = publishedTransactions.toSet(),
             subtitleStatus = jobSubStatus,
+            attemptNumber = job.attempt,
+            batchId = publishedBatchId,
         )
         if (!committed) {
             Log.w("VRKA", "Terminal persistence failed for ${job.id}; journal and staging retained for recovery.")
@@ -2057,6 +2341,7 @@ class VrkaDownloadManager internal constructor(
                     val published = mutableListOf<String>()
                     val publishedTransactions = mutableListOf<String>()
                     var publishedBytes: Long? = null
+                    var publishedBatchId = ""
                     val planned = outputs.mapIndexed { index, file ->
                         file to preferredOutputName(job, file, index, outputs.size)
                     }
@@ -2064,11 +2349,13 @@ class VrkaDownloadManager internal constructor(
                         files = planned,
                         destinationTreeUri = job.request.destinationTreeUri,
                         jobId = job.id,
+                        attemptNumber = job.attempt,
                         shouldContinue = { !isCancelled(job.id) },
                     )
                     publishedOutputs.forEach { output ->
                         published += output.uri.toString()
                         publishedTransactions += output.transactionId
+                        if (publishedBatchId.isBlank()) publishedBatchId = output.batchId
                         publishedBytes = (publishedBytes ?: 0L) + output.bytes
                     }
                     val committed = commitTerminalPublishedJob(
@@ -2081,6 +2368,8 @@ class VrkaDownloadManager internal constructor(
                             ?: result.totalBytes.takeIf { it > 0L },
                         outputUris = published,
                         transactionIds = publishedTransactions.toSet(),
+                        attemptNumber = job.attempt,
+                        batchId = publishedBatchId,
                     )
                     if (!committed) {
                         Log.w("VRKA", "Terminal persistence failed for ${job.id}; journal and staging retained for recovery.")
@@ -2380,7 +2669,51 @@ class VrkaDownloadManager internal constructor(
         outputUris: List<String>,
         transactionIds: Set<String> = emptySet(),
         subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus? = null,
+        attemptNumber: Int? = null,
+        batchId: String = "",
     ): Boolean {
+        if (repository != null) {
+            val currentJob = current(jobId)
+            if (currentJob == null) {
+                Log.w("VRKA", "Job $jobId was not found for terminal commit.")
+                return false
+            }
+            val attempt = attemptNumber ?: currentJob.attempt
+            val committed = withContext(Dispatchers.IO + NonCancellable) {
+                repository.commitTerminalPublishedJob(
+                    jobId = jobId,
+                    attemptNumber = attempt,
+                    batchId = batchId,
+                    outputUris = outputUris,
+                    detail = detail,
+                    downloadedBytes = downloadedBytes,
+                    reportedTotalBytes = reportedTotalBytes,
+                    reportedTotalIsExact = reportedTotalIsExact,
+                    actualFinalFileBytes = actualFinalFileBytes,
+                    subtitleStatus = subtitleStatus,
+                )
+            }
+            if (!committed) {
+                reportStoreIssue(
+                    stage = "Queue/history persistence",
+                    summary = "Atomic terminal publication commit failed",
+                    detail = "Job $jobId was not committed as DONE with its exact output set; journal and staging remain recoverable.",
+                )
+                repository.loadCache()
+                synchronized(_jobs) {
+                    _jobs.value = repository.cachedJobs().sortedByDescending(DownloadJob::createdAt)
+                }
+                return false
+            }
+            repository.loadCache()
+            synchronized(_jobs) {
+                _jobs.value = repository.cachedJobs().sortedByDescending(DownloadJob::createdAt)
+            }
+            runCatching { diagnosticStore.clearUrlsForJob(jobId) }
+            runCatching { current(jobId)?.let { DownloadNotifications.notifyCompleted(context, it) } }
+            cleanupStaging(jobId)
+            return true
+        }
         // Step 1: In-memory mutation
         var targetJob: DownloadJob? = null
         mutate(persist = false) { list ->
@@ -2632,6 +2965,8 @@ class VrkaDownloadManager internal constructor(
 
     companion object {
         private const val MAX_ESTIMATE_DIAGNOSTICS = 64
+        private const val MAX_ADMITTED_JOBS = 1_000
+        private const val MIN_FREE_BYTES = 64L * 1024L * 1024L
         private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "webm", "mov", "m4v", "ts")
         private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "mka", "aac", "opus", "flac", "wav", "ogg")
         private val PUBLISHABLE_EXTENSIONS = VIDEO_EXTENSIONS + AUDIO_EXTENSIONS + setOf("srt", "vtt", "ass", "ssa")

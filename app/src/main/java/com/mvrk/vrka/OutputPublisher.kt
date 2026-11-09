@@ -8,9 +8,12 @@ import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import com.mvrk.vrka.storage.JobJsonCodec
+import com.mvrk.vrka.storage.PublicationStore
 import java.io.File
 import java.io.OutputStream
 import java.net.URLConnection
+import java.security.MessageDigest
 import java.util.UUID
 
 internal data class PublishedOutput(
@@ -18,6 +21,7 @@ internal data class PublishedOutput(
     val bytes: Long,
     val extension: String,
     val transactionId: String = "",
+    val batchId: String = "",
 )
 
 /**
@@ -73,6 +77,53 @@ internal data class ProviderFinalization(
     val uri: Uri,
 )
 
+internal data class ProviderReadback(
+    val size: Long,
+    val sha256: String?,
+)
+
+internal enum class ContentVerification {
+    HASH_VERIFIED,
+    SIZE_VERIFIED,
+    MISMATCH,
+    UNKNOWN,
+}
+
+internal data class SafCapabilities(
+    val canCreate: Boolean?,
+    val canEnumerate: Boolean,
+    val hasReliableDocumentIdentity: Boolean,
+    val canRename: Boolean?,
+    val canReadBack: Boolean?,
+) {
+    fun toJson(): String = org.json.JSONObject().apply {
+        put("canCreate", canCreate)
+        put("canEnumerate", canEnumerate)
+        put("hasReliableDocumentIdentity", hasReliableDocumentIdentity)
+        put("canRename", canRename)
+        put("canReadBack", canReadBack)
+    }.toString()
+
+    companion object {
+        fun fromJson(json: String?): SafCapabilities? {
+            if (json.isNullOrBlank()) return null
+            return runCatching {
+                val value = org.json.JSONObject(json)
+                SafCapabilities(
+                    canCreate = value.optBooleanOrNull("canCreate"),
+                    canEnumerate = value.optBoolean("canEnumerate", false),
+                    hasReliableDocumentIdentity = value.optBoolean("hasReliableDocumentIdentity", false),
+                    canRename = value.optBooleanOrNull("canRename"),
+                    canReadBack = value.optBooleanOrNull("canReadBack"),
+                )
+            }.getOrNull()
+        }
+
+        private fun org.json.JSONObject.optBooleanOrNull(key: String): Boolean? =
+            if (!has(key) || isNull(key)) null else getBoolean(key)
+    }
+}
+
 internal interface PublicationStorageOps {
     fun insertMediaStore(collection: Uri, values: ContentValues, displayName: String? = null, isPending: Boolean? = null): Uri?
     fun openOutputStream(uri: Uri, mode: String = "w"): OutputStream?
@@ -84,10 +135,13 @@ internal interface PublicationStorageOps {
     fun getFileSize(uri: Uri): Long
     fun queryDisplayName(uri: Uri): String?
     fun findPendingMediaStoreUri(pendingFilename: String): UriLookupResult
+    fun readBack(uri: Uri): ProviderReadback? = null
 
     // SAF
     fun existingSafNames(tree: Uri): Set<String>
     fun findPendingSafUri(tree: Uri, pendingFilename: String): UriLookupResult
+    fun findSafDocumentUriByName(tree: Uri, displayName: String): UriLookupResult = UriLookupResult.Unknown("Provider cannot enumerate documents by name")
+    fun querySafCapabilities(tree: Uri): SafCapabilities? = null
     fun createSafDocument(tree: Uri, mimeType: String, pendingFilename: String): Uri?
     fun renameSafDocument(uri: Uri, finalName: String): Uri?
     fun deleteSafDocument(uri: Uri): Boolean
@@ -149,6 +203,22 @@ internal class DefaultPublicationStorageOps(private val context: Context) : Publ
         }
     }.getOrNull()
 
+    override fun readBack(uri: Uri): ProviderReadback? = runCatching {
+        val input = context.contentResolver.openInputStream(uri) ?: return null
+        input.buffered().use { stream ->
+            val digest = MessageDigest.getInstance("SHA-256")
+            var size = 0L
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = stream.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+                size += read
+            }
+            ProviderReadback(size, digest.digest().joinToString("") { "%02x".format(it) })
+        }
+    }.getOrNull()
+
     override fun findPendingMediaStoreUri(pendingFilename: String): UriLookupResult {
         if (pendingFilename.isBlank()) return UriLookupResult.DefinitelyAbsent
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -194,6 +264,98 @@ internal class DefaultPublicationStorageOps(private val context: Context) : Publ
         }
         return existing
     }
+
+    override fun findSafDocumentUriByName(tree: Uri, displayName: String): UriLookupResult {
+        if (displayName.isBlank()) return UriLookupResult.DefinitelyAbsent
+        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        val cursor = context.contentResolver.query(
+            children,
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null,
+            null,
+            null,
+        ) ?: return UriLookupResult.Unknown("Provider returned no cursor for SAF name lookup")
+        cursor.use {
+            val idCol = it.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = it.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            if (idCol < 0 || nameCol < 0) return UriLookupResult.Unknown("SAF provider omitted identity columns")
+            val matches = mutableListOf<Uri>()
+            while (it.moveToNext()) {
+                if (it.getString(nameCol) == displayName) {
+                    it.getString(idCol)?.let { id -> matches += DocumentsContract.buildDocumentUriUsingTree(tree, id) }
+                }
+            }
+            return when (matches.size) {
+                0 -> UriLookupResult.DefinitelyAbsent
+                1 -> UriLookupResult.Found(matches.single())
+                else -> UriLookupResult.Unknown("Multiple SAF documents match the transaction final name")
+            }
+        }
+    }
+
+    override fun querySafCapabilities(tree: Uri): SafCapabilities? = runCatching {
+        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
+        val parentFlags = runCatching {
+            context.contentResolver.query(
+                parent,
+                arrayOf(DocumentsContract.Document.COLUMN_FLAGS),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst() && cursor.columnCount > 0) cursor.getInt(0) else null
+            }
+        }.getOrNull()
+        val canCreate = parentFlags?.let {
+            it and DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE != 0
+        }
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        val cursor = context.contentResolver.query(
+            children,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+                DocumentsContract.Document.COLUMN_FLAGS,
+            ),
+            null,
+            null,
+            null,
+        ) ?: return SafCapabilities(canCreate, false, false, null, null)
+        var canEnumerate = false
+        var reliableIdentity = false
+        var canRename: Boolean? = null
+        var probe: Uri? = null
+        cursor.use { rows ->
+            val idCol = rows.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = rows.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val mimeCol = rows.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            val flagsCol = rows.getColumnIndex(DocumentsContract.Document.COLUMN_FLAGS)
+            canEnumerate = idCol >= 0 && nameCol >= 0
+            reliableIdentity = idCol >= 0
+            while (rows.moveToNext()) {
+                if (mimeCol >= 0 &&
+                    rows.getString(mimeCol) == DocumentsContract.Document.MIME_TYPE_DIR
+                ) {
+                    continue
+                }
+                val id = if (idCol >= 0) rows.getString(idCol) else null
+                if (probe == null && id != null) {
+                    probe = DocumentsContract.buildDocumentUriUsingTree(tree, id)
+                }
+                if (flagsCol >= 0) {
+                    canRename = (rows.getInt(flagsCol) and DocumentsContract.Document.FLAG_SUPPORTS_RENAME) != 0
+                }
+            }
+        }
+        val canReadBack = probe?.let { candidate ->
+            runCatching { context.contentResolver.openInputStream(candidate)?.use { true } ?: false }
+                .getOrNull()
+        }
+        SafCapabilities(canCreate, canEnumerate, reliableIdentity, canRename, canReadBack)
+    }.getOrNull()
 
     override fun findPendingSafUri(tree: Uri, pendingFilename: String): UriLookupResult {
         if (pendingFilename.isBlank()) return UriLookupResult.DefinitelyAbsent
@@ -245,13 +407,13 @@ internal class DefaultPublicationStorageOps(private val context: Context) : Publ
 internal class OutputPublisher(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
-    journal: PublicationJournal? = null,
+    journal: PublicationStore? = null,
     internal val ops: PublicationStorageOps = DefaultPublicationStorageOps(context),
     private val sdkInt: Int = Build.VERSION.SDK_INT,
     private val mediaStoreCollection: Uri? = null,
 ) {
     private val publishLock = Any()
-    val activeJournal: PublicationJournal by lazy {
+    val activeJournal: PublicationStore by lazy {
         journal ?: PublicationJournal(File(context.filesDir, "publication_journal.json"))
     }
 
@@ -270,6 +432,8 @@ internal class OutputPublisher(
         files: List<Pair<File, String>>,
         destinationTreeUri: String? = null,
         jobId: String = "",
+        attemptNumber: Int = 1,
+        batchId: String = "",
         shouldContinue: () -> Boolean = { true },
         onPublished: (index: Int, total: Int) -> Unit = { _, _ -> },
     ): List<PublishedOutput> = synchronized(publishLock) {
@@ -282,7 +446,29 @@ internal class OutputPublisher(
         ) { runCatching { context.getString(R.string.error_destination_required) }.getOrNull() ?: "A destination folder is required." }
 
         val effectiveJobId = jobId.ifBlank { "standalone-${System.currentTimeMillis()}" }
-        val batchEntries = prepareBatchEntries(files, destination, effectiveJobId)
+        val effectiveBatchId = batchId.ifBlank { "batch-${UUID.randomUUID()}" }
+        val tree = destination?.let { Uri.parse(it) }
+        val capabilities = tree?.let { querySafCapabilities(it) }
+        if (tree != null) {
+            if (capabilities == null) {
+                throw IllegalStateException(
+                    "The selected folder cannot be queried safely for publication recovery. Choose a different folder.",
+                )
+            }
+            if (!capabilities.canEnumerate || !capabilities.hasReliableDocumentIdentity) {
+                throw IllegalStateException(
+                    "The selected folder cannot enumerate its files reliably, so crash recovery would be unsafe. Choose a different folder.",
+                )
+            }
+        }
+        val batchEntries = prepareBatchEntries(
+            files = files,
+            destinationTreeUri = destination,
+            capabilities = capabilities,
+            jobId = effectiveJobId,
+            attemptNumber = attemptNumber,
+            batchId = effectiveBatchId,
+        )
         activeJournal.recordBatchIntents(batchEntries)
 
         return if (destination != null) {
@@ -298,7 +484,10 @@ internal class OutputPublisher(
     private fun prepareBatchEntries(
         files: List<Pair<File, String>>,
         destinationTreeUri: String?,
+        capabilities: SafCapabilities?,
         jobId: String,
+        attemptNumber: Int,
+        batchId: String,
     ): List<PublicationEntry> {
         val existingSafNames = if (destinationTreeUri != null) {
             existingNames(Uri.parse(destinationTreeUri))
@@ -322,21 +511,53 @@ internal class OutputPublisher(
                 safeName
             }
             val txId = UUID.randomUUID().toString()
-            val pendingName = ".vrka_pending_${txId}_$finalName"
+            val actualFinalName = if (providerType == PublicationProviderType.SAF) {
+                addTransactionMarker(finalName, txId)
+            } else {
+                finalName
+            }
+            val pendingName = ".vrka_pending_${txId}_$actualFinalName"
             PublicationEntry(
                 transactionId = txId,
                 jobId = jobId,
                 outputIndex = index,
                 totalOutputs = files.size,
-                intendedFilename = finalName,
+                intendedFilename = actualFinalName,
                 pendingFilename = pendingName,
                 stagingPath = file.absolutePath,
                 expectedSizeBytes = file.length(),
                 providerType = providerType,
                 destinationIdentity = destIdentity,
                 publicationPhase = PublicationPhase.INTENT_RECORDED,
+                attemptNumber = attemptNumber,
+                attemptId = JobJsonCodec.attemptIdFor(jobId, attemptNumber),
+                batchId = batchId,
+                expectedSha256 = runCatching { sha256(file) }.getOrNull(),
+                verificationLevel = "SIZE_VERIFIED",
+                providerCapabilitiesJson = capabilities?.toJson(),
             )
         }
+    }
+
+    private fun addTransactionMarker(name: String, transactionId: String): String {
+        val dot = name.lastIndexOf('.')
+        val stem = if (dot > 0) name.substring(0, dot) else name
+        val extension = if (dot > 0) name.substring(dot) else ""
+        val token = transactionId.replace("-", "").take(10)
+        return "$stem [vrka-$token]$extension"
+    }
+
+    private fun sha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     fun delete(uriText: String): Boolean = runCatching {
@@ -360,6 +581,44 @@ internal class OutputPublisher(
         ops.findPendingSafUri(tree, pendingFilename)
     } catch (error: Throwable) {
         UriLookupResult.Unknown(error.message.orEmpty().take(200))
+    }
+
+    fun findSafUriByName(tree: Uri, displayName: String): UriLookupResult = try {
+        ops.findSafDocumentUriByName(tree, displayName)
+    } catch (error: Throwable) {
+        UriLookupResult.Unknown(error.message.orEmpty().take(200))
+    }
+
+    fun readBack(uri: Uri): ProviderReadback? = try {
+        ops.readBack(uri)
+    } catch (error: Throwable) {
+        null
+    }
+
+    /**
+     * Compares provider bytes with the staged source. A provider that cannot be read back
+     * never yields a hash-verified or size-verified result.
+     */
+    fun verifyProviderContent(entry: PublicationEntry, uri: Uri): ContentVerification {
+        val evidence = readBack(uri) ?: return ContentVerification.UNKNOWN
+        if (entry.expectedSizeBytes > 0 && evidence.size != entry.expectedSizeBytes) {
+            return ContentVerification.MISMATCH
+        }
+        val expected = entry.expectedSha256
+        if (!expected.isNullOrBlank()) {
+            return when {
+                evidence.sha256.isNullOrBlank() -> ContentVerification.SIZE_VERIFIED
+                evidence.sha256.equals(expected, ignoreCase = true) -> ContentVerification.HASH_VERIFIED
+                else -> ContentVerification.MISMATCH
+            }
+        }
+        return if (evidence.size > 0) ContentVerification.SIZE_VERIFIED else ContentVerification.UNKNOWN
+    }
+
+    fun querySafCapabilities(tree: Uri): SafCapabilities? = try {
+        ops.querySafCapabilities(tree)
+    } catch (error: Throwable) {
+        null
     }
 
     /**
@@ -484,8 +743,17 @@ internal class OutputPublisher(
             PublicationProviderType.SAF -> {
                 val target = finalizeSaf(uri, entry.intendedFilename)
                 val tree = runCatching { Uri.parse(entry.destinationIdentity) }.getOrNull()
-                val inspection = if (tree == null) {
-                    ProviderInspection(ProviderObjectStatus.MISMATCH)
+                val uniquelyIdentified = tree != null &&
+                    when (val found = findSafUriByName(tree, entry.intendedFilename)) {
+                        is UriLookupResult.Found -> sameDocument(found.uri, target)
+                        UriLookupResult.DefinitelyAbsent -> false
+                        is UriLookupResult.Unknown -> false
+                    }
+                val inspection = if (tree == null || !uniquelyIdentified) {
+                    ProviderInspection(
+                        ProviderObjectStatus.UNKNOWN,
+                        detail = "Finalized SAF document is not uniquely identifiable by its transaction name",
+                    )
                 } else {
                     inspectSafOutput(target, entry.intendedFilename, entry.pendingFilename, tree)
                 }
@@ -581,6 +849,51 @@ internal class OutputPublisher(
     fun finalizeSaf(uri: Uri, finalName: String): Uri =
         ops.renameSafDocument(uri, finalName) ?: uri
 
+    private fun sameDocument(first: Uri, second: Uri): Boolean {
+        if (first == second) return true
+        return runCatching {
+            DocumentsContract.getDocumentId(first) == DocumentsContract.getDocumentId(second) &&
+                first.authority == second.authority
+        }.getOrDefault(false)
+    }
+
+    /** SAF recovery depends on the transaction marker naming exactly one document. */
+    fun safFinalIdentityIsUnique(entry: PublicationEntry, uri: Uri): Boolean {
+        if (entry.providerType != PublicationProviderType.SAF) return true
+        val tree = runCatching { Uri.parse(entry.destinationIdentity) }.getOrNull() ?: return false
+        return when (val found = findSafUriByName(tree, entry.intendedFilename)) {
+            is UriLookupResult.Found -> sameDocument(found.uri, uri)
+            UriLookupResult.DefinitelyAbsent -> false
+            is UriLookupResult.Unknown -> false
+        }
+    }
+
+    /**
+     * Reads the provider copy back and requires byte-for-byte agreement with staging.
+     * A provider that cannot return its stored bytes never reaches finalization.
+     */
+    private fun verifyProviderReadBack(entry: PublicationEntry, uri: Uri, file: File) {
+        val evidence = readBack(uri)
+            ?: throw java.io.IOException(
+                "Provider readback failed for ${entry.intendedFilename}: the stored bytes are unavailable",
+            )
+        if (evidence.size != file.length()) {
+            throw java.io.IOException(
+                "Provider readback size mismatch for ${entry.intendedFilename}: expected ${file.length()} bytes, found ${evidence.size} bytes",
+            )
+        }
+        val expected = entry.expectedSha256
+        val level = when {
+            expected.isNullOrBlank() -> "SIZE_VERIFIED"
+            evidence.sha256.isNullOrBlank() -> "SIZE_VERIFIED"
+            evidence.sha256.equals(expected, ignoreCase = true) -> "HASH_VERIFIED"
+            else -> throw java.io.IOException(
+                "Provider readback hash mismatch for ${entry.intendedFilename}",
+            )
+        }
+        activeJournal.updateVerification(entry.transactionId, level, evidence.sha256)
+    }
+
     private fun publishToDownloads(
         file: File,
         entry: PublicationEntry,
@@ -602,10 +915,12 @@ internal class OutputPublisher(
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
         }
+        activeJournal.updatePhase(entry.transactionId, PublicationPhase.CREATE_REQUESTED)
         val uri = checkNotNull(ops.insertMediaStore(collection, values, displayName = entry.pendingFilename, isPending = true)) {
             "Android could not create the Downloads entry."
         }
         activeJournal.updateProviderCreated(entry.transactionId, uri.toString())
+        activeJournal.updatePhase(entry.transactionId, PublicationPhase.COPYING)
         try {
             val bytes = checkNotNull(ops.openOutputStream(uri, "w")) { "Android could not open the Downloads entry." }.use { output ->
                 file.inputStream().buffered().use { input -> input.copyTo(output) }
@@ -614,13 +929,15 @@ internal class OutputPublisher(
                 throw java.io.IOException("Publication size mismatch: expected ${file.length()} bytes, wrote $bytes bytes")
             }
             activeJournal.updateDataCopied(entry.transactionId, bytes)
+            verifyProviderReadBack(entry, uri, file)
             activeJournal.updateValidated(entry.transactionId)
+            activeJournal.updatePhase(entry.transactionId, PublicationPhase.FINALIZE_REQUESTED)
             val finalized = finalizeMediaStore(uri, entry.intendedFilename)
             if (!finalized) {
                 throw java.io.IOException("MediaStore finalization failed for ${entry.intendedFilename}: row update affected 0 rows or verification failed")
             }
             activeJournal.updateFinalized(entry.transactionId)
-            return PublishedOutput(uri, bytes, file.extension, entry.transactionId)
+            return PublishedOutput(uri, bytes, file.extension, entry.transactionId, entry.batchId)
         } catch (error: Throwable) {
             runCatching { activeJournal.markFailed(entry.transactionId, error.message.orEmpty()) }
             val deleted = runCatching { ops.deleteUri(uri) }.getOrDefault(false)
@@ -697,11 +1014,13 @@ internal class OutputPublisher(
                 val entry = batchEntries[index]
                 currentTransactions += entry.transactionId
 
+                activeJournal.updatePhase(entry.transactionId, PublicationPhase.CREATE_REQUESTED)
                 val uri = checkNotNull(
                     ops.createSafDocument(tree, mimeType(entry.intendedFilename), entry.pendingFilename),
                 ) { "The selected folder refused the new file." }
                 created += uri to entry.transactionId
                 activeJournal.updateProviderCreated(entry.transactionId, uri.toString())
+                activeJournal.updatePhase(entry.transactionId, PublicationPhase.COPYING)
 
                 val bytes = try {
                     checkNotNull(ops.openOutputStream(uri, "w")) { "The selected folder could not be written." }.use { output ->
@@ -735,26 +1054,52 @@ internal class OutputPublisher(
                     throw mismatch
                 }
                 activeJournal.updateDataCopied(entry.transactionId, bytes)
+                try {
+                    verifyProviderReadBack(entry, uri, file)
+                } catch (error: Throwable) {
+                    runCatching { activeJournal.markFailed(entry.transactionId, error.message.orEmpty()) }
+                    val deleted = runCatching { ops.deleteSafDocument(uri) }.getOrDefault(false)
+                    if (!deleted && inspectOutput(entry.copy(providerUri = uri.toString())).status != ProviderObjectStatus.ABSENT) {
+                        runCatching {
+                            activeJournal.markCleanupPending(
+                                entry.transactionId,
+                                "Could not delete unverified SAF output: $uri",
+                            )
+                        }
+                    }
+                    throw error
+                }
                 activeJournal.updateValidated(entry.transactionId)
-                val finalUri = finalizeSaf(uri, entry.intendedFilename)
-                val inspection = inspectSafOutput(finalUri, entry.intendedFilename, entry.pendingFilename, tree)
-                if (inspection.status != ProviderObjectStatus.VERIFIED) {
+                activeJournal.updatePhase(entry.transactionId, PublicationPhase.FINALIZE_REQUESTED)
+                val finalization = finalizeEntry(entry.copy(providerUri = uri.toString()))
+                if (finalization.inspection.status != ProviderObjectStatus.VERIFIED) {
                     throw java.io.IOException(
-                        "SAF finalization failed for ${entry.intendedFilename}: ${inspection.status.name} ${inspection.detail}",
+                        "SAF finalization failed for ${entry.intendedFilename}: ${finalization.inspection.status.name} ${finalization.inspection.detail}",
                     )
                 }
+                val finalUri = finalization.uri
                 activeJournal.updateFinalized(entry.transactionId, finalUri.toString())
                 onPublished(index, files.size)
-                PublishedOutput(finalUri, bytes, file.extension, entry.transactionId)
+                PublishedOutput(finalUri, bytes, file.extension, entry.transactionId, entry.batchId)
             }
         } catch (error: Throwable) {
             currentTransactions.forEach { txId ->
                 runCatching { activeJournal.markFailed(txId, error.message.orEmpty()) }
             }
             created.forEach { (uri, txId) ->
+                val entry = batchEntries.firstOrNull { it.transactionId == txId }
+                if (entry != null && !safDeletionIsSafe(entry, tree)) {
+                    // Duplicate or unqueryable final-name candidates are never deleted.
+                    runCatching {
+                        activeJournal.markCleanupPending(
+                            txId,
+                            "Could not verify unique ownership of the partial SAF output: $uri",
+                        )
+                    }
+                    return@forEach
+                }
                 val deleted = runCatching { ops.deleteSafDocument(uri) }.getOrDefault(false)
                 if (!deleted) {
-                    val entry = batchEntries.firstOrNull { it.transactionId == txId }
                     val absent = entry != null &&
                         inspectOutput(entry.copy(providerUri = uri.toString())).status == ProviderObjectStatus.ABSENT
                     if (!absent) {
@@ -770,6 +1115,18 @@ internal class OutputPublisher(
             throw error
         }
     }
+
+    private fun safDeletionIsSafe(entry: PublicationEntry, tree: Uri): Boolean =
+        when (findSafUriByName(tree, entry.intendedFilename)) {
+            is UriLookupResult.Found -> true
+            UriLookupResult.DefinitelyAbsent -> when (findPendingSafUri(tree, entry.pendingFilename)) {
+                is UriLookupResult.Found,
+                UriLookupResult.DefinitelyAbsent,
+                -> true
+                is UriLookupResult.Unknown -> false
+            }
+            is UriLookupResult.Unknown -> false
+        }
 
     private fun existingNames(tree: Uri): MutableSet<String> = ops.existingSafNames(tree).toMutableSet()
 

@@ -57,10 +57,13 @@ class DownloadTransferJobService : JobService() {
                 JOB_END_NOTIFICATION_POLICY_REMOVE,
             )
         }
-        postNotification(params, manager.jobs.value, force = true)
         jobScope?.cancel()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         jobScope = scope
+        scope.launch {
+            manager.awaitStorageReady()
+            postNotification(params, manager.jobs.value, force = true)
+        }
         scope.launch {
             manager.jobs.collectLatest { jobs ->
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return@collectLatest
@@ -89,7 +92,12 @@ class DownloadTransferJobService : JobService() {
         jobScope = null
         // Ask the system to bring the anchor back if downloads are still logically active.
         return runCatching {
-            applicationContext.vrkaApplication.downloads.jobs.value.any { it.state.isForegroundWork }
+            val manager = applicationContext.vrkaApplication.downloads
+            if (manager.storageStatus.value.readiness != com.mvrk.vrka.storage.StorageReadiness.READY) {
+                true
+            } else {
+                manager.jobs.value.any { it.state.isForegroundWork }
+            }
         }.getOrDefault(false)
     }
 
