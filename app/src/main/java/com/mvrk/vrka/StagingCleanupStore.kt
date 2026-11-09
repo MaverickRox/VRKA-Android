@@ -1,5 +1,6 @@
 package com.mvrk.vrka
 
+import com.mvrk.vrka.storage.CleanupStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -9,6 +10,7 @@ internal data class PendingStagingCleanup(
     val attempts: Int,
     val firstSeenAt: Long,
     val updatedAt: Long,
+    val deadLetter: Boolean = false,
 )
 
 /**
@@ -20,12 +22,12 @@ internal class StagingCleanupStore(
     private val target: File,
     private val ops: JobStoreFileOps = DefaultJobStoreFileOps,
     private val clock: () -> Long = System::currentTimeMillis,
-) {
+) : CleanupStore {
     private val lock = Any()
 
-    fun pending(): List<PendingStagingCleanup> = synchronized(lock) { read() }
+    override fun pending(): List<PendingStagingCleanup> = synchronized(lock) { read() }
 
-    fun markPending(jobId: String) {
+    override fun markPending(jobId: String) {
         if (jobId.isBlank()) return
         synchronized(lock) {
             val now = clock()
@@ -43,7 +45,7 @@ internal class StagingCleanupStore(
         }
     }
 
-    fun clear(jobId: String) {
+    override fun clear(jobId: String) {
         synchronized(lock) {
             val entries = read()
             val remaining = entries.filterNot { it.jobId == jobId }

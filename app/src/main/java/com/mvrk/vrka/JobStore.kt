@@ -1,6 +1,7 @@
 package com.mvrk.vrka
 
 import android.content.Context
+import com.mvrk.vrka.storage.JobPersistence
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -98,19 +99,21 @@ internal object DefaultJobStoreFileOps : JobStoreFileOps {
 internal class JobStore(
     private val target: File,
     private val ops: JobStoreFileOps = DefaultJobStoreFileOps,
-) {
+) : JobPersistence {
     constructor(context: Context) : this(File(context.filesDir, "download_jobs.json"))
 
     @Volatile
-    var lastLoadResult: JobStoreLoadResult? = null
+    override var lastLoadResult: JobStoreLoadResult? = null
         private set
 
     /**
      * [recoverActive] keeps in-flight states so a user-initiated transfer worker can resume
      * them. Without it, in-flight records are downgraded to FAILED as before.
      */
-    fun load(recoverActive: Boolean = false): List<DownloadJob> =
+    override fun load(recoverActive: Boolean): List<DownloadJob> =
         loadWithStatus(recoverActive).jobs
+
+    fun load(): List<DownloadJob> = load(false)
 
     fun loadWithStatus(recoverActive: Boolean = false): JobStoreLoadResult {
         val result = read(recoverActive)
@@ -345,7 +348,7 @@ internal class JobStore(
      * confirm its own durable result fails closed so callers retain their recovery data.
      */
     @Synchronized
-    fun save(jobs: List<DownloadJob>, pinnedJobIds: Set<String> = emptySet()): JobStoreSaveResult {
+    override fun save(jobs: List<DownloadJob>, pinnedJobIds: Set<String>): JobStoreSaveResult {
         var temporary: File? = null
         return try {
             if (jobs.mapTo(HashSet()) { it.id }.size != jobs.size) {
@@ -380,6 +383,8 @@ internal class JobStore(
             }
         }
     }
+
+    fun save(jobs: List<DownloadJob>): JobStoreSaveResult = save(jobs, emptySet())
 
     private fun applyRetention(jobs: List<DownloadJob>, pinnedJobIds: Set<String>): List<DownloadJob> {
         if (jobs.size <= MAX_JOBS) return jobs
@@ -430,6 +435,22 @@ internal class JobStore(
         }
         return JobStoreSaveResult(true, persistedJobIds = durableById.keys)
     }
+
+    override fun deleteJobs(jobIds: Collection<String>): Boolean {
+        if (jobIds.isEmpty()) return true
+        val current = load(recoverActive = true)
+        val remaining = current.filterNot { it.id in jobIds }
+        if (remaining.size == current.size) return true
+        return save(remaining, emptySet()).success
+    }
+
+    override fun clearTerminal(): Boolean {
+        val current = load(recoverActive = true)
+        val remaining = current.filterNot { it.state.isTerminal }
+        return save(remaining, emptySet()).success
+    }
+
+    override fun clearAll(): Boolean = save(emptyList(), emptySet()).success
 
     private fun encode(job: DownloadJob): JSONObject {
         val request = job.request
@@ -580,7 +601,7 @@ internal class JobStore(
             } else {
                 "Interrupted"
             },
-            progress = value.optDouble("progress").toFloat(),
+            progress = value.optDouble("progress", 0.0).toFloat().takeIf { it.isFinite() } ?: 0f,
             speed = value.optString("speed"),
             etaSeconds = value.optionalLong("eta"),
             downloadedBytes = value.optionalLong("downloadedBytes"),
