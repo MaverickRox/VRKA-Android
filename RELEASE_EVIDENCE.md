@@ -4,34 +4,40 @@
 
 **Source version:** `5.1.2` (`versionCode` 50102)
 **Source revision:** `main` (Official release published at https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2).
-**Validation state:** JVM unit tests (747 tests in 73 suites at release time, 760 tests on `main`, 0 failures), Android test-source compilation, debug/devRelease/release builds, release-variant Kotlin compilation, lint, APK metadata, 15 deterministic production-path publication recovery failure scenarios, and maintainer-reported physical-device upgrade validation. Emulator inspection was performed but runtime testing could not complete due to an authorization boundary; automated test suites and deterministic simulations passed.
+**Validation state:** JVM unit tests (747 tests in 73 suites at release time; 784 tests in 73 suites on current `main`, 0 failures), Android test-source compilation, release-variant Kotlin compilation, lint (0 errors), 2 real MediaStore instrumentation tests on an API 36 emulator, 33 publication recovery tests, and maintainer-reported physical-device upgrade validation. The controlled provider suite is deterministic test evidence, not complete real-SAF or multi-OEM coverage; SAF tree integration was not executed. No release artifact, manifest, signature, or tag was modified by the post-release remediation.
 
 ## Automated checks
 
 | Check | Command | Result |
 | --- | --- | --- |
 | Full JVM unit tests (release-time validation) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 747 tests in 73 suites; 0 failures, 0 errors, 0 skipped |
-| Full JVM unit tests (post-release on `main`) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 760 tests in 73 suites; 0 failures, 0 errors, 0 skipped (including updater regressions, SHA-2/issuer-fingerprint verification, and 15 controlled publication recovery boundary tests) |
+| Full JVM unit tests (current `main` remediation) | `./gradlew -Duser.home=<isolated temp dir> --no-daemon --rerun-tasks --no-build-cache testDebugUnitTest` | PASS: 784 tests in 73 suites; 0 failures, 0 errors, 0 skipped |
+| Publication recovery suite | `--tests com.mvrk.vrka.PublicationJournalRecoveryTest` | PASS: 33 tests |
+| JobStore retention/durability suite | `--tests com.mvrk.vrka.JobStorePersistenceTest` | PASS: 31 tests |
+| OpenPGP verifier suite | `--tests com.mvrk.vrka.update.security.ReleaseManifestVerifierTest` | PASS: 26 tests; published v5.1.1/v5.1.2 signatures verify |
+| Real MediaStore instrumentation (API 36 emulator) | `connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.PublicationStorageIntegrationTest` | PASS: 2 tests (finalization; pending-row crash recovery) |
 | Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
-| Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS (instrumentation not executed) |
-| Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS |
-| Debug APK | `./gradlew assembleDebug` | PASS |
-| Development release APK (R8, debug keystore) | `./gradlew assembleDevRelease` | PASS |
-| Production release APK | `./gradlew assembleRelease` | PASS: production-signed release APK built |
-| Lint | `./gradlew lintDebug` | PASS: 284 warnings, 0 errors/fatal |
+| Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS |
+| Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS without production signing credentials |
+| Debug APK | built and installed by `connectedDebugAndroidTest` | PASS |
+| Development/production release APK | not rebuilt in this remediation | Not claimed; published v5.1.2 artifact preserved |
+| Lint | `./gradlew lintDebug` | PASS: 0 errors, 291 warnings |
+| `git diff --check` | `git diff --check` | PASS |
 
-Result: `BUILD SUCCESSFUL` across all build variants and test suites.
+**Verified source identity:** `0866d00df5952376a4da137a7667bd24f66c30e8`. The earlier reported SHA `0866d001bb052a2fe95b6c31e9c20a9a3b680c44` is not a Git object and was a reporting error; all reports use the verified object SHA.
 
 ## Publication Recovery Audit Remediation (Post-Release v5.1.2)
 
-- **PUB-01 (HIGH — Terminal Persistence Ordering):** Established durable 6-step completion protocol (`commitTerminalPublishedJob`). Terminal `DONE` state is persisted to `JobStore` and awaited BEFORE marking publication journal entries `RECONCILED` and before deleting staging data. If terminal persistence fails, journal and staging files are retained intact for restart recovery.
-- **PUB-02 (MEDIUM — MediaStore Finalization Verification):** `OutputPublisher.finalizeMediaStore()` executes and verifies `IS_PENDING` is cleared and `DISPLAY_NAME` matches. If update affects 0 rows, row verification is enforced; zero affected rows without verified finalization is treated as failure. Preserves journal and outputs for retry on both normal publication and startup recovery.
-- **PUB-03 (MEDIUM — Incomplete Output Cleanup Failure Handling):** Introduced durable `CLEANUP_PENDING` transaction state. When partial-output deletion fails during incomplete batch handling, entries are recorded as `CLEANUP_PENDING`, preventing premature reconciliation and enabling safe retry on subsequent startup without data loss. Unrelated user files and successfully published outputs are strictly protected.
-- **PUB-04 (LOW — Malformed Journal Value Handling):** `PublicationJournal.decode()` strictly validates all required fields and enums without permissive fallbacks. Invalid/unknown values immediately trigger safe quarantine with bounded snapshot rotation (max 3 `.corrupt-<timestamp>.json` files).
-- **TEST-01 (MEDIUM — Production-Path Failure Testing):** Replaced test-local mock maps with controlled test implementations of `PublicationStorageOps` and `JobStore` invoking actual production publication and recovery code paths. All 15 boundary scenarios execute deterministically against real production workflows.
+- **PUB-01 (HIGH — Terminal Persistence Durability):** `JobStore` now protects all nonterminal jobs plus every job pinned by an unresolved publication transaction, and bounds only safely retained terminal history. A manager-level lock serializes snapshot selection, retention, write, and a read-back verification of the exact durable record. `commitTerminalPublishedJob()` pins the completing job, verifies the persisted terminal record, retires only that attempt's transaction IDs, and only then cleans staging. `publishAll()` no longer deletes its staging source.
+- **PUB-02 (MEDIUM — MediaStore Finalization and Recovery Verification):** API 29+ verification requires the provider row, expected display name, and `IS_PENDING = 0`; a missing `IS_PENDING` column is unverifiable, never finalized. Startup recovery re-inspects `FINALIZED`/`RECORDED` entries before `DONE`. API 26–28 uses name-only legacy semantics.
+- **PUB-03 (MEDIUM — Cleanup Failure and URI Discovery):** Deletion results are checked on every path and failures persist `CLEANUP_PENDING`. Discovery is tri-state (`FOUND`, `DEFINITELY_ABSENT`, `UNKNOWN`); provider errors and revoked permissions never authorize deletion. Reconciliation is transaction-scoped so retries cannot retire earlier failed attempts.
+- **PUB-04 (LOW — Journal Schema and URI Ownership):** The journal enforces the exact schema, unique transaction IDs, valid timestamps/indexes/batch totals, the exact pending-name relationship, provider-specific URI structure, and consistent phase/URI/status combinations. Destructive cleanup requires the unique transaction pending name and a single matching provider object. Corrupt records are preserved; valid jobs recover only when isolation is provable, otherwise recovery fails closed.
+- **PUB-05 (LOW — Staging Cleanup Durability):** Staging deletion results are checked, failures become bounded durable retry records, and retries never run while an unresolved transaction or live job depends on the directory.
+- **TEST-01 (MEDIUM — Coverage Accuracy and Fresh-Runtime Testing):** Recovery tests reconstruct fresh managers, stores, and journals from temporary filesystem-backed state. Coverage is classified as production-orchestration, production-method with injected dependencies, isolated serialization, and Android platform integration. Not all tests are full production crash simulations.
 - **DOC-01 (`DEVICE_VALIDATION.md`):** Reconciled documentation so historical v5.1.1 sections remain strictly historical without retroactive claims.
 - **DOC-02 (`CURRENT_PRODUCTION_ARCHITECTURE.md`, `README.md`):** Corrected legacy references from `DownloadJobStore` and `DownloadHistoryStore` to unified `JobStore (JSON Storage)`.
-- **DOC-03 (`SECURITY.md`, `ReleaseManifestVerifier.kt`):** Enforced strict SHA-2 allowlist (`SHA256`, `SHA384`, `SHA512`, `SHA224`) and mandatory Issuer Fingerprint subpacket matching the trusted key.
+- **DOC-03 (`SECURITY.md`, `ReleaseManifestVerifier.kt`):** Enforced an explicit SHA-256/SHA-384/SHA-512 allowlist (SHA-224 and all other algorithms rejected), RSA-only signature keys, and a mandatory issuer fingerprint in the hashed subpacket section matching the pinned key. Absent, unhashed-only, or mismatched fingerprints are rejected. Published v5.1.1 and v5.1.2 signatures still verify with the production verifier and pinned public key.
+- **DOC-04 (documentation accuracy):** Reconciled test counts (`747` release-time vs `784` current `main`), documented the exact source SHA, corrected the non-existent SHA reference, and replaced overstated "complete production simulation" claims with accurate test classifications.
 
 Toolchain: Gradle 9.4.1 wrapper, Android Gradle Plugin 9.2.0, OpenJDK 21.0.12, Java source/target 17. Compile SDK 37 (minor API level 2), target API 36, minimum API 26, `arm64-v8a` only.
 
@@ -50,8 +56,8 @@ Toolchain: Gradle 9.4.1 wrapper, Android Gradle Plugin 9.2.0, OpenJDK 21.0.12, J
 ## Device Validation & Emulator Boundary
 
 - **Maintainer-Reported Physical Device Upgrade:** On November 9, 2026, the maintainer personally confirmed that updating an existing v5.1.1 installation to v5.1.2 on a physical Android phone was successful. This verifies that the v5.1.1-to-v5.1.2 upgrade package and signing identity are usable on real hardware. Successful installation/update was confirmed; however, broader functional testing, UI walkthroughs, and automated instrumentation were not performed as part of this validation. Comprehensive multi-device testing was not conducted. Historical v5.1.1 OnePlus 11 hardware testing is preserved below as historical evidence.
-- **Emulator Boundary:** Host emulator environment and WHPX virtualization acceleration were inspected and functional. An API 36 headless emulator was launched, but runtime application testing could not complete due to an ADB authorization boundary on the host machine. The application was **not** successfully tested inside that emulator.
-- **Automated & Failure-Injection Verification:** Comprehensive JVM unit test suite (747 tests at release time, 758 tests across 73 suites on `main`, 0 failures) completely exercises format selection, size estimation, URL sanitization, updater cryptography, and all 14 publication failure boundaries.
+- **Emulator Integration:** An API 36 headless emulator (`Medium_Phone_API_36.0`) booted successfully. Two real MediaStore instrumentation tests passed: publication/finalization verification and pending-row crash recovery. SAF tree integration and other instrumentation tests were not executed.
+- **Automated & Failure-Injection Verification:** The current JVM suite (747 tests at release time; 784 tests across 73 suites on `main`, 0 failures) covers format selection, size estimation, URL sanitization, updater cryptography, JobStore durability/retention, strict journal validation, and 33 publication recovery tests. These are deterministic injected-dependency tests; they do not alone prove real SAF behavior, multi-OEM MediaStore behavior, or physical-device crash recovery.
 - **Platform Boundaries:** Authoritative subsystem verification classifications and unverified platform boundaries are defined in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
 ---

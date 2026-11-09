@@ -224,7 +224,7 @@ The UI is built with **Jetpack Compose** using design tokens (`VrkaTokens`):
 - **AGSL RuntimeShader (API 33+)**: High-performance lens transform with 1.35× center magnification, 20-dp refraction height, 14-dp displacement, normal-map edge curvature, and chromatic aberration channel splitting. Fallback glass rendering is provided on API 26–32.
 - **Directional Luminous Wake Progress**: 18-track directional streak with cached analytic teardrop glow optimized for AMOLED black backgrounds.
 - **Resolution-Aware Size Estimation**: `SizeEstimator` runs a metadata-only yt-dlp preflight with the same `-f` selector and 60 fps sort as the transfer. `requested_formats` from that document are authoritative; the complete `formats` table still supplies every resolution chip. `MetadataRepository` caches each document by source, format selection, playlist range, runtime version, and a header digest. Browser Fallback clears the page-level estimate, estimates the selected candidate independently, and never blocks the transfer. Estimates that cannot be supported by metadata are shown as unavailable.
-- **Recoverable Job Storage**: `JobStore` writes a versioned JSON object through a temporary file and atomic move, returns explicit save results, and on malformed input preserves a bounded recovery copy while salvaging valid records. In-flight recovery and terminal-state handling are unchanged.
+- **Recoverable Job Storage**: `JobStore` writes a versioned JSON object through a temporary file and atomic move, returns explicit save results, and on malformed input preserves a bounded recovery copy while salvaging valid records. On unreleased `main`, retention always preserves nonterminal jobs and jobs pinned by unresolved publication transactions, and every save re-reads the durable file before reporting success. The published v5.1.2 binary retains its original persistence behavior; the remediation is not part of that APK.
 - **API-Range Destination Policy**: API 29+ publishes through `MediaStore.Downloads` (`Downloads/VRKA`); API 26–28 require a granted SAF tree before a job starts and return to the folder prompt if permission is revoked.
 - **Dynamic Typography**: Monospace Space Mono (`VRKA Font`) and clean System (`Roboto`) font switching.
 
@@ -243,3 +243,28 @@ The official published release binary (VRKA-Android-v5.1.2.apk) incorporates cri
    - Synchronously persists publishStarted = true for both normal yt-dlp acquisitions and MediaEngine Browser Fallback paths before outputs leave staging, guaranteeing fail-closed semantics across all transfer modes.
 3. **Reconciled Verification Records**:
    - Authoritative consolidation in DEVICE_VALIDATION.md detailing OnePlus 11 hardware testing, maintainer-reported physical-device v5.1.1-to-v5.1.2 upgrade validation, and explicit platform boundaries.
+
+---
+
+## 10. Unreleased Post-v5.1.2 Publication Integrity Remediation (`main`)
+
+The published v5.1.2 APK remains unchanged. The following architecture applies to the unreleased remediation on `main` at verified source `0866d00df5952376a4da137a7667bd24f66c30e8` (the earlier `0866d001…` SHA was a reporting error and is not a Git object).
+
+1. **JobStore retention and durable verification**:
+   - Nonterminal jobs and jobs pinned by unresolved journal transactions are never evicted by the 250-record history cap; only safely retained terminal history is bounded.
+   - A manager-level persistence lock serializes snapshot selection, retention, payload construction, atomic replacement, and read-back verification. A stale snapshot cannot replace a newer terminal snapshot.
+   - Terminal completion pins the completing job, persists it, re-reads the exact durable record, and only then retires that attempt's transaction IDs and removes staging. Failures leave journal, provider outputs, and staging recoverable.
+2. **Publication journal integrity and transaction scope**:
+   - The decoder requires the exact supported schema version and validates unique transaction IDs, job/output identity, timestamps, batch totals and indexes, the exact `.vrka_pending_${transactionId}_${filename}` relationship, provider URI structure, and phase/URI/status consistency.
+   - Multiple attempts for one logical job are segmented by output index (newest transaction per index is current); older transactions are cleaned or reconciled independently. Reconciliation is always by exact transaction IDs, never by broad job ID.
+   - Invalid records are preserved in bounded recovery snapshots. Valid jobs are isolated only when the corrupt records cannot belong to them; otherwise recovery fails closed.
+3. **Provider verification and destructive-operation ownership**:
+   - API 29+ finalization requires an existing row, the expected display name, and `IS_PENDING = 0`; a missing pending column is unverifiable, never success. API 26–28 uses name-only semantics.
+   - Startup recovery re-inspects `FINALIZED`/`RECORDED` transactions before marking `DONE`, and a definitively missing output demotes the durable job rather than leaving a false completion.
+   - Pending-object discovery is tri-state (`FOUND`, `DEFINITELY_ABSENT`, `UNKNOWN`). Deletion requires the single provider object carrying the transaction's unique pending name and structural membership in the declared MediaStore collection or SAF tree. Unknown or mismatched objects are never deleted.
+   - Failed cleanup is durably recorded as `CLEANUP_PENDING` and retried at startup.
+4. **Staging lifetime and cleanup**:
+   - `publishAll()` retains its staging source. Staging is removed only after verified terminal persistence and reconciliation, and deletion failure is recorded in a bounded `StagingCleanupStore` retry list.
+   - Staging is never deleted while an unresolved transaction or live job depends on the directory.
+5. **Verification boundary**:
+   - JVM tests use controlled provider and filesystem dependencies for deterministic failure injection. Two real MediaStore tests run on an API 36 emulator. SAF tree integration, multi-OEM MediaStore behavior, and physical-device crash recovery remain unverified boundaries.
