@@ -1,0 +1,109 @@
+[
+  {
+    "file": "v5.1.0/all-job-states.json",
+    "sha256": "e7b4e08316e8d0827f5e1b544cbe49cf97b56a256dfe1963dacfdba4906b0797",
+    "sourceEncoder": "app/src/main/java/com/mvrk/vrka/JobStore.kt encode()",
+    "bytes": 11753,
+    "description": "All JobState values encoded by the tagged JobStore.",
+    "derivation": "direct encoder output (v5.1.0 writes a bare JSON array)",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "all-job-states"
+  },
+  {
+    "file": "v5.1.0/terminal-history-no-hashes.json",
+    "sha256": "665a94ecba74da09f4e03871969a04b37218346f90ccd1f6d6ec34e0b8dfee6d",
+    "sourceEncoder": "app/src/main/java/com/mvrk/vrka/JobStore.kt encode()",
+    "bytes": 3938,
+    "description": "Terminal History records with provider URIs and no publication hashes.",
+    "derivation": "direct encoder output (bare array)",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "terminal-history-no-hashes"
+  },
+  {
+    "file": "v5.1.0/in-flight-and-publishing.json",
+    "sha256": "4a3ff32d4f65d900fdfb7e5cb10f143422fe26d21810811392687cda694c68a9",
+    "sourceEncoder": "app/src/main/java/com/mvrk/vrka/JobStore.kt encode()",
+    "bytes": 5114,
+    "description": "Nonterminal records, including a publishStarted=true publishing job.",
+    "derivation": "direct encoder output (bare array)",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "in-flight-and-publishing"
+  },
+  {
+    "file": "v5.1.0/legacy-array-jobs.json",
+    "sha256": "e7b4e08316e8d0827f5e1b544cbe49cf97b56a256dfe1963dacfdba4906b0797",
+    "sourceEncoder": "app/src/main/java/com/mvrk/vrka/JobStore.kt encode()",
+    "bytes": 11753,
+    "description": "Native v5.1.0 JobStore output: a bare JSON job array.",
+    "derivation": "direct encoder output",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "legacy-array-jobs"
+  },
+  {
+    "file": "v5.1.0/schema1-jobs.json",
+    "sha256": "3361bae8c780695344cbbb1353de223219572a69b82e1ae905a3dd0404c84419",
+    "sourceEncoder": "app/src/main/java/com/mvrk/vrka/JobStore.kt encode()",
+    "bytes": 11780,
+    "description": "Object-wrapped schema 1 using v5.1.0 encoder-produced job objects.",
+    "derivation": "derived: v5.1.0 array wrapped as schemaVersion 1",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "schema1-jobs"
+  },
+  {
+    "file": "v5.1.0/duplicate-job-ids.json",
+    "sha256": "99eeb1bd5e6a8c794c6227b5512635dbd31f4bda768c119a615a5fe6941607a8",
+    "sourceEncoder": "app/src/main/java/com/mvrk/vrka/JobStore.kt encode()",
+    "bytes": 13031,
+    "description": "Two encoder-produced records with the same job ID.",
+    "derivation": "derived: first v5.1.0 array record duplicated",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "duplicate-job-ids"
+  },
+  {
+    "file": "v5.1.0/truncated-jobstore.json",
+    "sha256": "d77622b7f719499eaeed36d3ef0db4ca1910b8f8a117148cd78b2dcd74752006",
+    "sourceEncoder": "app/src/main/java/com/mvrk/vrka/JobStore.kt encode()",
+    "bytes": 7051,
+    "description": "Partially written JobStore file (truncated at 60%).",
+    "derivation": "derived: encoder output truncated",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "truncated-jobstore"
+  },
+  {
+    "file": "v5.1.0/unsupported-schema.json",
+    "sha256": "c6f750b4d83f359acadd4f84ebf564d5b4f5fd8cb63cc5efa66718d9a9220a98",
+    "sourceEncoder": "app/src/main/java/com/mvrk/vrka/JobStore.kt encode()",
+    "bytes": 30,
+    "description": "Unsupported schema version with an empty jobs array.",
+    "derivation": "derived: version-only wrapper",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "unsupported-schema"
+  },
+  {
+    "file": "v5.1.0/empty-jobstore.json",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sourceEncoder": "app/src/main/java/com/mvrk/vrka/JobStore.kt encode()",
+    "bytes": 0,
+    "description": "Empty JobStore file.",
+    "derivation": "derived: zero bytes",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "empty-jobstore"
+  },
+  {
+    "file": null,
+    "description": "No JobStore file exists (first run / data cleared).",
+    "derivation": "absence",
+    "sourceTag": "v5.1.0",
+    "sourceCommit": "2e5b8228b581af606a7a6c40758c2aaaef0914c9",
+    "case": "missing-jobstore"
+  }
+]

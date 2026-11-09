@@ -1,4 +1,37 @@
-# Device Validation & Subsystem Verification Record — VRKA Android 5.1.2
+# Device Validation & Subsystem Verification Record — VRKA Android
+
+## Unreleased `main`: unified Room storage architecture
+
+Validation date: 2026-11-09. This section records unreleased development verification and does
+not modify or replace the published v5.1.2 evidence below.
+
+- **Automated JVM verification:** 800 tests in 77 suites pass with 0 failures, 0 errors, and 0
+  skipped on an API 36 Robolectric configuration with JDK 21.
+- **Legacy migration corpus:** 80 cases / 75 files across v5.1.0, v5.1.1, v5.1.2, and the
+  unreleased baseline. All manifest SHA-256 values match; all originals are unchanged after
+  import; integrity and foreign-key checks pass; repeated import is idempotent. Independent
+  verification confirmed all 75 hashes also match the Phase 0 scratch corpus.
+- **Real provider instrumentation (API 36 emulator, `Medium_Phone_API_36.0`):**
+  - `PublicationStorageIntegrationTest`: 2 MediaStore tests pass (finalization verification and
+    real pending-row crash recovery).
+  - `SafPublicationIntegrationTest`: 10 tests pass through the real
+    `ContentResolver`/`DocumentsContract` path against a test provider: in-place rename,
+    replacement-ID rename with interruption recovery before URI persistence, null rename
+    re-query, unsupported and throwing rename, provider-modified marker, duplicate final-name
+    candidates, child-enumeration capability rejection, readback failure, delete-retry cleanup,
+    and revoked permission recovery.
+- **Build verification:** debug Kotlin, debug Android test-source, and release-variant Kotlin
+  compilation pass without production signing credentials; `lintDebug` reports 0 errors (303
+  warnings, 4 hints); debug and development release APKs build without production signing.
+- **Platform boundary:** the SAF provider is a controlled test provider that implements the
+  public DocumentsContract call/query contract. Third-party OEM providers with different
+  rename, enumeration, or readback behavior remain a documented boundary; the app rejects a
+  destination before side effects when enumeration or document identity is unavailable, and
+  preserves unresolved transactions when content evidence cannot be obtained.
+
+---
+
+# Historical: VRKA Android 5.1.2 — Device Validation & Subsystem Verification Record
 
 ## 1. Authoritative Validation Summary
 

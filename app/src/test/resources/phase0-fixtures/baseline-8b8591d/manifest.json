@@ -1,0 +1,57 @@
+[
+  {
+    "file": "baseline-8b8591d/baseline-jobstore-schema2.json",
+    "sha256": "c25bd3b993b31990d94faf4a626cbf3fc1dc335fdd3d2e0f89460564a841675c",
+    "sourceEncoder": "current baseline PublicationJournal/StagingCleanupStore/JobStore",
+    "bytes": 2641,
+    "description": "Current baseline JobStore schema 2 with terminal and publishing records.",
+    "derivation": "direct current encoder output",
+    "sourceTag": "baseline-8b8591d",
+    "sourceCommit": "8b8591d7d8bb6cd25a63397f0998785fc78c67b1",
+    "case": "baseline-jobstore-schema2"
+  },
+  {
+    "file": "baseline-8b8591d/baseline-journal-cleanup-pending.json",
+    "sha256": "2619bf64cd9258ae96ad685b4aa673f9809bcc10fd09223680540164568bd885",
+    "sourceEncoder": "current baseline PublicationJournal/StagingCleanupStore/JobStore",
+    "bytes": 621,
+    "description": "Current baseline CLEANUP_PENDING journal entry.",
+    "derivation": "direct current API sequence",
+    "sourceTag": "baseline-8b8591d",
+    "sourceCommit": "8b8591d7d8bb6cd25a63397f0998785fc78c67b1",
+    "case": "baseline-journal-cleanup-pending"
+  },
+  {
+    "file": "baseline-8b8591d/baseline-journal-reconciled-intent.json",
+    "sha256": "cc9a62fb9fd5d60b502a07914e874d889b8c055cf863e19b2bb81e3f18f0d43b",
+    "sourceEncoder": "current baseline PublicationJournal/StagingCleanupStore/JobStore",
+    "bytes": 522,
+    "description": "Current baseline transaction-scoped recon of an intent record.",
+    "derivation": "direct current API sequence",
+    "sourceTag": "baseline-8b8591d",
+    "sourceCommit": "8b8591d7d8bb6cd25a63397f0998785fc78c67b1",
+    "case": "baseline-journal-reconciled-intent"
+  },
+  {
+    "file": "baseline-8b8591d/baseline-journal-unsupported-schema.json",
+    "sha256": "f57a1f9b0318f3c170e811cd0d5ba56e66af1d9fb06d1c7a21912f7f9f187e12",
+    "sourceEncoder": "current baseline PublicationJournal/StagingCleanupStore/JobStore",
+    "bytes": 33,
+    "description": "Current baseline journal with an unsupported schema version.",
+    "derivation": "derived: version-only wrapper",
+    "sourceTag": "baseline-8b8591d",
+    "sourceCommit": "8b8591d7d8bb6cd25a63397f0998785fc78c67b1",
+    "case": "baseline-journal-unsupported-schema"
+  },
+  {
+    "file": "baseline-8b8591d/baseline-staging-cleanup-store.json",
+    "sha256": "a49e2d022370645f731587b542eb861415115b79109c0e5c9eb1199e6e7f5b63",
+    "sourceEncoder": "current baseline PublicationJournal/StagingCleanupStore/JobStore",
+    "bytes": 201,
+    "description": "Current baseline StagingCleanupStore schema 1 with two jobs.",
+    "derivation": "direct current API sequence",
+    "sourceTag": "baseline-8b8591d",
+    "sourceCommit": "8b8591d7d8bb6cd25a63397f0998785fc78c67b1",
+    "case": "baseline-staging-cleanup-store"
+  }
+]

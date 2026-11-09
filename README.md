@@ -180,10 +180,11 @@ flowchart TD
     end
 
     subgraph Core["Core Download Pipeline"]
-        DM["VrkaDownloadManager<br/><i>Orchestration & State Management</i>"]
-        DRF["DownloadRequestFactory<br/><i>Argv Builder & Header Redaction</i>"]
-        JS[("JobStore<br/><i>JSON Storage</i>")]
-        FGS["Foreground DownloadService<br/><i>Notification & Concurrency</i>"]
+        DM["VrkaDownloadManager<br/><i>Orchestration &amp; State Management</i>"]
+        DRF["DownloadRequestFactory<br/><i>Argv Builder &amp; Header Redaction</i>"]
+        DB[("Room / SQLite<br/><i>Durable Authority (unreleased main)</i>)")]
+        CACHE["StateFlow Cache<br/><i>UI, Service &amp; Notification Consumers</i>"]
+        FGS["Foreground DownloadService<br/><i>Notification &amp; Concurrency</i>"]
     end
 
     subgraph NormalFlow["Normal Acquisition Path"]
@@ -224,7 +225,9 @@ flowchart TD
     Queue --> DM
     Settings -.-> CUM
     Settings -.-> AUM
-    DM --- JS
+    DM --- DB
+    DB -->|committed rows| CACHE
+    CACHE --- History
     DM --- FGS
     DM --> DRF
 
@@ -252,12 +255,13 @@ flowchart TD
 
 ### Architectural Highlights
 
-1. **UI Layer & Localization**: Built with Jetpack Compose and design tokens (`VrkaTokens`), featuring floating capsule navigation with adaptive backdrop blur across AMOLED Dark and Light modes. Full 14-language internationalization with complete Right-to-Left (RTL) layout mirroring for Arabic and 100% key parity.
-2. **Download Pipeline**: `VrkaDownloadManager` coordinates normal downloads using `DownloadRequestFactory` and `yt-dlp`. An eligible failure (such as anti-bot challenges or dynamic player scripts) triggers Browser Fallback.
-3. **Browser Fallback Subsystem**: Mozilla GeckoView navigates in a task-scoped private session. The bundled first-party `VRKA Media Detector` WebExtension (`media-detector@vrka.mvrk.com`) and `GeckoMediaBridge` pass observed candidate streams to the native ranker. Bundled `uBlock Origin` filters intrusive advertisements and tracking requests. `yt-dlp` probes the selected candidate and performs the transfer via its standard request path.
-4. **Local Processing & Validation**: `FFmpeg` handles local audio extraction, container remuxing, and optional H.264 transcoding. Completed files are validated for integrity before publication to the device storage via `OutputPublisher`.
-5. **Component Updates vs Application Updates**: `yt-dlp` and `uBlock Origin` are independently updatable in the background via WorkManager. Mozilla GeckoView is a core Gradle dependency (`159.0.20261022150525`). Application updates are cryptographically authenticated using OpenPGP-signed manifests against the pinned release trust anchor (`0xD519380BEBA1B9F7`).
-6. **Retired & Dormant Code Boundaries**: The legacy Puemos extension is completely retired and removed. Prototype transfer routing in `MediaEngineRouter` is dormant with no callers in the production download flow.
+1. **Durable Storage Authority (unreleased `main`)**: A single Room/SQLite database owns jobs, retry attempts, publication batches/outputs, cleanup obligations, and migration records. The existing `StateFlow` projection remains an in-memory cache refreshed only after committed transactions. Existing v5.1.0/v5.1.1/v5.1.2 JSON data is imported through a crash-safe, idempotent migration. The published v5.1.2 APK retains its JSON architecture; see [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) and [docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md).
+2. **UI Layer & Localization**: Built with Jetpack Compose and design tokens (`VrkaTokens`), featuring floating capsule navigation with adaptive backdrop blur across AMOLED Dark and Light modes. Full 14-language internationalization with complete Right-to-Left (RTL) layout mirroring for Arabic and 100% key parity.
+3. **Download Pipeline**: `VrkaDownloadManager` coordinates normal downloads using `DownloadRequestFactory` and `yt-dlp`. An eligible failure (such as anti-bot challenges or dynamic player scripts) triggers Browser Fallback.
+4. **Browser Fallback Subsystem**: Mozilla GeckoView navigates in a task-scoped private session. The bundled first-party `VRKA Media Detector` WebExtension (`media-detector@vrka.mvrk.com`) and `GeckoMediaBridge` pass observed candidate streams to the native ranker. Bundled `uBlock Origin` filters intrusive advertisements and tracking requests. `yt-dlp` probes the selected candidate and performs the transfer via its standard request path.
+5. **Local Processing & Validation**: `FFmpeg` handles local audio extraction, container remuxing, and optional H.264 transcoding. Completed files are validated for integrity before publication to the device storage via `OutputPublisher`.
+6. **Component Updates vs Application Updates**: `yt-dlp` and `uBlock Origin` are independently updatable in the background via WorkManager. Mozilla GeckoView is a core Gradle dependency (`159.0.20261022150525`). Application updates are cryptographically authenticated using OpenPGP-signed manifests against the pinned release trust anchor (`0xD519380BEBA1B9F7`).
+7. **Retired & Dormant Code Boundaries**: The legacy Puemos extension is completely retired and removed. Prototype transfer routing in `MediaEngineRouter` is dormant with no callers in the production download flow.
 
 ---
 
@@ -285,6 +289,15 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 
 ```powershell
 .\gradlew.bat testDebugUnitTest --offline
+```
+
+### Running Provider Integration Tests
+
+With an API 36 emulator running, execute the real MediaStore and SAF protocol suites:
+
+```powershell
+.\gradlew.bat connectedDebugAndroidTest `
+  -Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.SafPublicationIntegrationTest,com.mvrk.vrka.PublicationStorageIntegrationTest
 ```
 
 ### Assembling Debug APK
