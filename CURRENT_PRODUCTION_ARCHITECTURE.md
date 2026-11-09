@@ -242,4 +242,4 @@ The official published release binary (VRKA-Android-v5.1.2.apk) incorporates cri
 2. **Unified Publication Marker**:
    - Synchronously persists publishStarted = true for both normal yt-dlp acquisitions and MediaEngine Browser Fallback paths before outputs leave staging, guaranteeing fail-closed semantics across all transfer modes.
 3. **Reconciled Verification Records**:
-   - Authoritative consolidation in DEVICE_VALIDATION.md detailing physical OnePlus 11 hardware testing and explicit platform boundaries.
+   - Authoritative consolidation in DEVICE_VALIDATION.md detailing OnePlus 11 hardware testing, maintainer-reported physical-device v5.1.1-to-v5.1.2 upgrade validation, and explicit platform boundaries.

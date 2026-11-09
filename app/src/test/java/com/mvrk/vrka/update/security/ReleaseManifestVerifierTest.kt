@@ -379,4 +379,131 @@ class ReleaseManifestVerifierTest {
         assertEquals(157_202_797L, parsed.apk.sizeBytes)
         assertEquals("5051ecfd6319ca2cafdd4287904006fbc54b06faac5444d3a3c73df5cdc848aa", parsed.apk.sha256)
     }
+
+    @Test
+    fun publishedV511ManifestDetachedSignatureVerifiesWithPinnedPublicKey() {
+        val manifestFile = listOf(
+            File("VRKA-Android-v5.1.1.manifest.json"),
+            File("../VRKA-Android-v5.1.1.manifest.json"),
+            File("../../VRKA-Android-v5.1.1.manifest.json"),
+        ).firstOrNull { it.exists() }
+        assertNotNull("The published v5.1.1 manifest must be present in the repository", manifestFile)
+        val signatureFile = File(manifestFile!!.path + ".asc")
+        assertTrue("The published detached signature must be present", signatureFile.exists())
+
+        val manifestBytes = manifestFile.readBytes()
+        val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
+        val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt)
+            ?: error("Published manifest has an invalid issued_at")
+
+        val parsed = pinnedVerifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = signatureFile.readBytes(),
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50100L,
+            currentStoredRevision = 3L,
+            expectedReleaseTag = "v5.1.1",
+            currentTimeMillis = issuedEpoch + 1_000L,
+            publicKey = pinnedPublicKey,
+        )
+
+        assertEquals("5.1.1", parsed.versionName)
+        assertEquals(50101L, parsed.versionCode)
+        assertEquals(4L, parsed.metadataRevision)
+        assertEquals(157_231_575L, parsed.apk.sizeBytes)
+        assertEquals("781d7910d9b5855d4060c247c09ac3f89156ebfd202c8af5385eea816380f4f8", parsed.apk.sha256)
+    }
+
+    @Test
+    fun publishedV512ManifestDetachedSignatureVerifiesWithPinnedPublicKey() {
+        val manifestFile = listOf(
+            File("VRKA-Android-v5.1.2.manifest.json"),
+            File("../VRKA-Android-v5.1.2.manifest.json"),
+            File("../../VRKA-Android-v5.1.2.manifest.json"),
+        ).firstOrNull { it.exists() }
+        assertNotNull("The published v5.1.2 manifest must be present in the repository", manifestFile)
+        val signatureFile = File(manifestFile!!.path + ".asc")
+        assertTrue("The published detached signature must be present", signatureFile.exists())
+
+        val manifestBytes = manifestFile.readBytes()
+        val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
+        val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt)
+            ?: error("Published manifest has an invalid issued_at")
+
+        val parsed = pinnedVerifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = signatureFile.readBytes(),
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50101L,
+            currentStoredRevision = 4L,
+            expectedReleaseTag = "v5.1.2",
+            currentTimeMillis = issuedEpoch + 1_000L,
+            publicKey = pinnedPublicKey,
+        )
+
+        assertEquals("5.1.2", parsed.versionName)
+        assertEquals(50102L, parsed.versionCode)
+        assertEquals(5L, parsed.metadataRevision)
+        assertEquals(157_243_017L, parsed.apk.sizeBytes)
+        assertEquals("3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a", parsed.apk.sha256)
+    }
+
+    @Test
+    fun v511ToV512UpgradeVerificationWithPinnedKey() {
+        val manifestFile = listOf(
+            File("VRKA-Android-v5.1.2.manifest.json"),
+            File("../VRKA-Android-v5.1.2.manifest.json"),
+            File("../../VRKA-Android-v5.1.2.manifest.json"),
+        ).firstOrNull { it.exists() }
+        assertNotNull(manifestFile)
+        val signatureFile = File(manifestFile!!.path + ".asc")
+        val manifestBytes = manifestFile.readBytes()
+        val signatureBytes = signatureFile.readBytes()
+        val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
+        val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt)!!
+
+        // Upgrading an installed v5.1.1 (versionCode 50101, storedRevision 4) to v5.1.2 succeeds
+        val accepted = pinnedVerifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = signatureBytes,
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50101L,
+            currentStoredRevision = 4L,
+            expectedReleaseTag = "v5.1.2",
+            currentTimeMillis = issuedEpoch + 1_000L,
+            publicKey = pinnedPublicKey,
+        )
+        assertEquals(50102L, accepted.versionCode)
+        assertEquals(5L, accepted.metadataRevision)
+
+        // Downgrade protection: rejected if installed versionCode >= manifest versionCode
+        val downgradeErr = assertThrows(ManifestValidationException::class.java) {
+            pinnedVerifier.verifyAndParseManifest(
+                manifestBytes = manifestBytes,
+                signatureBytes = signatureBytes,
+                currentInstalledPackage = "com.mvrk.vrka",
+                currentInstalledVersionCode = 50103L,
+                currentStoredRevision = 4L,
+                expectedReleaseTag = "v5.1.2",
+                currentTimeMillis = issuedEpoch + 1_000L,
+                publicKey = pinnedPublicKey,
+            )
+        }
+        assertTrue(downgradeErr.message!!.contains("downgrade rejected"))
+
+        // Rollback protection: rejected if stored revision is higher than manifest revision
+        val rollbackErr = assertThrows(ManifestValidationException::class.java) {
+            pinnedVerifier.verifyAndParseManifest(
+                manifestBytes = manifestBytes,
+                signatureBytes = signatureBytes,
+                currentInstalledPackage = "com.mvrk.vrka",
+                currentInstalledVersionCode = 50101L,
+                currentStoredRevision = 6L,
+                expectedReleaseTag = "v5.1.2",
+                currentTimeMillis = issuedEpoch + 1_000L,
+                publicKey = pinnedPublicKey,
+            )
+        }
+        assertTrue(rollbackErr.message!!.contains("rollback detected"))
+    }
 }

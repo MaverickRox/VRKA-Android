@@ -30,7 +30,7 @@
 - Component version is shown as unknown when the app cannot read a runtime, packaged-file or verified-update version. “Up to date” appears only after a check or verified component update.
 - Android may stop the application process under memory pressure; interrupted background work can be resumed or retried.
 - The new accessibility and destination strings have English/base translations in every locale and translated values for the 14 supported languages, but the new translations have not been reviewed by native speakers. Text expansion and RTL layouts for the new strings were not visually checked on a device.
-- Device testing was performed on a physical OnePlus 11 (Android 16, SDK 36, ARM64) over ADB. For complete categorization of verified subsystems and unverified platform boundaries, refer to the authoritative record in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
+- Subsystem testing on physical hardware was performed on a OnePlus 11 (Android 16, SDK 36, ARM64) for v5.1.1, and an in-place upgrade from v5.1.1 to v5.1.2 was confirmed on physical hardware by the maintainer. For complete categorization of verified subsystems, maintainer-reported upgrade verification, and unverified platform boundaries, refer to the authoritative record in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
 ## Validation Scope
 
