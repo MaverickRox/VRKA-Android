@@ -581,4 +581,39 @@ class ReleaseManifestVerifierTest {
         }
         assertTrue(tagErr.message!!.contains("Release tag mismatch"))
     }
+
+    @Test
+    fun testMissingIssuerFingerprintSubpacketRejected() {
+        val decoder = org.bouncycastle.openpgp.PGPUtil.getDecoderStream(java.io.ByteArrayInputStream(testKey.secretKeyRing))
+        val collection = org.bouncycastle.openpgp.PGPSecretKeyRingCollection(
+            decoder,
+            org.bouncycastle.openpgp.operator.jcajce.JcaKeyFingerprintCalculator().setProvider("BC"),
+        )
+        val secretKey = collection.asSequence()
+            .flatMap { it.secretKeys.asSequence() }
+            .first { it.isSigningKey }
+        val privateKey = secretKey.extractPrivateKey(
+            org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyDecryptorBuilder().setProvider("BC").build("".toCharArray()),
+        )
+        val generator = org.bouncycastle.openpgp.PGPSignatureGenerator(
+            org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder(
+                secretKey.publicKey.algorithm,
+                org.bouncycastle.bcpg.HashAlgorithmTags.SHA256,
+            ).setProvider("BC"),
+        )
+        generator.init(org.bouncycastle.openpgp.PGPSignature.BINARY_DOCUMENT, privateKey)
+        generator.update(testManifestJson.toByteArray())
+        val sig = generator.generate()
+        val baos = java.io.ByteArrayOutputStream()
+        org.bouncycastle.bcpg.ArmoredOutputStream(baos).use { aos -> sig.encode(aos) }
+
+        val err = assertThrows(ManifestValidationException::class.java) {
+            verifier.verifyDetachedSignature(
+                dataBytes = testManifestJson.toByteArray(),
+                signatureBytes = baos.toByteArray(),
+                publicKey = testKey.publicKey,
+            )
+        }
+        assertTrue(err.message!!.contains("Mandatory issuer fingerprint subpacket missing"))
+    }
 }

@@ -182,7 +182,7 @@ flowchart TD
     subgraph Core["Core Download Pipeline"]
         DM["VrkaDownloadManager<br/><i>Orchestration & State Management</i>"]
         DRF["DownloadRequestFactory<br/><i>Argv Builder & Header Redaction</i>"]
-        JS[("DownloadJobStore<br/><i>Persistent State</i>")]
+        JS[("JobStore<br/><i>JSON Storage</i>")]
         FGS["Foreground DownloadService<br/><i>Notification & Concurrency</i>"]
     end
 

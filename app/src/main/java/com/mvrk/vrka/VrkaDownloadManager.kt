@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -57,11 +58,19 @@ class DownloadExecutionException(
     val transferStarted: Boolean,
 ) : RuntimeException(message)
 
-class VrkaDownloadManager(
+class VrkaDownloadManager internal constructor(
     private val context: Context,
     val settingsRepository: SettingsRepository,
     private val scope: CoroutineScope,
+    customStore: JobStore? = null,
+    customPublisher: OutputPublisher? = null,
 ) {
+    constructor(
+        context: Context,
+        settingsRepository: SettingsRepository,
+        scope: CoroutineScope,
+    ) : this(context, settingsRepository, scope, null, null)
+
     private val pendingQueue = ConcurrentLinkedQueue<String>()
     private val pendingIds = ConcurrentHashMap.newKeySet<String>()
     private val activeRunningJobs = ConcurrentHashMap<String, Job>()
@@ -77,11 +86,11 @@ class VrkaDownloadManager(
     private val activeEngineTokens = ConcurrentHashMap<String, EngineCancellationToken>()
     private val activeMediaProcesses = ConcurrentHashMap<String, Process>()
     private val initialized = AtomicBoolean(false)
-    private val store = JobStore(context)
+    private val store = customStore ?: JobStore(context)
     /** Set when a user-initiated transfer job is pending or has already started this process. */
     private val transferJobWasScheduled =
         DownloadTransferRuntime.wasTransferJobInvoked || DownloadTransferScheduler.isScheduled(context)
-    private val publisher = OutputPublisher(context, settingsRepository)
+    internal val publisher = customPublisher ?: OutputPublisher(context, settingsRepository)
     private val stagingRoot by lazy { File(context.getExternalFilesDir(null), "staging") }
     private val speedPattern = Regex("""\bat\s+([^\s]+/s)""", RegexOption.IGNORE_CASE)
 
@@ -313,17 +322,26 @@ class VrkaDownloadManager(
                         val uri = Uri.parse(entry.providerUri)
                         when (entry.providerType) {
                             PublicationProviderType.MEDIA_STORE -> {
-                                publisher.finalizeMediaStore(uri, entry.intendedFilename)
-                                publisher.activeJournal.updateFinalized(entry.transactionId)
-                                entry.copy(publicationPhase = PublicationPhase.FINALIZED)
+                                val finalized = publisher.finalizeMediaStore(uri, entry.intendedFilename)
+                                if (finalized) {
+                                    publisher.activeJournal.updateFinalized(entry.transactionId)
+                                    entry.copy(publicationPhase = PublicationPhase.FINALIZED)
+                                } else {
+                                    entry
+                                }
                             }
                             PublicationProviderType.SAF -> {
                                 val finalUri = publisher.finalizeSaf(uri, entry.intendedFilename)
-                                publisher.activeJournal.updateFinalized(entry.transactionId, finalUri.toString())
-                                entry.copy(
-                                    providerUri = finalUri.toString(),
-                                    publicationPhase = PublicationPhase.FINALIZED,
-                                )
+                                val verified = publisher.fileExists(finalUri.toString())
+                                if (verified) {
+                                    publisher.activeJournal.updateFinalized(entry.transactionId, finalUri.toString())
+                                    entry.copy(
+                                        providerUri = finalUri.toString(),
+                                        publicationPhase = PublicationPhase.FINALIZED,
+                                    )
+                                } else {
+                                    entry
+                                }
                             }
                         }
                     } else {
@@ -331,9 +349,10 @@ class VrkaDownloadManager(
                     }
                 }
 
-                // Verify all outputs exist at their provider URIs
+                // Verify all outputs are finalized and exist at their provider URIs
                 val allExist = finalizedEntries.all { entry ->
-                    entry.providerUri != null && publisher.fileExists(entry.providerUri)
+                    (entry.publicationPhase == PublicationPhase.FINALIZED || entry.publicationPhase == PublicationPhase.RECORDED) &&
+                        entry.providerUri != null && publisher.fileExists(entry.providerUri)
                 }
 
                 if (allExist) {
@@ -379,7 +398,13 @@ class VrkaDownloadManager(
                     )
                     fullyReconciledJobIds.add(jobId)
                 } else {
-                    handleIncompleteBatch(jobId, existingJob, finalizedEntries, jobsToUpdate, fullyReconciledJobIds)
+                    // One or more outputs could not be finalized (e.g. MediaStore update affected 0 rows).
+                    // Preserve the journal and outputs for retry; do NOT delete completed files and do NOT reconcile.
+                    reportStoreIssue(
+                        stage = "Publication finalization",
+                        summary = "Output finalization verification failed",
+                        detail = "Outputs for job $jobId could not be finalized; preserving journal for retry",
+                    )
                 }
             } else {
                 handleIncompleteBatch(jobId, existingJob, adoptedEntries, jobsToUpdate, fullyReconciledJobIds)
@@ -431,6 +456,7 @@ class VrkaDownloadManager(
         val completedUris = mutableListOf<String>()
         var totalBytes = 0L
         val totalOutputs = entries.firstOrNull()?.totalOutputs ?: 1
+        var anyCleanupFailed = false
 
         entries.forEach { entry ->
             val isFinal = (entry.publicationPhase == PublicationPhase.FINALIZED || entry.publicationPhase == PublicationPhase.RECORDED) &&
@@ -439,18 +465,31 @@ class VrkaDownloadManager(
                 completedUris.add(entry.providerUri)
                 totalBytes += entry.copiedBytes
             } else {
-                entry.providerUri?.let { uri ->
-                    runCatching { publisher.delete(uri) }
+                val uri = entry.providerUri
+                if (uri != null) {
+                    val deleted = runCatching { publisher.delete(uri) }.getOrDefault(false)
+                    if (deleted) {
+                        publisher.activeJournal.updateDeleted(entry.transactionId)
+                    } else {
+                        anyCleanupFailed = true
+                        publisher.activeJournal.markCleanupPending(entry.transactionId, "Could not delete temporary output: $uri")
+                        reportStoreIssue(
+                            stage = "Publication cleanup",
+                            summary = "Failed to clean up unfinalized output",
+                            detail = "Could not delete partial provider output $uri for job $jobId",
+                        )
+                    }
+                } else {
+                    runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
                 }
-                runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
             }
         }
 
         if (existingJob != null && existingJob.state != JobState.DONE) {
-            val detail = if (completedUris.isNotEmpty()) {
-                "Interrupted during publication (${completedUris.size} of $totalOutputs files published)"
-            } else {
-                "Interrupted during publication"
+            val detail = when {
+                anyCleanupFailed -> "Interrupted during publication (cleanup pending for partial files)"
+                completedUris.isNotEmpty() -> "Interrupted during publication (${completedUris.size} of $totalOutputs files published)"
+                else -> "Interrupted during publication"
             }
             jobsToUpdate[jobId] = existingJob.copy(
                 state = JobState.FAILED,
@@ -465,7 +504,10 @@ class VrkaDownloadManager(
                 updatedAt = System.currentTimeMillis(),
             )
         }
-        fullyReconciledJobIds.add(jobId)
+
+        if (!anyCleanupFailed) {
+            fullyReconciledJobIds.add(jobId)
+        }
     }
 
     private fun handleLegacyInFlightJobs() {
@@ -1675,26 +1717,19 @@ class VrkaDownloadManager(
             ?.sum()
             ?: finalBytes
         markFinalize("publication-complete")
-        update(
-            job.id,
-            state = JobState.DONE,
-            progress = 100f,
+        val committed = commitTerminalPublishedJob(
+            jobId = job.id,
             detail = doneDetail,
             downloadedBytes = finalBytes,
             reportedTotalBytes = finalBytes,
             reportedTotalIsExact = finalBytes != null,
             actualFinalFileBytes = publishedBytes,
             outputUris = published,
-            error = "",
             subtitleStatus = jobSubStatus,
-            persist = true,
         )
-        runCatching { diagnosticStore.clearUrlsForJob(job.id) }
-        runCatching { publisher.activeJournal.markReconciled(job.id) }
-        current(job.id)?.let { DownloadNotifications.notifyCompleted(context, it) }
-        markFinalize("done-state-posted")
-        cleanupStaging(job.id)
-        markFinalize("staging-cleanup-complete")
+        if (!committed) {
+            Log.w("VRKA", "Terminal persistence failed for ${job.id}; journal and staging retained for recovery.")
+        }
     }
 
     private suspend fun downloadViaMediaEngine(
@@ -1817,10 +1852,8 @@ class VrkaDownloadManager(
                         published.forEach { uri -> runCatching { publisher.delete(uri) } }
                         throw error
                     }
-                    update(
-                        job.id,
-                        state = JobState.DONE,
-                        progress = 100f,
+                    val committed = commitTerminalPublishedJob(
+                        jobId = job.id,
                         detail = if (published.size == 1) "Saved to Downloads/VRKA" else "Saved ${published.size} files",
                         downloadedBytes = result.totalBytes,
                         reportedTotalBytes = result.totalBytes,
@@ -1828,13 +1861,10 @@ class VrkaDownloadManager(
                         actualFinalFileBytes = publishedBytes?.takeIf { it > 0L }
                             ?: result.totalBytes.takeIf { it > 0L },
                         outputUris = published,
-                        error = "",
-                        persist = true,
                     )
-                    runCatching { diagnosticStore.clearUrlsForJob(job.id) }
-                    runCatching { publisher.activeJournal.markReconciled(job.id) }
-                    current(job.id)?.let { DownloadNotifications.notifyCompleted(context, it) }
-                    cleanupStaging(job.id)
+                    if (!committed) {
+                        Log.w("VRKA", "Terminal persistence failed for ${job.id}; journal and staging retained for recovery.")
+                    }
                 }
                 is EngineExecutionResult.Failed -> {
                     throw result.error
@@ -2077,6 +2107,92 @@ class VrkaDownloadManager(
         if (childPath.startsWith(rootPath) && childPath != rootPath) {
             runCatching { child.deleteRecursively() }
         }
+    }
+
+    /**
+     * Executes the durable terminal completion protocol for published outputs:
+     * 1. Confirms provider outputs are finalized (validated by publisher beforehand).
+     * 2. Constructs the complete terminal JobStore state.
+     * 3. Persists the terminal state using a checked, awaited save operation.
+     * 4. Verifies that the exact transaction state was successfully persisted.
+     * 5. Only then marks its publication journal entries reconciled.
+     * 6. Only after successful reconciliation performs staging cleanup and posts notification.
+     *
+     * Returns true if terminal state was durably persisted and reconciled; false if persistence failed.
+     */
+    internal suspend fun commitTerminalPublishedJob(
+        jobId: String,
+        detail: String,
+        downloadedBytes: Long?,
+        reportedTotalBytes: Long?,
+        reportedTotalIsExact: Boolean,
+        actualFinalFileBytes: Long?,
+        outputUris: List<String>,
+        subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus? = null,
+    ): Boolean {
+        // Step 1: In-memory mutation
+        var targetJob: DownloadJob? = null
+        mutate(persist = false) { list ->
+            list.map { job ->
+                if (job.id == jobId && JobStateGuard.allowsStateChange(job.state, JobState.DONE)) {
+                    val updated = job.copy(
+                        state = JobState.DONE,
+                        progress = 100f,
+                        detail = detail,
+                        downloadedBytes = downloadedBytes ?: job.downloadedBytes,
+                        reportedTotalBytes = reportedTotalBytes ?: job.reportedTotalBytes,
+                        reportedTotalIsExact = reportedTotalIsExact,
+                        actualFinalFileBytes = actualFinalFileBytes ?: job.actualFinalFileBytes,
+                        outputUris = outputUris,
+                        error = "",
+                        subtitleStatus = subtitleStatus ?: job.subtitleStatus,
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                    targetJob = updated
+                    updated
+                } else {
+                    job
+                }
+            }
+        }
+
+        if (targetJob == null) {
+            Log.w("VRKA", "Job $jobId was not found or state guard rejected transition to DONE.")
+            return false
+        }
+
+        // Step 2 & 3: Checked, awaited terminal persistence
+        val persistSuccess = withContext(Dispatchers.IO + NonCancellable) {
+            persistJobsNow()
+        }
+
+        if (!persistSuccess) {
+            reportStoreIssue(
+                stage = "Queue/history persistence",
+                summary = "Failed to persist terminal DONE state to JobStore",
+                detail = "JobStore save returned false for job $jobId; retaining publication journal and staging data for restart recovery.",
+            )
+            Log.e("VRKA", "JobStore save failed for job $jobId; retaining journal and staging data for recovery.")
+            return false
+        }
+
+        // Step 4: Verification - verify in-memory job state in current jobs matches the persisted terminal state
+        val verifiedJob = current(jobId)
+        if (verifiedJob?.state != JobState.DONE || verifiedJob.outputUris != outputUris) {
+            Log.e("VRKA", "Terminal job state verification failed for $jobId; retaining journal and staging data.")
+            return false
+        }
+
+        // Step 5: Mark publication journal reconciled ONLY after verified JobStore persistence
+        runCatching { diagnosticStore.clearUrlsForJob(jobId) }
+        runCatching { publisher.activeJournal.markReconciled(jobId) }
+
+        // Step 6: Post completion notification and clean up staging ONLY after successful reconciliation
+        runCatching { current(jobId)?.let { DownloadNotifications.notifyCompleted(context, it) } }
+        Log.d("VRKA", "Finalize job=$jobId stage=done-state-posted")
+        cleanupStaging(jobId)
+        Log.d("VRKA", "Finalize job=$jobId stage=staging-cleanup-complete")
+        return true
     }
 
     private fun current(jobId: String): DownloadJob? =

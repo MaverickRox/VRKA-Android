@@ -55,7 +55,7 @@ Subsystem testing is classified into seven rigorous categories:
 
 ### 3.1 Automated Unit Tests
 - **Status**: VERIFIED
-- **Evidence**: Passing JVM unit test suite (baseline 732 tests across 72 suites, expanded with publication crash recovery suite; zero failures, zero errors, zero skipped) executed in an isolated temporary JVM environment with no access to production credentials. Full coverage across format parsing, size estimation, URL sanitization, JobStore persistence, updater cryptography, and publication journal crash consistency.
+- **Evidence**: Passing JVM unit test suite (732 tests across 72 suites; zero failures, zero errors, zero skipped) executed in an isolated temporary JVM environment with no access to production credentials. Full coverage across format parsing, size estimation, URL sanitization, JobStore persistence, and updater cryptography.
 
 ### 3.2 Build & Compilation Validation
 - **Status**: VERIFIED

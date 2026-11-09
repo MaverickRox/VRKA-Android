@@ -7,7 +7,7 @@ Date: 2026-11-09
 | Check | Command | Result |
 |---|---|---|
 | Original v5.1.2 release-time JVM tests | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 747 tests, 73 suites, 0 failures, 0 errors, 0 skipped |
-| Post-release JVM tests on `main` (with updater regressions) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 758 tests, 73 suites, 0 failures, 0 errors, 0 skipped (supersedes initial 751-test post-release check with granular updater upgrade/downgrade/rollback/metadata isolation) |
+| Post-release JVM tests on `main` (with updater regressions & publication audit remediation) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 760 tests, 73 suites, 0 failures, 0 errors, 0 skipped (including updater regressions, SHA-2/issuer-fingerprint verification, and 15 controlled production-path publication recovery boundary scenarios) |
 | Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
 | Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS; instrumentation was not executed |
 | Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS without production signing credentials |
@@ -16,24 +16,26 @@ Date: 2026-11-09
 | Production release APK | `./gradlew assembleRelease` | PASS: production-signed release APK built |
 | Lint | `./gradlew lintDebug` | PASS: 284 warnings, 0 errors/fatal |
 
-The 5.1.2 suite adds deterministic coverage for all 14 publication failure boundaries:
-1. Provider object created before URI persistence (MediaStore pending cleanup).
-2. SAF createDocument before URI persistence (pending child document cleanup).
-3. Playlist partial publication failure (incomplete batch fails closed as `FAILED`, retaining completed output URIs in History).
-4. All playlist intents recorded upfront, crash before publication begins.
-5. Crash during file copy (partial byte detection and cleanup).
-6. Crash after copy completion before journal update (verified size recovery to `DONE`).
-7. MediaStore finalization before journal update (verified row recovery to `DONE`).
-8. SAF completion before journal update (renamed URI verified recovery to `DONE`).
-9. Crash after terminal JobStore save before journal reconciliation (idempotent recovery).
-10. JobStore save failure during reconciliation (retains journal and staging info intact).
-11. Corrupted publication journal recovery (detection, bounded snapshot rotation max 3, safe abort).
-12. Strict six-step reconciliation persistence ordering.
-13. Repeated startup reconciliation idempotence.
-14. Unrelated user files with similar names (guaranteed never deleted).
+The 5.1.2 suite and post-release remediation add deterministic coverage for all 15 publication recovery failure boundaries:
+1. MediaStore insert failure / crash before URI saved (orphaned pending provider object cleaned up, unrelated user files untouched).
+2. Partial output copy failure (throws IOException after N bytes, deletes partial provider files, marks failed).
+3. Completed byte copy before journal update (verified size recovery to `DONE`, journal marked `RECONCILED`).
+4. MediaStore finalization failure / zero affected rows (preserves journal for retry, does NOT mark reconciled or delete completed file).
+5. SAF rename/finalization failure handled safely (verified recovery without data loss).
+6. First output publication in multi-output batch succeeds while second fails (fails closed as `FAILED`, preserves completed output URIs in history, cleans unfinalized).
+7. Terminal JobStore save failure (PUB-01 durable persistence ordering; retains journal and staging intact, recovers to `DONE` on restart).
+8. Journal persistence failure handled safely (atomic temporary write abort).
+9. Interruption before journal reconciliation (startup cleanly advances verified outputs to `DONE` and reconciles journal).
+10. Interruption after durable terminal JobStore persistence (6-step verification: staging cleaned only after durable persistence and reconciliation).
+11. Failed partial-output deletion (PUB-03: marks `CLEANUP_PENDING`, preserves journal for subsequent retry, never deletes unrelated files).
+12. Repeated cleanup and recovery attempts (PUB-03: subsequent restart pass successfully deletes and reconciles).
+13. Corrupt and unknown journal values (PUB-04: strictly rejected, bounded rotation to at most 3 snapshots, safe abort).
+14. Repeated application restart during reconciliation (idempotence verified across multiple successive restarts).
+15. Multi-output batch partial publication with SAF / MediaStore (fails closed cleanly, preserves completed track documents, removes incomplete pending documents).
 
-The post-release test expansion on `main` adds dedicated coverage for updater regression and security invariants:
+The post-release test expansion on `main` also adds dedicated coverage for updater regression and security invariants:
 - Published v5.1.1 and v5.1.2 release manifest verification with the pinned OpenPGP trust anchor.
+- Enforcement of strict SHA-2 digest allowlist (`SHA-256`, `SHA-384`, `SHA-512`, `SHA-224`) and mandatory Issuer Fingerprint subpacket matching the trusted key.
 - Valid v5.1.1 (`50101`, revision 4) to v5.1.2 (`50102`, revision 5) upgrade acceptance across both manifest and package metadata layers.
 - Internally consistent same-version installation attempt rejection (`5.1.2` / `50102` over `5.1.2` / `50102`).
 - Lower-version downgrade attempt rejection (`5.1.1` / `50101` over `5.1.2` / `50102`).
@@ -44,7 +46,7 @@ The post-release test expansion on `main` adds dedicated coverage for updater re
 
 - **Maintainer-Reported Physical Device Upgrade:** On November 9, 2026, the maintainer personally confirmed that updating an existing v5.1.1 installation to v5.1.2 on a physical Android phone was successful. This verifies that the v5.1.1-to-v5.1.2 upgrade package and production signing identity install cleanly over v5.1.1 on real hardware. Successful installation/update was confirmed; however, broader functional testing, UI walkthroughs, and automated instrumentation were not performed as part of this validation. Comprehensive multi-device testing was not conducted. Historical v5.1.1 OnePlus 11 hardware testing is preserved below as historical evidence.
 - **Emulator Boundary:** Host emulator environment and WHPX virtualization acceleration were inspected and functional. An API 36 headless emulator was launched, but runtime application testing could not complete due to an ADB authorization boundary on the host machine. The application was **not** successfully tested inside that emulator.
-- **Automated & Failure-Injection Verification:** Comprehensive JVM unit test suite (747 tests at release time, 758 tests across 73 suites on `main`, 0 failures) completely exercises format selection, size estimation, URL sanitization, updater cryptography, and all 14 publication failure boundaries.
+- **Automated & Failure-Injection Verification:** Comprehensive JVM unit test suite (747 tests at release time, 760 tests across 73 suites on `main`, 0 failures) completely exercises format selection, size estimation, URL sanitization, updater cryptography (including SHA-2 allowlist and issuer fingerprint enforcement), and all 15 publication recovery failure boundaries using controlled production storage ops.
 - **Platform Boundaries:** As documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md), Browser Fallback live-site end-to-end media transfers and physical SAF execution on API 26–28 hardware remain documented platform boundaries.
 
 ## APK

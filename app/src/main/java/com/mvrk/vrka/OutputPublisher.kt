@@ -9,6 +9,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import java.io.File
+import java.io.OutputStream
 import java.net.URLConnection
 import java.util.UUID
 
@@ -18,10 +19,167 @@ internal data class PublishedOutput(
     val extension: String,
 )
 
+internal interface PublicationStorageOps {
+    fun insertMediaStore(collection: Uri, values: ContentValues, displayName: String? = null, isPending: Boolean? = null): Uri?
+    fun openOutputStream(uri: Uri, mode: String = "w"): OutputStream?
+    fun updateMediaStore(uri: Uri, values: ContentValues, displayName: String? = null, isPending: Boolean? = null): Int
+    fun queryMediaStore(uri: Uri, projection: Array<String>?, selection: String?, selectionArgs: Array<String>?): android.database.Cursor?
+    fun queryMediaStoreCollection(collection: Uri, projection: Array<String>?, selection: String?, selectionArgs: Array<String>?): android.database.Cursor?
+    fun deleteUri(uri: Uri): Boolean
+    fun fileExists(uri: Uri): Boolean
+    fun getFileSize(uri: Uri): Long
+    fun queryDisplayName(uri: Uri): String?
+    fun findPendingMediaStoreUri(pendingFilename: String): Uri?
+
+    // SAF
+    fun existingSafNames(tree: Uri): Set<String>
+    fun findPendingSafUri(tree: Uri, pendingFilename: String): Uri?
+    fun createSafDocument(tree: Uri, mimeType: String, pendingFilename: String): Uri?
+    fun renameSafDocument(uri: Uri, finalName: String): Uri?
+    fun deleteSafDocument(uri: Uri): Boolean
+}
+
+internal class DefaultPublicationStorageOps(private val context: Context) : PublicationStorageOps {
+    override fun insertMediaStore(collection: Uri, values: ContentValues, displayName: String?, isPending: Boolean?): Uri? =
+        context.contentResolver.insert(collection, values)
+
+    override fun openOutputStream(uri: Uri, mode: String): OutputStream? =
+        context.contentResolver.openOutputStream(uri, mode)
+
+    override fun updateMediaStore(uri: Uri, values: ContentValues, displayName: String?, isPending: Boolean?): Int =
+        context.contentResolver.update(uri, values, null, null)
+
+    override fun queryMediaStore(
+        uri: Uri,
+        projection: Array<String>?,
+        selection: String?,
+        selectionArgs: Array<String>?,
+    ): android.database.Cursor? =
+        context.contentResolver.query(uri, projection, selection, selectionArgs, null)
+
+    override fun queryMediaStoreCollection(
+        collection: Uri,
+        projection: Array<String>?,
+        selection: String?,
+        selectionArgs: Array<String>?,
+    ): android.database.Cursor? =
+        context.contentResolver.query(collection, projection, selection, selectionArgs, null)
+
+    override fun deleteUri(uri: Uri): Boolean = runCatching {
+        context.contentResolver.delete(uri, null, null) > 0
+    }.getOrDefault(false)
+
+    override fun fileExists(uri: Uri): Boolean = runCatching {
+        val cursorCount = runCatching {
+            context.contentResolver.query(uri, null, null, null, null)?.use { it.count }
+        }.getOrNull()
+        if (cursorCount != null && cursorCount > 0) return true
+        context.contentResolver.openInputStream(uri)?.use { true } ?: false
+    }.getOrDefault(false)
+
+    override fun getFileSize(uri: Uri): Long = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else -1L
+        } ?: -1L
+    }.getOrDefault(-1L)
+
+    override fun queryDisplayName(uri: Uri): String? = runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+        }
+    }.getOrNull()
+
+    override fun findPendingMediaStoreUri(pendingFilename: String): Uri? = runCatching {
+        if (pendingFilename.isBlank()) return null
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+        val projection = arrayOf(MediaStore.MediaColumns._ID)
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+        val selectionArgs = arrayOf(pendingFilename)
+        queryMediaStoreCollection(collection, projection, selection, selectionArgs)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                val id = cursor.getLong(0)
+                android.content.ContentUris.withAppendedId(collection, id)
+            } else {
+                null
+            }
+        }
+    }.getOrNull()
+
+    override fun existingSafNames(tree: Uri): Set<String> {
+        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        val existing = mutableSetOf<String>()
+        context.contentResolver.query(
+            children,
+            arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val column = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            while (cursor.moveToNext() && existing.size < 10_000) {
+                if (column >= 0) cursor.getString(column)?.let(existing::add)
+            }
+        }
+        return existing
+    }
+
+    override fun findPendingSafUri(tree: Uri, pendingFilename: String): Uri? = runCatching {
+        if (pendingFilename.isBlank()) return null
+        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        context.contentResolver.query(
+            children,
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            while (cursor.moveToNext()) {
+                if (nameCol >= 0 && idCol >= 0) {
+                    val name = cursor.getString(nameCol)
+                    if (name == pendingFilename) {
+                        val docId = cursor.getString(idCol)
+                        return DocumentsContract.buildDocumentUriUsingTree(tree, docId)
+                    }
+                }
+            }
+            null
+        }
+    }.getOrNull()
+
+    override fun createSafDocument(tree: Uri, mimeType: String, pendingFilename: String): Uri? = runCatching {
+        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
+        DocumentsContract.createDocument(context.contentResolver, parent, mimeType, pendingFilename)
+    }.getOrNull()
+
+    override fun renameSafDocument(uri: Uri, finalName: String): Uri? = runCatching {
+        DocumentsContract.renameDocument(context.contentResolver, uri, finalName)
+    }.getOrNull()
+
+    override fun deleteSafDocument(uri: Uri): Boolean = runCatching {
+        DocumentsContract.deleteDocument(context.contentResolver, uri)
+    }.getOrDefault(false)
+}
+
 internal class OutputPublisher(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
     journal: PublicationJournal? = null,
+    internal val ops: PublicationStorageOps = DefaultPublicationStorageOps(context),
 ) {
     private val publishLock = Any()
     val activeJournal: PublicationJournal by lazy {
@@ -52,7 +210,7 @@ internal class OutputPublisher(
             ?: settingsRepository.settings.value.outputTreeUri.takeIf { it.isNotBlank() }
         require(
             destination != null || !DestinationPolicy.requiresSafDestination(Build.VERSION.SDK_INT),
-        ) { context.getString(R.string.error_destination_required) }
+        ) { runCatching { context.getString(R.string.error_destination_required) }.getOrNull() ?: "A destination folder is required." }
 
         val effectiveJobId = jobId.ifBlank { "standalone-${System.currentTimeMillis()}" }
         val batchEntries = prepareBatchEntries(files, destination, effectiveJobId)
@@ -112,105 +270,78 @@ internal class OutputPublisher(
     }
 
     fun delete(uriText: String): Boolean = runCatching {
-        context.contentResolver.delete(Uri.parse(uriText), null, null) > 0
+        val uri = Uri.parse(uriText)
+        ops.deleteSafDocument(uri) || ops.deleteUri(uri)
     }.getOrDefault(false)
 
-    fun nodeName(uriText: String): String? = runCatching {
-        context.contentResolver.query(
-            Uri.parse(uriText),
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null,
-        )?.use { cursor ->
-            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
-        }
-    }.getOrNull()
+    fun nodeName(uriText: String): String? = ops.queryDisplayName(Uri.parse(uriText))
 
-    fun fileExists(uriText: String): Boolean = runCatching {
-        val uri = Uri.parse(uriText)
-        val cursorCount = runCatching {
-            context.contentResolver.query(uri, null, null, null, null)?.use { it.count }
-        }.getOrNull()
-        if (cursorCount != null && cursorCount > 0) return true
-        context.contentResolver.openInputStream(uri)?.use { true } ?: false
-    }.getOrDefault(false)
+    fun fileExists(uriText: String): Boolean = ops.fileExists(Uri.parse(uriText))
 
-    fun getFileSize(uriText: String): Long = runCatching {
-        val uri = Uri.parse(uriText)
-        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else -1L
-        } ?: -1L
-    }.getOrDefault(-1L)
+    fun getFileSize(uriText: String): Long = ops.getFileSize(Uri.parse(uriText))
 
-    fun findPendingMediaStoreUri(pendingFilename: String): Uri? = runCatching {
-        if (pendingFilename.isBlank()) return null
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Downloads.EXTERNAL_CONTENT_URI
-        } else {
-            MediaStore.Files.getContentUri("external")
-        }
-        val projection = arrayOf(MediaStore.MediaColumns._ID)
-        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
-        val selectionArgs = arrayOf(pendingFilename)
-        context.contentResolver.query(collection, projection, selection, selectionArgs, null)?.use { cursor ->
-            if (cursor.moveToFirst() && !cursor.isNull(0)) {
-                val id = cursor.getLong(0)
-                android.content.ContentUris.withAppendedId(collection, id)
-            } else {
-                null
-            }
-        }
-    }.getOrNull()
+    fun findPendingMediaStoreUri(pendingFilename: String): Uri? =
+        ops.findPendingMediaStoreUri(pendingFilename)
 
-    fun findPendingSafUri(tree: Uri, pendingFilename: String): Uri? = runCatching {
-        if (pendingFilename.isBlank()) return null
-        val resolver = context.contentResolver
-        val parentId = DocumentsContract.getTreeDocumentId(tree)
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
-        resolver.query(
-            children,
-            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
-            null,
-            null,
-            null,
-        )?.use { cursor ->
-            val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-            val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-            while (cursor.moveToNext()) {
-                if (nameCol >= 0 && idCol >= 0) {
-                    val name = cursor.getString(nameCol)
-                    if (name == pendingFilename) {
-                        val docId = cursor.getString(idCol)
-                        return DocumentsContract.buildDocumentUriUsingTree(tree, docId)
-                    }
-                }
-            }
-            null
-        }
-    }.getOrNull()
+    fun findPendingSafUri(tree: Uri, pendingFilename: String): Uri? =
+        ops.findPendingSafUri(tree, pendingFilename)
 
-    fun finalizeMediaStore(uri: Uri, finalName: String): Boolean = runCatching {
+    /**
+     * Checks and verifies MediaStore row finalization.
+     * Updates DISPLAY_NAME and clears IS_PENDING (on API 29+).
+     * If the update returns 0 affected rows, it checks whether the row was independently verified
+     * as already finalized. Returns true ONLY when the resulting row is confirmed finalized.
+     */
+    fun finalizeMediaStore(uri: Uri, finalName: String): Boolean {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, finalName)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(MediaStore.MediaColumns.IS_PENDING, 0)
             }
         }
-        context.contentResolver.update(uri, values, null, null) > 0
+        val affected = runCatching { ops.updateMediaStore(uri, values, displayName = finalName, isPending = false) }.getOrDefault(0)
+        if (affected > 0) {
+            return verifyMediaStoreFinalized(uri, finalName)
+        }
+        return verifyMediaStoreFinalized(uri, finalName)
+    }
+
+    fun verifyMediaStoreFinalized(uri: Uri, expectedFinalName: String): Boolean = runCatching {
+        val projection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.IS_PENDING)
+        } else {
+            arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
+        }
+        ops.queryMediaStore(uri, projection, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) return false
+            val nameCol = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+            if (nameCol < 0) return false
+            val currentName = cursor.getString(nameCol)
+            if (currentName != expectedFinalName) return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val pendingCol = cursor.getColumnIndex(MediaStore.MediaColumns.IS_PENDING)
+                if (pendingCol >= 0) {
+                    val isPending = cursor.getInt(pendingCol)
+                    if (isPending != 0) return false
+                }
+            }
+            true
+        } ?: false
     }.getOrDefault(false)
 
     fun finalizeSaf(uri: Uri, finalName: String): Uri {
-        return runCatching {
-            DocumentsContract.renameDocument(context.contentResolver, uri, finalName) ?: uri
-        }.getOrDefault(uri)
+        val renamed = ops.renameSafDocument(uri, finalName)
+        val target = renamed ?: uri
+        if (ops.fileExists(target)) {
+            return target
+        }
+        return uri
     }
 
     private fun publishToDownloads(
         file: File,
         entry: PublicationEntry,
     ): PublishedOutput {
-        val resolver = context.contentResolver
         val mime = mimeType(entry.intendedFilename)
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Downloads.EXTERNAL_CONTENT_URI
@@ -228,13 +359,12 @@ internal class OutputPublisher(
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
         }
-        val uri = checkNotNull(resolver.insert(collection, values)) {
+        val uri = checkNotNull(ops.insertMediaStore(collection, values, displayName = entry.pendingFilename, isPending = true)) {
             "Android could not create the Downloads entry."
         }
         activeJournal.updateProviderCreated(entry.transactionId, uri.toString())
         try {
-            val bytes = resolver.openOutputStream(uri, "w").use { output ->
-                checkNotNull(output) { "Android could not open the Downloads entry." }
+            val bytes = checkNotNull(ops.openOutputStream(uri, "w")) { "Android could not open the Downloads entry." }.use { output ->
                 file.inputStream().buffered().use { input -> input.copyTo(output) }
             }
             if (file.length() > 0L && bytes != file.length()) {
@@ -242,12 +372,15 @@ internal class OutputPublisher(
             }
             activeJournal.updateDataCopied(entry.transactionId, bytes)
             activeJournal.updateValidated(entry.transactionId)
-            finalizeMediaStore(uri, entry.intendedFilename)
+            val finalized = finalizeMediaStore(uri, entry.intendedFilename)
+            if (!finalized) {
+                throw java.io.IOException("MediaStore finalization failed for ${entry.intendedFilename}: row update affected 0 rows or verification failed")
+            }
             activeJournal.updateFinalized(entry.transactionId)
             return PublishedOutput(uri, bytes, file.extension)
         } catch (error: Throwable) {
             activeJournal.markFailed(entry.transactionId, error.message.orEmpty())
-            resolver.delete(uri, null, null)
+            ops.deleteUri(uri)
             throw error
         }
     }
@@ -278,7 +411,7 @@ internal class OutputPublisher(
             currentTransactions.forEach { txId ->
                 activeJournal.markFailed(txId, error.message.orEmpty())
             }
-            created.forEach { uri -> runCatching { context.contentResolver.delete(uri, null, null) } }
+            created.forEach { uri -> runCatching { ops.deleteUri(uri) } }
             throw error
         }
     }
@@ -290,9 +423,6 @@ internal class OutputPublisher(
         shouldContinue: () -> Boolean,
         onPublished: (index: Int, total: Int) -> Unit,
     ): List<PublishedOutput> {
-        val resolver = context.contentResolver
-        val parentId = DocumentsContract.getTreeDocumentId(tree)
-        val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
         val created = mutableListOf<Uri>()
         val currentTransactions = mutableListOf<String>()
         try {
@@ -302,25 +432,24 @@ internal class OutputPublisher(
                 currentTransactions += entry.transactionId
 
                 val uri = checkNotNull(
-                    DocumentsContract.createDocument(resolver, parent, mimeType(entry.intendedFilename), entry.pendingFilename),
+                    ops.createSafDocument(tree, mimeType(entry.intendedFilename), entry.pendingFilename),
                 ) { "The selected folder refused the new file." }
                 created += uri
                 activeJournal.updateProviderCreated(entry.transactionId, uri.toString())
 
                 val bytes = try {
-                    resolver.openOutputStream(uri, "w").use { output ->
-                        checkNotNull(output) { "The selected folder could not be written." }
+                    checkNotNull(ops.openOutputStream(uri, "w")) { "The selected folder could not be written." }.use { output ->
                         file.inputStream().buffered().use { input -> input.copyTo(output) }
                     }
                 } catch (error: Throwable) {
                     activeJournal.markFailed(entry.transactionId, error.message.orEmpty())
-                    DocumentsContract.deleteDocument(resolver, uri)
+                    ops.deleteSafDocument(uri)
                     throw error
                 }
                 if (file.length() > 0L && bytes != file.length()) {
                     val mismatch = java.io.IOException("SAF output size mismatch: expected ${file.length()} bytes, wrote $bytes bytes")
                     activeJournal.markFailed(entry.transactionId, mismatch.message.orEmpty())
-                    DocumentsContract.deleteDocument(resolver, uri)
+                    ops.deleteSafDocument(uri)
                     throw mismatch
                 }
                 activeJournal.updateDataCopied(entry.transactionId, bytes)
@@ -334,32 +463,12 @@ internal class OutputPublisher(
             currentTransactions.forEach { txId ->
                 activeJournal.markFailed(txId, error.message.orEmpty())
             }
-            created.forEach { uri -> runCatching { DocumentsContract.deleteDocument(resolver, uri) } }
+            created.forEach { uri -> runCatching { ops.deleteSafDocument(uri) } }
             throw error
         }
     }
 
-    private fun existingNames(tree: Uri): MutableSet<String> {
-        val resolver = context.contentResolver
-        val parentId = DocumentsContract.getTreeDocumentId(tree)
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
-        val existing = mutableSetOf<String>()
-        resolver.query(
-            children,
-            arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
-            null,
-            null,
-            null,
-        )?.use { cursor ->
-            val column = cursor.getColumnIndex(
-                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            )
-            while (cursor.moveToNext() && existing.size < MAX_EXISTING_NAMES) {
-                if (column >= 0) cursor.getString(column)?.let(existing::add)
-            }
-        }
-        return existing
-    }
+    private fun existingNames(tree: Uri): MutableSet<String> = ops.existingSafNames(tree).toMutableSet()
 
     private fun mimeType(name: String): String = guessMimeType(name)
 

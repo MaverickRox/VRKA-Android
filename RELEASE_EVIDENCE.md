@@ -4,14 +4,14 @@
 
 **Source version:** `5.1.2` (`versionCode` 50102)
 **Source revision:** `main` (Official release published at https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2).
-**Validation state:** JVM unit tests (747 tests in 73 suites at release time, 758 tests on `main`, 0 failures), Android test-source compilation, debug/devRelease/release builds, release-variant Kotlin compilation, lint, APK metadata, deterministic publication failure-injection tests, and maintainer-reported physical-device upgrade validation. Emulator inspection was performed but runtime testing could not complete due to an authorization boundary; automated test suites and deterministic simulations passed.
+**Validation state:** JVM unit tests (747 tests in 73 suites at release time, 760 tests on `main`, 0 failures), Android test-source compilation, debug/devRelease/release builds, release-variant Kotlin compilation, lint, APK metadata, 15 deterministic production-path publication recovery failure scenarios, and maintainer-reported physical-device upgrade validation. Emulator inspection was performed but runtime testing could not complete due to an authorization boundary; automated test suites and deterministic simulations passed.
 
 ## Automated checks
 
 | Check | Command | Result |
 | --- | --- | --- |
 | Full JVM unit tests (release-time validation) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 747 tests in 73 suites; 0 failures, 0 errors, 0 skipped |
-| Full JVM unit tests (post-release on `main`) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 758 tests in 73 suites; 0 failures, 0 errors, 0 skipped (including updater upgrade/downgrade/rollback regression tests) |
+| Full JVM unit tests (post-release on `main`) | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 760 tests in 73 suites; 0 failures, 0 errors, 0 skipped (including updater regressions, SHA-2/issuer-fingerprint verification, and 15 controlled publication recovery boundary tests) |
 | Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
 | Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS (instrumentation not executed) |
 | Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS |
@@ -21,6 +21,17 @@
 | Lint | `./gradlew lintDebug` | PASS: 284 warnings, 0 errors/fatal |
 
 Result: `BUILD SUCCESSFUL` across all build variants and test suites.
+
+## Publication Recovery Audit Remediation (Post-Release v5.1.2)
+
+- **PUB-01 (HIGH — Terminal Persistence Ordering):** Established durable 6-step completion protocol (`commitTerminalPublishedJob`). Terminal `DONE` state is persisted to `JobStore` and awaited BEFORE marking publication journal entries `RECONCILED` and before deleting staging data. If terminal persistence fails, journal and staging files are retained intact for restart recovery.
+- **PUB-02 (MEDIUM — MediaStore Finalization Verification):** `OutputPublisher.finalizeMediaStore()` executes and verifies `IS_PENDING` is cleared and `DISPLAY_NAME` matches. If update affects 0 rows, row verification is enforced; zero affected rows without verified finalization is treated as failure. Preserves journal and outputs for retry on both normal publication and startup recovery.
+- **PUB-03 (MEDIUM — Incomplete Output Cleanup Failure Handling):** Introduced durable `CLEANUP_PENDING` transaction state. When partial-output deletion fails during incomplete batch handling, entries are recorded as `CLEANUP_PENDING`, preventing premature reconciliation and enabling safe retry on subsequent startup without data loss. Unrelated user files and successfully published outputs are strictly protected.
+- **PUB-04 (LOW — Malformed Journal Value Handling):** `PublicationJournal.decode()` strictly validates all required fields and enums without permissive fallbacks. Invalid/unknown values immediately trigger safe quarantine with bounded snapshot rotation (max 3 `.corrupt-<timestamp>.json` files).
+- **TEST-01 (MEDIUM — Production-Path Failure Testing):** Replaced test-local mock maps with controlled test implementations of `PublicationStorageOps` and `JobStore` invoking actual production publication and recovery code paths. All 15 boundary scenarios execute deterministically against real production workflows.
+- **DOC-01 (`DEVICE_VALIDATION.md`):** Reconciled documentation so historical v5.1.1 sections remain strictly historical without retroactive claims.
+- **DOC-02 (`CURRENT_PRODUCTION_ARCHITECTURE.md`, `README.md`):** Corrected legacy references from `DownloadJobStore` and `DownloadHistoryStore` to unified `JobStore (JSON Storage)`.
+- **DOC-03 (`SECURITY.md`, `ReleaseManifestVerifier.kt`):** Enforced strict SHA-2 allowlist (`SHA256`, `SHA384`, `SHA512`, `SHA224`) and mandatory Issuer Fingerprint subpacket matching the trusted key.
 
 Toolchain: Gradle 9.4.1 wrapper, Android Gradle Plugin 9.2.0, OpenJDK 21.0.12, Java source/target 17. Compile SDK 37 (minor API level 2), target API 36, minimum API 26, `arm64-v8a` only.
 

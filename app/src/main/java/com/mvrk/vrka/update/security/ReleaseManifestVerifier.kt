@@ -138,9 +138,13 @@ class ReleaseManifestVerifier(
             throw ManifestValidationException("Signature key ID 0x$sigKeyId does not match trusted key ID 0x$trustedKeyId")
         }
 
-        // Algorithm policy enforcement
+        // Algorithm policy enforcement: strictly require SHA-256 or stronger
         val hashAlgo = signature.hashAlgorithm
-        if (hashAlgo == HashAlgorithmTags.MD5 || hashAlgo == HashAlgorithmTags.SHA1 || hashAlgo == HashAlgorithmTags.RIPEMD160) {
+        val isAllowedHash = hashAlgo == HashAlgorithmTags.SHA256 ||
+            hashAlgo == HashAlgorithmTags.SHA384 ||
+            hashAlgo == HashAlgorithmTags.SHA512 ||
+            hashAlgo == HashAlgorithmTags.SHA224
+        if (!isAllowedHash) {
             throw ManifestValidationException("Insecure hash algorithm rejected for release signature (tag: $hashAlgo)")
         }
 
@@ -152,14 +156,13 @@ class ReleaseManifestVerifier(
         // Issuer fingerprint subpacket enforcement (RFC 4880bis / RFC 9580)
         val issuerFpSubpacket = signature.hashedSubPackets?.issuerFingerprint
             ?: signature.unhashedSubPackets?.issuerFingerprint
-        if (issuerFpSubpacket != null) {
-            val subpacketFp = Hex.toHexString(issuerFpSubpacket.fingerprint).uppercase()
-            val trustedFp = Hex.toHexString(publicKey.fingerprint).uppercase()
-            if (subpacketFp != trustedFp) {
-                throw ManifestValidationException(
-                    "Signature issuer fingerprint ($subpacketFp) does not match trusted key fingerprint ($trustedFp)"
-                )
-            }
+            ?: throw ManifestValidationException("Mandatory issuer fingerprint subpacket missing from release signature")
+        val subpacketFp = Hex.toHexString(issuerFpSubpacket.fingerprint).uppercase()
+        val trustedFp = Hex.toHexString(publicKey.fingerprint).uppercase()
+        if (subpacketFp != trustedFp) {
+            throw ManifestValidationException(
+                "Signature issuer fingerprint ($subpacketFp) does not match trusted key fingerprint ($trustedFp)"
+            )
         }
 
         // Signature expiration check

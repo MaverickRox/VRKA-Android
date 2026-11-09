@@ -44,10 +44,15 @@ data class AppSettings(
     val shareSheetPreferences: ShareSheetPreferences? = null,
 )
 
-class SettingsRepository(
+open class SettingsRepository internal constructor(
     private val context: Context,
-    scope: CoroutineScope,
+    scope: CoroutineScope? = null,
+    settingsFlow: StateFlow<AppSettings>? = null,
 ) {
+    constructor(context: Context, scope: CoroutineScope) : this(context, scope, null)
+
+    internal constructor(context: Context, settingsFlow: StateFlow<AppSettings>) : this(context, null, settingsFlow)
+
     private object Keys {
         val darkTheme = booleanPreferencesKey("dark_theme")
         val outputTreeUri = stringPreferencesKey("output_tree_uri")
@@ -74,24 +79,26 @@ class SettingsRepository(
         val shareSheetPreferences = stringPreferencesKey("share_sheet_preferences")
     }
 
-    val settings: StateFlow<AppSettings> = context.vrkaDataStore.data
+    val settings: StateFlow<AppSettings> = settingsFlow ?: context.vrkaDataStore.data
         .catch { error ->
             if (error is IOException) emit(emptyPreferences()) else throw error
         }
         .map(::mapSettings)
-        .stateIn(scope, SharingStarted.Eagerly, AppSettings())
+        .stateIn(scope!!, SharingStarted.Eagerly, AppSettings())
 
     init {
-        // Remove templates saved by older builds if they contain blocked credential,
-        // shell, or path options. Validation also runs again when a job is enqueued.
-        scope.launch {
-            context.vrkaDataStore.edit { preferences ->
-                // This legacy preference no longer controls anything: uBlock is activated only
-                // inside the Browser Fallback runtime. Remove the obsolete stored toggle.
-                preferences.remove(Keys.adBlocking)
-                val current = preferences[Keys.customCommandTemplates]
-                val safe = encodeTemplates(decodeTemplates(current))
-                if (current != safe) preferences[Keys.customCommandTemplates] = safe
+        if (scope != null) {
+            // Remove templates saved by older builds if they contain blocked credential,
+            // shell, or path options. Validation also runs again when a job is enqueued.
+            scope.launch {
+                context.vrkaDataStore.edit { preferences ->
+                    // This legacy preference no longer controls anything: uBlock is activated only
+                    // inside the Browser Fallback runtime. Remove the obsolete stored toggle.
+                    preferences.remove(Keys.adBlocking)
+                    val current = preferences[Keys.customCommandTemplates]
+                    val safe = encodeTemplates(decodeTemplates(current))
+                    if (current != safe) preferences[Keys.customCommandTemplates] = safe
+                }
             }
         }
     }

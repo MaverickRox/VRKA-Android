@@ -24,6 +24,7 @@ internal enum class PublicationTransactionStatus {
     COMPLETED,
     FAILED,
     INTERRUPTED,
+    CLEANUP_PENDING,
     RECONCILED,
 }
 
@@ -171,11 +172,34 @@ internal class PublicationJournal(
         }
     }
 
+    fun markCleanupPending(transactionId: String, error: String? = null): Unit = synchronized(lock) {
+        mutateEntry(transactionId) {
+            it.copy(
+                status = PublicationTransactionStatus.CLEANUP_PENDING,
+                errorMessage = error ?: it.errorMessage,
+                updatedAt = System.currentTimeMillis(),
+            )
+        }
+    }
+
+    fun updateDeleted(transactionId: String): Unit = synchronized(lock) {
+        mutateEntry(transactionId) {
+            it.copy(
+                status = PublicationTransactionStatus.INTERRUPTED,
+                providerUri = null,
+                updatedAt = System.currentTimeMillis(),
+            )
+        }
+    }
+
     fun markReconciled(jobId: String): Unit = synchronized(lock) {
         val entries = loadEntries().toMutableList()
         var changed = false
         for (i in entries.indices) {
             if (entries[i].jobId == jobId) {
+                if (entries[i].status == PublicationTransactionStatus.CLEANUP_PENDING) {
+                    continue
+                }
                 entries[i] = entries[i].copy(
                     status = PublicationTransactionStatus.RECONCILED,
                     publicationPhase = if (entries[i].status == PublicationTransactionStatus.COMPLETED ||
@@ -392,27 +416,40 @@ internal class PublicationJournal(
 
     private fun decode(obj: JSONObject): PublicationEntry? {
         val transactionId = obj.optString("transactionId").takeIf { it.isNotBlank() } ?: return null
-        val jobId = obj.optString("jobId")
-        val outputIndex = obj.optInt("outputIndex", 0)
-        val totalOutputs = obj.optInt("totalOutputs", 1)
-        val intendedFilename = obj.optString("intendedFilename")
-        val pendingFilename = obj.optString("pendingFilename").ifBlank { ".vrka_pending_${transactionId}_$intendedFilename" }
-        val stagingPath = obj.optString("stagingPath")
-        val expectedSizeBytes = obj.optLong("expectedSizeBytes", 0L)
-        val providerType = runCatching {
-            PublicationProviderType.valueOf(obj.optString("providerType"))
-        }.getOrDefault(PublicationProviderType.MEDIA_STORE)
-        val destinationIdentity = obj.optString("destinationIdentity")
-        val publicationPhase = runCatching {
-            PublicationPhase.valueOf(obj.optString("publicationPhase"))
-        }.getOrDefault(PublicationPhase.INTENT_RECORDED)
+        val jobId = obj.optString("jobId").takeIf { it.isNotBlank() } ?: return null
+        val outputIndex = obj.optInt("outputIndex", -1)
+        if (outputIndex < 0) return null
+        val totalOutputs = obj.optInt("totalOutputs", 0)
+        if (totalOutputs < 1 || outputIndex >= totalOutputs) return null
+
+        val intendedFilename = obj.optString("intendedFilename").takeIf { it.isNotBlank() } ?: return null
+        val pendingFilename = obj.optString("pendingFilename").takeIf { it.isNotBlank() }
+            ?: ".vrka_pending_${transactionId}_$intendedFilename"
+        val stagingPath = obj.optString("stagingPath").takeIf { it.isNotBlank() } ?: return null
+        val expectedSizeBytes = obj.optLong("expectedSizeBytes", -1L)
+        if (expectedSizeBytes < 0L) return null
+
+        val providerTypeStr = obj.optString("providerType")
+        val providerType = PublicationProviderType.values().firstOrNull { it.name == providerTypeStr }
+            ?: return null
+
+        val destinationIdentity = obj.optString("destinationIdentity").takeIf { it.isNotBlank() }
+            ?: return null
+
+        val phaseStr = obj.optString("publicationPhase")
+        val publicationPhase = PublicationPhase.values().firstOrNull { it.name == phaseStr }
+            ?: return null
+
+        val statusStr = obj.optString("status")
+        val status = PublicationTransactionStatus.values().firstOrNull { it.name == statusStr }
+            ?: return null
+
         val providerUri = obj.optString("providerUri").takeIf { it.isNotBlank() && it != "null" }
-        val copiedBytes = obj.optLong("copiedBytes", 0L)
-        val status = runCatching {
-            PublicationTransactionStatus.valueOf(obj.optString("status"))
-        }.getOrDefault(PublicationTransactionStatus.PENDING)
-        val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
-        val updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
+        val copiedBytes = obj.optLong("copiedBytes", -1L)
+        if (copiedBytes < 0L) return null
+
+        val createdAt = obj.optLong("createdAt", -1L).takeIf { it > 0L } ?: System.currentTimeMillis()
+        val updatedAt = obj.optLong("updatedAt", -1L).takeIf { it > 0L } ?: System.currentTimeMillis()
         val errorMessage = obj.optString("errorMessage").takeIf { it.isNotBlank() && it != "null" }
         return PublicationEntry(
             transactionId = transactionId,
