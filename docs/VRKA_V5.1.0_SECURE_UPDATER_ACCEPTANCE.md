@@ -92,6 +92,9 @@ All future updates starting from v5.1.0 (such as v5.1.0 -> v5.2.0) will execute 
 - **Issuer Fingerprint Subpacket:** Detached signature must carry an OpenPGP issuer fingerprint subpacket (RFC 4880bis / RFC 9580) matching `71165A658B3A8612AC2568C6D519380BEBA1B9F7`.
 - **Key & Signature Expiry:** Evaluates signature and key creation timestamps and expiration limits against UTC wall-clock time.
 
+> [!NOTE]
+> **Addendum (2026-11-09):** The policy above records the v5.1.0 acceptance criteria at that time. The current verifier on unreleased `main` accepts only SHA-256, SHA-384, and SHA-512 (SHA-224 is rejected), requires RSA signature keys, and requires the issuer fingerprint in the **hashed** subpacket section with an exact match to the pinned key. Unhashed-only, absent, or mismatched fingerprints are rejected. The published v5.1.0, v5.1.1, and v5.1.2 signatures still verify with the updated verifier and pinned public key.
+
 ---
 
 ## 5. Manifest Specification and Published Content

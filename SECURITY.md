@@ -37,8 +37,8 @@ The application binary embeds and pins the official VRKA OpenPGP release signing
 - **Resource Location:** `app/src/main/res/raw/vrka_release_pubkey.asc`
 
 ### Cryptographic Policy and Downgrade Defense
-- **Algorithm Enforcement:** The updater strictly rejects weak or broken cryptographic algorithms (MD5, SHA-1, RIPEMD-160, DSA). Release signatures must use SHA-256 or stronger.
-- **Issuer Fingerprint Verification:** Detached signatures must contain an issuer fingerprint subpacket matching the pinned trust anchor.
+- **Algorithm Enforcement:** Release signatures must use exactly SHA-256, SHA-384, or SHA-512. SHA-224, SHA-1, MD5, RIPEMD-160, and every other unspecified digest are rejected. Signature keys must be RSA; DSA and other key algorithms are rejected.
+- **Issuer Fingerprint Verification:** Detached signatures must contain an issuer fingerprint subpacket in the **hashed** subpacket section that exactly matches the pinned trust anchor. Fingerprints that are missing, present only in the unhashed section, malformed, or mismatched are rejected.
 - **Anti-Rollback Protection:** Monotonically increasing `metadata_revision` numbers prevent replay attacks and downgrade of release metadata.
 - **Anti-Downgrade Protection:** Updates with `versionCode` less than the currently installed version are rejected before download.
 - **Anti-Freeze Protection:** Release manifests enforce an expiration timestamp (`expires_at`), preventing freeze attacks where an attacker serves stale but validly signed metadata.

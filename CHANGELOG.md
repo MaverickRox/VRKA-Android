@@ -2,6 +2,19 @@
 
 All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
 
+## [Unreleased] - Publication integrity remediation on `main`
+
+This unreleased work strengthens publication durability and provider safety beyond the published v5.1.2 APK. It does not modify any release tag, manifest, signature, checksum, public key, version metadata, or APK.
+
+- **JobStore durability:** retention never evicts nonterminal jobs or jobs pinned by unresolved publication transactions; manager-level serialization and read-back verification prevent stale or lost terminal snapshots.
+- **Terminal commit:** the completing job is pinned and verified from the durable file before the exact attempt's journal transactions are retired and staging is removed. Failures preserve recovery data.
+- **Provider verification:** MediaStore finalization requires the row, expected name, and `IS_PENDING = 0`; missing pending columns are unverifiable, never finalized. Recovery re-verifies finalized entries before `DONE`.
+- **Cleanup safety:** tri-state provider discovery, ownership-checked deletion, transaction-scoped reconciliation, durable `CLEANUP_PENDING` retries, and staging cleanup retry records.
+- **Journal integrity:** strict schema/field/batch/URI validation, multi-attempt segmentation, bounded quarantine, and fail-closed isolation.
+- **OpenPGP policy:** only SHA-256/SHA-384/SHA-512; RSA-only; hashed issuer fingerprint must exactly match the pinned key. Published v5.1.1 and v5.1.2 signatures still verify.
+
+Verification: 784 JVM tests in 73 suites pass; lint reports 0 errors; release-variant and Android test-source compilation pass; two real MediaStore instrumentation tests pass on an API 36 emulator.
+
 ## [5.1.2] - 2026-11-09
 
 > [!IMPORTANT]
