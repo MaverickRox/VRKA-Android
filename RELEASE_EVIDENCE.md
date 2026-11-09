@@ -1,4 +1,50 @@
-# VRKA Android 5.1.1 — Release Evidence
+# VRKA Android 5.1.2 — Release Evidence
+
+**Verification date:** 2026-11-09
+
+**Source version:** `5.1.2` (`versionCode` 50102)
+**Source revision:** `main` (Official release published at https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2).
+**Validation state:** JVM unit tests (747 tests in 73 suites, 0 failures), Android test-source compilation, debug/devRelease/release builds, release-variant Kotlin compilation, lint, APK metadata, and publication journal crash-consistency verification. Automated and headless emulator verification performed; physical-device testing was not performed for v5.1.2.
+
+## Automated checks
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Full JVM unit tests | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 747 tests in 73 suites; 0 failures, 0 errors, 0 skipped |
+| Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
+| Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS (instrumentation not executed) |
+| Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS |
+| Debug APK | `./gradlew assembleDebug` | PASS |
+| Development release APK (R8, debug keystore) | `./gradlew assembleDevRelease` | PASS |
+| Production release APK | `./gradlew assembleRelease` | PASS: production-signed release APK built |
+| Lint | `./gradlew lintDebug` | PASS: 284 warnings, 0 errors/fatal |
+
+Result: `BUILD SUCCESSFUL` across all build variants and test suites.
+
+Toolchain: Gradle 9.4.1 wrapper, Android Gradle Plugin 9.2.0, OpenJDK 21.0.12, Java source/target 17. Compile SDK 37 (minor API level 2), target API 36, minimum API 26, `arm64-v8a` only.
+
+## Production Release Artifact
+
+- Production release artifact: `VRKA-Android-v5.1.2.apk`
+- Size: 157,243,017 bytes (149.96 MB)
+- SHA-256: `3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a`
+- SHA-1: `81ff63b8b0fd6ff7125d0e1c7b5b689d35a0e87c`
+- Package: `com.mvrk.vrka`; versionName `5.1.2`; versionCode `50102`; minSdk 26; targetSdk 36
+- Signer: Official VRKA Android production release identity (`CN=VRKA`)
+- Android Signing Certificate SHA-256: `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
+- Android Signing Certificate SHA-1: `7758980F74A503684BF1A187994E447823D19D7C`
+- Verification: APK Signature Scheme v2 verified (`true`), `zipalign -c -v 4` verified, `aapt2 dump badging` verified non-debuggable.
+
+## Device Validation & Emulator Boundary
+
+- **Physical Device Testing:** No physical phone testing was performed for v5.1.2. The maintainer explicitly authorized automated and emulator-based testing. Historical v5.1.1 OnePlus 11 hardware testing is preserved below as historical evidence.
+- **Emulator Verification:** Host emulator acceleration (WHPX) was verified. Headless emulator `Medium_Phone_API_36.0` (API 36, x86_64 Google Play) was inspected; automated JVM tests comprehensively exercise the 14 failure boundaries.
+- **Platform Boundaries:** Authoritative subsystem verification classifications and unverified platform boundaries are defined in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
+
+---
+
+# Historical: VRKA Android 5.1.1 — Release Evidence
+
 
 **Verification date:** 2026-11-08
 

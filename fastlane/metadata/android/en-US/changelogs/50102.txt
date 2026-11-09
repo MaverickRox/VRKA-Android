@@ -1,0 +1,7 @@
+VRKA 5.1.2 — publication durability and crash recovery
+
+- Durable crash recovery: publication journal with discoverable pending identities prevents orphaned or lost media files.
+- Atomic playlist batching: multi-output transfers persist intents upfront, cleanly handling interrupted playlist downloads.
+- Strict persistence ordering: JobStore state is durably committed to disk before journal reconciliation or staging cleanup.
+- Safe journal integrity handling: damaged or corrupted journals are preserved in bounded recovery snapshots with diagnostic alerts.
+- In-place application upgrade compatibility verified.

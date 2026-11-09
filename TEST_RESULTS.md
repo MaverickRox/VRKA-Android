@@ -1,4 +1,49 @@
-# VRKA Android 5.1.1 — Test Results
+# VRKA Android 5.1.2 — Test Results
+
+Date: 2026-11-09
+
+## Automated checks
+
+| Check | Command | Result |
+|---|---|---|
+| Full JVM unit tests | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 747 tests, 73 suites, 0 failures, 0 errors, 0 skipped |
+| Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
+| Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS; instrumentation was not executed |
+| Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS without production signing credentials |
+| Debug APK | `./gradlew assembleDebug` | PASS |
+| Development release APK | `./gradlew assembleDevRelease` | PASS; R8 minification and debug-key signing |
+| Production release APK | `./gradlew assembleRelease` | PASS: production-signed release APK built |
+| Lint | `./gradlew lintDebug` | PASS: 284 warnings, 0 errors/fatal |
+
+The 5.1.2 suite adds deterministic coverage for all 14 publication failure boundaries:
+1. Provider object created before URI persistence (MediaStore pending cleanup).
+2. SAF createDocument before URI persistence (pending child document cleanup).
+3. Playlist partial publication failure (incomplete batch fails closed as `FAILED`, retaining completed output URIs in History).
+4. All playlist intents recorded upfront, crash before publication begins.
+5. Crash during file copy (partial byte detection and cleanup).
+6. Crash after copy completion before journal update (verified size recovery to `DONE`).
+7. MediaStore finalization before journal update (verified row recovery to `DONE`).
+8. SAF completion before journal update (renamed URI verified recovery to `DONE`).
+9. Crash after terminal JobStore save before journal reconciliation (idempotent recovery).
+10. JobStore save failure during reconciliation (retains journal and staging info intact).
+11. Corrupted publication journal recovery (detection, bounded snapshot rotation max 3, safe abort).
+12. Strict six-step reconciliation persistence ordering.
+13. Repeated startup reconciliation idempotence.
+14. Unrelated user files with similar names (guaranteed never deleted).
+
+## Validation & Platform Boundaries
+
+- **Physical Device Validation:** No physical phone testing was performed for v5.1.2. The maintainer explicitly authorized automated testing. Historical v5.1.1 OnePlus 11 hardware testing is preserved below as historical evidence.
+- **Platform Boundaries:** As documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md), Browser Fallback live-site end-to-end media transfers and physical SAF execution on API 26–28 hardware remain documented platform boundaries.
+
+## APK
+
+Official production release artifact: `VRKA-Android-v5.1.2.apk`, package `com.mvrk.vrka`, version `5.1.2` (`50102`), ABI `arm64-v8a`, size 157,243,017 bytes (149.96 MB), SHA-256 `3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a`. Signed with the official production release key (APK Signature Scheme v2, RSA 4096-bit).
+
+---
+
+# Historical: VRKA Android 5.1.1 — Test Results
+
 
 Date: 2026-11-08
 

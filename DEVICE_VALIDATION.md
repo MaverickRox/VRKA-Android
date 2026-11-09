@@ -1,4 +1,19 @@
-# Device Validation & Subsystem Verification Record — VRKA Android 5.1.1
+# Device Validation & Subsystem Verification Record — VRKA Android 5.1.2
+
+## 1. Authoritative Validation Summary
+
+This document serves as the authoritative record for validation, emulator boundaries, and subsystem verification for VRKA Android 5.1.2 and its preceding releases.
+
+### VRKA Android 5.1.2 Validation Scope:
+- **Physical Device Validation**: Not performed for v5.1.2. The maintainer explicitly authorized automated verification and emulator inspection.
+- **Automated Verification**: Comprehensive JVM test suite with 747 tests across 73 suites passing with 0 failures, 0 errors, and 0 skipped. Full coverage of all 14 publication crash-recovery failure boundaries.
+- **Build & Artifact Validation**: Verified production-signed APK (`VRKA-Android-v5.1.2.apk`), APK Signature Scheme v2, correct 4096-bit RSA certificate (`9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`), zipalign alignment, and non-debuggable badging.
+- **Unverified Platform Boundaries**: Unverified live Browser Fallback end-to-end media transfers, unexecuted physical-device instrumentation, and physical API 26–28 SAF execution remain explicit documented boundaries.
+
+---
+
+# Historical: VRKA Android 5.1.1 — Hardware & Subsystem Record
+
 
 ## 1. Authoritative Validation Summary
 

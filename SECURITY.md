@@ -4,9 +4,10 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 5.1.1 | :white_check_mark: | Current official stable release |
+| 5.1.2 | :white_check_mark: | Current official stable release |
+| 5.1.1 | :white_check_mark: | Prior stable release |
 | 5.1.0 | :white_check_mark: | Prior stable release |
-| 5.0.2 and older | :x: | Unsupported; upgrade to v5.1.1 directly |
+| 5.0.2 and older | :x: | Unsupported; upgrade to v5.1.2 directly |
 
 ## Reporting a Vulnerability
 
@@ -14,8 +15,10 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 
 ## Release Integrity
 
-The official v5.1.1 and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation.
+The official v5.1.2, v5.1.1, and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation.
 
+- **v5.1.2 Release APK:** `VRKA-Android-v5.1.2.apk`
+- **v5.1.2 SHA-256:** `3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a`
 - **v5.1.1 Release APK:** `VRKA-Android-v5.1.1.apk`
 - **v5.1.1 SHA-256:** `781d7910d9b5855d4060c247c09ac3f89156ebfd202c8af5385eea816380f4f8`
 - **Android Signing Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`

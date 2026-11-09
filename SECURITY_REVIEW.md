@@ -1,4 +1,19 @@
-# VRKA Android 5.1.1 — Release Security Review (Local Candidate)
+# VRKA Android 5.1.2 — Release Security Review
+
+**Date:** 2026-11-09
+**Scope:** v5.1.2 production release hardening: publication crash recovery and consistency (`PublicationJournal`), deterministic pending provider identity, atomic playlist batch intent recording, strict reconciliation persistence ordering, corrupted publication journal snapshot protection, and documentation reconciliation.
+
+## v5.1.2 security-relevant changes
+
+- **Publication crash consistency:** Introduced `PublicationJournal` to guarantee durable transaction logging across MediaStore and SAF publications. Pending provider files use deterministic recoverable identities (`.vrka_pending_${transactionId}_${filename}`) established before creation, eliminating orphan file leakage or crash windows where published outputs exist without History entries.
+- **Atomic playlist batch recording:** Playlist jobs record all output intents upfront atomically before provider object creation begins. Partial failures fail closed (`FAILED`), avoiding incomplete playlist publication states.
+- **Corrupted journal defense:** In-memory and on-disk journal corruption is detected, preserved in bounded snapshots (`publication_journal.corrupt-$stamp.json`, max 3), and never silently treated as empty or permitted to cause unverified file deletions.
+- **Strict reconciliation ordering:** Startup reconciliation strictly requires successful `JobStore` terminal state persistence before deleting staging files or marking journal entries `RECONCILED`.
+- **No trust weakening:** The production verifier, pinned certificate constant (`9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`), pinned OpenPGP trust anchor (`0xD519380BEBA1B9F7`), package ID (`com.mvrk.vrka`), and signing credentials remain unchanged.
+
+---
+
+# Historical: VRKA Android 5.1.1 — Release Security Review
 
 **Date:** 2026-11-08
 **Scope:** Local v5.1.1 reliability changes to size-estimation metadata handling, queue/history persistence, Android 8/9 destination policy, Browser Fallback diagnostics, updater timestamp parsing, and updater test isolation. No production artifact was built or signed.
