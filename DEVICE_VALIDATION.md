@@ -5,10 +5,20 @@
 This document serves as the authoritative record for validation, emulator boundaries, and subsystem verification for VRKA Android 5.1.2 and its preceding releases.
 
 ### VRKA Android 5.1.2 Validation Scope:
-- **Physical Device Validation**: Not performed for v5.1.2. The maintainer explicitly authorized automated verification and emulator inspection.
-- **Automated Verification**: Comprehensive JVM test suite with 747 tests across 73 suites passing with 0 failures, 0 errors, and 0 skipped. Full coverage of all 14 publication crash-recovery failure boundaries.
+- **Maintainer-Reported Physical-Device Upgrade Validation**:
+  - **Existing installed application**: VRKA Android v5.1.1.
+  - **Upgrade target**: VRKA Android v5.1.2 (`VRKA-Android-v5.1.2.apk`, `versionCode` 50102).
+  - **Result**: Maintainer successfully updated an existing v5.1.1 installation to v5.1.2 on a physical Android phone.
+  - **Validation date**: November 9, 2026.
+  - **Validation category**: Maintainer-reported physical-device validation.
+  - **Distinction of verified scope**: This observation confirms that the v5.1.1-to-v5.1.2 upgrade path and package installation succeed on at least one real Android device without packaging or signature conflicts. It confirms successful installation/update on that device. It does not establish first-launch verification, full data preservation across complex queues, or in-app updater download execution on that specific device, and must not be generalized to every supported Android version or hardware model.
+- **Automated Verification**: Comprehensive JVM test suite with 751 tests across 73 suites passing with 0 failures, 0 errors, and 0 skipped. Full coverage of all 14 publication crash-recovery failure boundaries and in-app updater v5.1.1-to-v5.1.2 cryptographic validation.
+- **Deterministic Publication Failure-Injection Tests**: Verified all 14 crash, interruption, partial copy, journal reconciliation, and corrupted journal snapshot handling boundaries.
+- **Emulator Inspection & Runtime Testing Boundary**:
+  - Host emulator environment and WHPX virtualization acceleration were inspected and operational.
+  - Headless API 36 emulator runtime testing was attempted but could not complete due to an ADB authorization boundary on the host machine. The application was **not** successfully tested inside that emulator.
 - **Build & Artifact Validation**: Verified production-signed APK (`VRKA-Android-v5.1.2.apk`), APK Signature Scheme v2, correct 4096-bit RSA certificate (`9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`), zipalign alignment, and non-debuggable badging.
-- **Unverified Platform Boundaries**: Unverified live Browser Fallback end-to-end media transfers, unexecuted physical-device instrumentation, and physical API 26–28 SAF execution remain explicit documented boundaries.
+- **Unverified Platform Boundaries**: Unverified live Browser Fallback end-to-end media transfers, unexecuted physical-device automated instrumentation, and physical API 26–28 SAF execution remain explicit documented boundaries.
 
 ---
 

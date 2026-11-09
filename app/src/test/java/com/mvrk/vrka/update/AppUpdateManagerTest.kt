@@ -529,6 +529,65 @@ class AppUpdateManagerTest {
     }
 
     @Test
+    fun test511UpdaterCanSelectCanonical512ReleaseAndAsset() {
+        val release = AppUpdateManager.parseReleaseJson(
+            releaseJson(
+                tag = "v5.1.2",
+                assets = listOf(
+                    "VRKA-Android-v5.1.2.apk" to
+                        "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.1.2/VRKA-Android-v5.1.2.apk",
+                ),
+            ),
+        )!!
+
+        assertEquals(SemanticVersion(5, 1, 2), release.version)
+        assertEquals("VRKA-Android-v5.1.2.apk", release.apkFileName)
+        assertTrue(release.version.isNewerThan(SemanticVersion(5, 1, 1)))
+        assertFalse(SemanticVersion(5, 1, 1).isNewerThan(release.version))
+        assertTrue(AppUpdateManager.isValidDownloadTarget("5.1.2", release.apkFileName))
+        assertTrue(AppUpdateManager.isValidReleaseForDownload(release))
+
+        // validateInstallMetadata accepts v5.1.2 over v5.1.1
+        assertNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = "VRKA-Android-v5.1.2.apk",
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.1.2",
+                apkVersionCode = 50102L,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.1.1",
+                installedVersionCode = 50101L,
+            ),
+        )
+
+        // validateInstallMetadata rejects equal versionCode (re-install of 50101)
+        assertNotNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = "VRKA-Android-v5.1.2.apk",
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.1.2",
+                apkVersionCode = 50101L,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.1.1",
+                installedVersionCode = 50101L,
+            ),
+        )
+
+        // validateInstallMetadata rejects downgrade to older versionCode
+        assertNotNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = "VRKA-Android-v5.1.1.apk",
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.1.1",
+                apkVersionCode = 50101L,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.1.2",
+                installedVersionCode = 50102L,
+            ),
+        )
+    }
+
+    @Test
     fun test453UpdaterCanSelectCanonical502ReleaseAndAsset() {
         val release = AppUpdateManager.parseReleaseJson(
             releaseJson(
