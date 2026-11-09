@@ -13,7 +13,7 @@ Date: 2026-11-08
 | Debug APK | `./gradlew assembleDebug` | PASS |
 | Development release APK | `./gradlew assembleDevRelease` | PASS; R8 minification and debug-key signing |
 | Lint | `./gradlew lintDebug` | PASS: 277 warnings, 3 hints, 0 errors/fatal; no new lint ID from the v5.1.1 code |
-| CI workflow | PyYAML parse of `.github/workflows/ci.yml` | PASS; not executed on GitHub |
+| CI workflow | GitHub Actions CI on `main` (Run ID `42517854024` on commit `ecc3a49`) | PASS in 8m 14s; verified `testDebugUnitTest`, `lintDebug`, `compileDebugAndroidTestKotlin`, `assembleDebug`, `assembleDevRelease`. CI does not execute on physical devices or run Android instrumentation. |
 
 The definitive run exited `0`; stdout/stderr were captured and the XML report timestamps came from that same execution (newest `2026-11-08 23:11:01`). The suite ran with an empty temporary `user.home` and no `.vrka` directory. This supersedes the earlier 690-test report and resolves the reported discrepancy where an independent invocation exited nonzero while old XML files showed passing tests: the current report is from a fresh `--rerun-tasks` execution with the exit code captured directly from Gradle. A test-source guard fails if a unit test references the production signing key. All updater cryptographic tests use generated temporary keys and run unconditionally; the only pinned-key cryptography test verifies the published v5.1.0 manifest with the public trust anchor and requires no secret.
 
@@ -34,6 +34,8 @@ Hardware validation was performed on a connected physical OnePlus 11 (CPH2447, A
   - Active download transfer: displayed neutral `"Downloading media"` stage (correcting false `"Downloading audio"`), with live speed (`16.61 MiB/s`), remaining time (`0:00 left`), and exact progress (`46.8 MiB / 51.7 MiB`).
   - Finalization & History: completed container published to `Downloads/VRKA` with final size `52.2 MiB` (exact match to target output).
 - High-resolution AMOLED screenshots captured and preserved in `docs/screenshots/v5.1.1/`.
+
+*Note: The comprehensive verification breakdown, seven testing classifications, and platform boundaries (including unverified completed live Browser Fallback transfers, unexecuted Android instrumentation tests on hardware, and unverified API 26–28 SAF on physical hardware) are authoritatively documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).*
 
 ## APK
 

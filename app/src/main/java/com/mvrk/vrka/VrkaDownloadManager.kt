@@ -1,9 +1,11 @@
 package com.mvrk.vrka
 
+import android.content.ContentValues
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.content.Intent
 import android.net.Uri
+import android.provider.MediaStore
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
@@ -172,6 +174,7 @@ class VrkaDownloadManager(
                     _jobs.value = (_jobs.value + missing).sortedByDescending(DownloadJob::createdAt)
                 }
             }
+            reconcilePublicationJournalOnStartup()
             // Runs after persisted state is merged so the plan sees every record.
             resumeInterruptedWorkIfNeeded()
             reportStoreLoadStatus(store.lastLoadResult)
@@ -210,6 +213,103 @@ class VrkaDownloadManager(
      * is pending, which means Android (or the user returning to the app) expects the work to
      * continue. Publishing-phase jobs fail closed because their outputs may already exist.
      */
+    /**
+     * Reconciles in-flight publication transactions after a process restart or crash.
+     * If all outputs for a job were durably published to MediaStore/SAF, the job is restored
+     * to DONE with its published URIs and actual file sizes in History. Incomplete/interrupted
+     * provider objects are cleaned up to prevent ghost or corrupt partial files.
+     */
+    internal fun reconcilePublicationJournalOnStartup() {
+        val unreconciled = runCatching { publisher.activeJournal.unreconciledEntries() }.getOrDefault(emptyList())
+        if (unreconciled.isEmpty()) return
+        val byJob = unreconciled.groupBy { it.jobId }
+        var jobsChanged = false
+        mutate(persist = false) { currentList ->
+            currentList.map { job ->
+                val entries = byJob[job.id] ?: return@map job
+                if (job.state == JobState.DONE) {
+                    runCatching { publisher.activeJournal.markReconciled(job.id) }
+                    cleanupStaging(job.id)
+                    return@map job
+                }
+                val totalOutputs = entries.firstOrNull()?.totalOutputs ?: 1
+                val isAllPresent = entries.size == totalOutputs
+                val allCopiedOrFinalized = isAllPresent && entries.all {
+                    it.publicationPhase == PublicationPhase.FINALIZED ||
+                        it.publicationPhase == PublicationPhase.RECORDED ||
+                        (it.publicationPhase == PublicationPhase.DATA_COPIED && it.copiedBytes == it.expectedSizeBytes && it.expectedSizeBytes > 0L)
+                }
+
+                if (allCopiedOrFinalized) {
+                    entries.forEach { entry ->
+                        if (entry.providerType == PublicationProviderType.MEDIA_STORE &&
+                            entry.publicationPhase == PublicationPhase.DATA_COPIED &&
+                            entry.providerUri != null &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                        ) {
+                            runCatching {
+                                context.contentResolver.update(
+                                    Uri.parse(entry.providerUri),
+                                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                                    null,
+                                    null,
+                                )
+                                publisher.activeJournal.updateFinalized(entry.transactionId)
+                            }
+                        }
+                    }
+                    val allExist = entries.all { entry ->
+                        entry.providerUri != null && publisher.fileExists(entry.providerUri)
+                    }
+                    if (allExist) {
+                        val uris = entries.map { it.providerUri!! }
+                        val totalBytes = entries.sumOf { it.copiedBytes }
+                        val isOpus = job.request.mode == MediaMode.AUDIO && job.request.audioFormat == AudioFormat.OPUS
+                        val detail = if (isOpus) {
+                            "Saved (native Opus stream copy)"
+                        } else if (uris.size == 1) {
+                            "Saved to Downloads/VRKA"
+                        } else {
+                            "Saved ${uris.size} files"
+                        }
+                        jobsChanged = true
+                        runCatching { publisher.activeJournal.markReconciled(job.id) }
+                        cleanupStaging(job.id)
+                        return@map job.copy(
+                            state = JobState.DONE,
+                            progress = 100f,
+                            detail = detail,
+                            downloadedBytes = totalBytes,
+                            reportedTotalBytes = totalBytes,
+                            reportedTotalIsExact = true,
+                            actualFinalFileBytes = totalBytes,
+                            outputUris = uris,
+                            error = "",
+                            publishStarted = true,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+                    }
+                }
+
+                // If not completely published or verified, clean up incomplete provider objects
+                entries.forEach { entry ->
+                    if (entry.publicationPhase != PublicationPhase.FINALIZED &&
+                        entry.publicationPhase != PublicationPhase.RECORDED
+                    ) {
+                        entry.providerUri?.let { uri ->
+                            runCatching { publisher.delete(uri) }
+                        }
+                        runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
+                    }
+                }
+                job
+            }
+        }
+        if (jobsChanged) {
+            persistJobsNow()
+        }
+    }
+
     private fun resumeInterruptedWorkIfNeeded() {
         if (!DownloadRecovery.shouldRecoverPersistedActiveWork(
                 Build.VERSION.SDK_INT,
@@ -1344,6 +1444,7 @@ class VrkaDownloadManager(
             val publishedOutputs = publisher.publishAll(
                 files = planned,
                 destinationTreeUri = job.request.destinationTreeUri,
+                jobId = job.id,
                 shouldContinue = { !isCancelled(job.id) },
                 onPublished = { index, total ->
                     update(
@@ -1400,6 +1501,7 @@ class VrkaDownloadManager(
             persist = true,
         )
         runCatching { diagnosticStore.clearUrlsForJob(job.id) }
+        runCatching { publisher.activeJournal.markReconciled(job.id) }
         current(job.id)?.let { DownloadNotifications.notifyCompleted(context, it) }
         markFinalize("done-state-posted")
         cleanupStaging(job.id)
@@ -1499,6 +1601,7 @@ class VrkaDownloadManager(
                         detail = "Publishing to Downloads",
                         persist = true,
                     )
+                    markPublishStarted(job.id)
                     val outputs = listOf(result.outputFile)
                     if (job.request.mode == MediaMode.VIDEO) {
                         requireVideoStreams(job, outputs)
@@ -1508,10 +1611,16 @@ class VrkaDownloadManager(
                     val published = mutableListOf<String>()
                     var publishedBytes: Long? = null
                     try {
-                        outputs.forEachIndexed { index, file ->
-                            if (isCancelled(job.id)) throw CancellationException("Download cancelled")
-                            val outputName = preferredOutputName(job, file, index, outputs.size)
-                            val output = publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri)
+                        val planned = outputs.mapIndexed { index, file ->
+                            file to preferredOutputName(job, file, index, outputs.size)
+                        }
+                        val publishedOutputs = publisher.publishAll(
+                            files = planned,
+                            destinationTreeUri = job.request.destinationTreeUri,
+                            jobId = job.id,
+                            shouldContinue = { !isCancelled(job.id) },
+                        )
+                        publishedOutputs.forEach { output ->
                             published += output.uri.toString()
                             publishedBytes = (publishedBytes ?: 0L) + output.bytes
                         }
@@ -1534,6 +1643,7 @@ class VrkaDownloadManager(
                         persist = true,
                     )
                     runCatching { diagnosticStore.clearUrlsForJob(job.id) }
+                    runCatching { publisher.activeJournal.markReconciled(job.id) }
                     current(job.id)?.let { DownloadNotifications.notifyCompleted(context, it) }
                     cleanupStaging(job.id)
                 }
