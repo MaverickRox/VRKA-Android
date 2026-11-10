@@ -94,6 +94,7 @@ internal data class PublicationEntry(
     val verificationLevel: String = "",
     val providerDocumentId: String? = null,
     val providerCapabilitiesJson: String? = null,
+    val legacyAmbiguous: Boolean = false,
 )
 
 /**

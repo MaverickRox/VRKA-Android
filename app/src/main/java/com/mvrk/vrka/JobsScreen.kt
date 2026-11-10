@@ -808,6 +808,14 @@ private fun JobCard(
                                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                                     )
                                 }
+                                job.recoveryRequired -> {
+                                    VrkaTextButton(
+                                        text = stringResource(R.string.action_remove),
+                                        onClick = onDelete,
+                                        color = VrkaTokens.Destructive,
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    )
+                                }
                                 else -> {
                                     VrkaOutlinedButton(
                                         text = stringResource(R.string.action_retry),

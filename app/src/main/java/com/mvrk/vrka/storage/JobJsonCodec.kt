@@ -5,11 +5,10 @@ import com.mvrk.vrka.AudioFormat
 import com.mvrk.vrka.DownloadJob
 import com.mvrk.vrka.DownloadRequest
 import com.mvrk.vrka.HeaderValidation
+import com.mvrk.vrka.INTERRUPTED_DOWNLOAD_ERROR
 import com.mvrk.vrka.JobState
 import com.mvrk.vrka.MediaMode
-import com.mvrk.vrka.SizeEstimateKind
 import com.mvrk.vrka.VideoQuality
-import com.mvrk.vrka.subtitle.SubtitleStatus
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -62,11 +61,15 @@ internal object JobJsonCodec {
             }
         }.orEmpty()
         val storedAudioFormat = json.optString("audioFormat")
-        val audioFormat = if (storedAudioFormat == "FLAC") AudioFormat.OPUS else enumValue(storedAudioFormat, AudioFormat.MP3)
+        val audioFormat = if (storedAudioFormat == "FLAC") {
+            AudioFormat.OPUS
+        } else {
+            optionalEnum(storedAudioFormat, AudioFormat.MP3, "audioFormat")
+        }
         return DownloadRequest(
             url = json.getString("url"),
-            mode = enumValue(json.optString("mode"), MediaMode.VIDEO),
-            quality = enumValue(json.optString("quality"), VideoQuality.BEST),
+            mode = optionalEnum(json.optString("mode"), MediaMode.VIDEO, "mode"),
+            quality = optionalEnum(json.optString("quality"), VideoQuality.BEST, "quality"),
             prefer60Fps = json.optBoolean("prefer60Fps"),
             audioFormat = audioFormat,
             mp3Bitrate = json.optInt("bitrate", 320),
@@ -142,18 +145,18 @@ internal object JobJsonCodec {
     fun decodeJob(entity: JobEntity): DownloadJob = DownloadJob(
         id = entity.id,
         request = decodeRequest(entity.requestJson),
-        state = enumValue(entity.state, JobState.FAILED),
+        state = requiredEnum(entity.state, "state"),
         title = entity.title,
         detail = entity.detail,
         progress = entity.progress.takeIf { it.isFinite() } ?: 0f,
         speed = entity.speed,
         etaSeconds = entity.etaSeconds,
         estimatedTotalBytes = entity.estimatedTotalBytes,
-        estimatedSizeAccuracy = enumValue(entity.estimatedSizeAccuracy, SizeEstimateKind.UNAVAILABLE),
+        estimatedSizeAccuracy = requiredEnum(entity.estimatedSizeAccuracy, "estimatedSizeAccuracy"),
         downloadedBytes = entity.downloadedBytes,
         reportedTotalBytes = entity.reportedTotalBytes,
         reportedTotalIsExact = entity.reportedTotalIsExact,
-        activeStream = entity.activeStream?.let { enumValue(it, ActiveStream.MEDIA) },
+        activeStream = optionalNullableEnum<ActiveStream>(entity.activeStream, "activeStream"),
         playlistItemIndex = entity.playlistItemIndex,
         playlistItemCount = entity.playlistItemCount,
         actualFinalFileBytes = entity.actualFinalFileBytes,
@@ -161,23 +164,89 @@ internal object JobJsonCodec {
         updatedAt = entity.updatedAt,
         outputUris = runCatching {
             val array = JSONArray(entity.outputUrisJson)
-            buildList { for (index in 0 until array.length()) add(array.optString(index)) }
-        }.getOrDefault(emptyList()),
+            buildList { for (index in 0 until array.length()) add(array.getString(index)) }
+        }.getOrElse { throw IllegalArgumentException("Invalid output URI data", it) },
         error = entity.error,
         attempt = entity.attempt,
         actualResolution = entity.actualResolution,
         runtimeName = entity.runtimeName,
         runtimeVersion = entity.runtimeVersion,
-        subtitleStatus = enumValue(entity.subtitleStatus, SubtitleStatus.NONE),
+        subtitleStatus = requiredEnum(entity.subtitleStatus, "subtitleStatus"),
         publishStarted = entity.publishStarted,
         recoveryRequired = entity.recoveryRequired,
         legacyVerification = entity.legacyVerification,
     )
 
+    fun quarantineJson(entity: JobEntity): String = JSONObject()
+        .put("id", entity.id)
+        .put("requestJson", entity.requestJson)
+        .put("state", entity.state)
+        .put("title", entity.title)
+        .put("detail", entity.detail)
+        .put("progress", entity.progress)
+        .put("speed", entity.speed)
+        .put("etaSeconds", entity.etaSeconds)
+        .put("downloadedBytes", entity.downloadedBytes)
+        .put("estimatedTotalBytes", entity.estimatedTotalBytes)
+        .put("estimatedSizeAccuracy", entity.estimatedSizeAccuracy)
+        .put("reportedTotalBytes", entity.reportedTotalBytes)
+        .put("reportedTotalIsExact", entity.reportedTotalIsExact)
+        .put("activeStream", entity.activeStream)
+        .put("playlistItemIndex", entity.playlistItemIndex)
+        .put("playlistItemCount", entity.playlistItemCount)
+        .put("actualFinalFileBytes", entity.actualFinalFileBytes)
+        .put("createdAt", entity.createdAt)
+        .put("updatedAt", entity.updatedAt)
+        .put("outputUrisJson", entity.outputUrisJson)
+        .put("error", entity.error)
+        .put("attempt", entity.attempt)
+        .put("actualResolution", entity.actualResolution)
+        .put("runtimeName", entity.runtimeName)
+        .put("runtimeVersion", entity.runtimeVersion)
+        .put("subtitleStatus", entity.subtitleStatus)
+        .put("publishStarted", entity.publishStarted)
+        .put("currentAttemptId", entity.currentAttemptId)
+        .put("legacyVerification", entity.legacyVerification)
+        .put("recoveryRequired", entity.recoveryRequired)
+        .put("terminalAt", entity.terminalAt)
+        .put("commitSequence", entity.commitSequence)
+        .put("version", entity.version)
+        .toString()
+
+    fun damagedJob(entity: JobEntity): DownloadJob = DownloadJob(
+        id = entity.id,
+        request = DownloadRequest(url = ""),
+        state = JobState.FAILED,
+        title = "Damaged history record",
+        detail = "This history record needs storage recovery",
+        createdAt = entity.createdAt,
+        updatedAt = entity.updatedAt,
+        error = INTERRUPTED_DOWNLOAD_ERROR,
+        attempt = entity.attempt,
+        recoveryRequired = true,
+        legacyVerification = "RECOVERY_REQUIRED",
+    )
+
     fun entityVersion(entity: JobEntity): Long = entity.version
 
-    private inline fun <reified T : Enum<T>> enumValue(value: String?, fallback: T): T =
-        enumValues<T>().firstOrNull { it.name == value } ?: fallback
+    private inline fun <reified T : Enum<T>> requiredEnum(value: String?, field: String): T {
+        val raw = value?.takeIf { it.isNotBlank() && it != "null" }
+            ?: throw IllegalArgumentException("Missing $field")
+        return enumValues<T>().firstOrNull { it.name == raw }
+            ?: throw IllegalArgumentException("Unknown $field")
+    }
+
+    private inline fun <reified T : Enum<T>> optionalEnum(value: String?, fallback: T, field: String): T {
+        val raw = value?.takeIf { it.isNotBlank() && it != "null" } ?: return fallback
+        return enumValues<T>().firstOrNull { it.name == raw }
+            ?: throw IllegalArgumentException("Unknown $field")
+    }
+
+    private inline fun <reified T : Enum<T>> optionalNullableEnum(value: String?, field: String): T? {
+        val raw = value?.takeIf { it.isNotBlank() && it != "null" } ?: return null
+        return enumValues<T>().firstOrNull { it.name == raw }
+            ?: throw IllegalArgumentException("Unknown $field")
+    }
 
     private fun JSONObject.optionalInt(name: String): Int? =
         if (isNull(name) || !has(name)) null else optInt(name)

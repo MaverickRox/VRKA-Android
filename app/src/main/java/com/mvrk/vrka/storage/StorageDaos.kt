@@ -119,6 +119,15 @@ interface CleanupTaskDao {
     @Query("SELECT * FROM cleanup_tasks WHERE resource_type = :type AND resource_identity = :identity")
     fun byResource(type: String, identity: String): CleanupTaskEntity?
 
+    @Query("SELECT * FROM cleanup_tasks WHERE id = :id")
+    fun byId(id: String): CleanupTaskEntity?
+
+    @Query("SELECT * FROM cleanup_tasks WHERE job_id = :jobId ORDER BY created_at")
+    fun forJob(jobId: String): List<CleanupTaskEntity>
+
+    @Query("SELECT * FROM cleanup_tasks WHERE dead_letter = 1 ORDER BY updated_at DESC")
+    fun deadLetters(): List<CleanupTaskEntity>
+
     @Upsert
     fun upsert(task: CleanupTaskEntity)
 

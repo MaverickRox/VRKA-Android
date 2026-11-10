@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.mvrk.vrka.storage.JobJsonCodec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -313,6 +314,9 @@ class SafPublicationIntegrationTest {
                 providerType = PublicationProviderType.SAF,
                 destinationIdentity = TestDocumentsProvider.TREE_URI.toString(),
                 publicationPhase = PublicationPhase.INTENT_RECORDED,
+                attemptNumber = 1,
+                attemptId = JobJsonCodec.attemptIdFor(jobId, 1),
+                batchId = "batch-$transactionId",
             ),
         )
         journal.updateProviderCreated(transactionId, oldUri.toString())

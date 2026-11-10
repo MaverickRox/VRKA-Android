@@ -124,6 +124,54 @@ class LegacyMigrationFixtureTest {
     }
 
     @Test
+    fun interruptionAtDurableImportCheckpointsResumesWithoutDuplicates() = runBlocking(Dispatchers.IO) {
+        val dir = java.nio.file.Files.createTempDirectory("vrka-migration-resume").toFile()
+        try {
+            File(dir, "download_jobs.json").writeText(
+                """{"schemaVersion":2,"jobs":[{"id":"job-resume","state":"DONE","title":"Resume",
+                  "request":{"url":"https://example.com/resume"},"outputs":[]}]}""".trimIndent(),
+            )
+            File(dir, "publication_journal.json").writeText(
+                """{"schemaVersion":1,"entries":[{"transactionId":"tx-resume","jobId":"job-resume",
+                  "outputIndex":0,"totalOutputs":1,"intendedFilename":"resume.mp4",
+                  "pendingFilename":".vrka_pending_tx-resume_resume.mp4",
+                  "stagingPath":"/staging/job-resume/resume.mp4","expectedSizeBytes":10,
+                  "providerType":"MEDIA_STORE","destinationIdentity":"Downloads/VRKA",
+                  "publicationPhase":"FINALIZED","providerUri":"content://media/external/downloads/9",
+                  "copiedBytes":10,"status":"RECONCILED","createdAt":1,"updatedAt":1}]}
+                """.trimIndent(),
+            )
+            val db = Room.inMemoryDatabaseBuilder(context, VrkaDatabase::class.java).allowMainThreadQueries().build()
+            try {
+                val repository = RoomStorageRepository(db)
+                val migrator = LegacyStorageMigrator(dir, db, repository)
+                migrator.migrateIfNeeded()
+                val jobs = db.jobDao().all().size
+                val outputs = db.publicationOutputDao().all().size
+                val records = db.migrationDao().records().size
+                db.migrationDao().ledger("download_jobs.json")?.let {
+                    db.migrationDao().upsertLedger(it.copy(status = "IMPORTING", importedRecords = 0))
+                }
+                db.migrationDao().ledger("publication_journal.json")?.let {
+                    db.migrationDao().upsertLedger(it.copy(status = "IMPORTING", importedRecords = 0))
+                }
+                migrator.migrateIfNeeded()
+                assertEquals(jobs, db.jobDao().all().size)
+                assertEquals(outputs, db.publicationOutputDao().all().size)
+                assertEquals(records, db.migrationDao().records().size)
+                val integrity = db.openHelper.writableDatabase.query("PRAGMA integrity_check").use {
+                    if (it.moveToFirst()) it.getString(0) else null
+                }
+                assertEquals("ok", integrity)
+            } finally {
+                db.close()
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun repeatedMigrationIsIdempotent() = runBlocking(Dispatchers.IO) {
         val dir = java.nio.file.Files.createTempDirectory("vrka-migration-repeat").toFile()
         try {

@@ -73,10 +73,30 @@ internal interface PublicationStore {
     fun updatePhase(transactionId: String, phase: PublicationPhase) = Unit
 }
 
+internal data class CleanupTaskSummary(
+    val taskId: String,
+    val jobId: String?,
+    val attemptId: String?,
+    val transactionId: String?,
+    val resourceType: String,
+    val resourceIdentity: String,
+    val stage: String,
+    val retryCount: Int,
+    val nextRetryAt: Long,
+    val lastErrorClass: String?,
+    val deadLetter: Boolean,
+)
+
 internal interface CleanupStore {
     fun pending(): List<PendingStagingCleanup>
 
     fun markPending(jobId: String)
 
     fun clear(jobId: String)
+
+    fun deadLetters(): List<CleanupTaskSummary> = emptyList()
+
+    fun resetDeadLetter(taskId: String): Boolean = false
+
+    fun isProviderCleanupDeadLetter(transactionId: String): Boolean = false
 }

@@ -37,7 +37,7 @@ abstract class VrkaDatabase : RoomDatabase() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
                         super.onOpen(db)
                         db.execSQL("PRAGMA foreign_keys = ON")
-                        db.execSQL("PRAGMA busy_timeout = 5000")
+                        db.query("PRAGMA busy_timeout = 5000").use { }
                         db.execSQL("PRAGMA synchronous = FULL")
                     }
                 })

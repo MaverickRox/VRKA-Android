@@ -19,6 +19,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+internal data class CacheLoadReport(
+    val decodedJobs: Int,
+    val quarantinedJobs: Int,
+)
+
 /**
  * Durable Room-backed repository. The StateFlow is a cache refreshed only after committed
  * database transactions; it is not an independent authority.
@@ -35,14 +40,42 @@ internal class RoomStorageRepository(
     val publicationStore: PublicationStore = RoomPublicationStore(database, this, clock)
     val cleanupStore: CleanupStore = RoomCleanupStore(database, clock)
 
-    suspend fun loadCache() {
-        val decoded = withContext(Dispatchers.IO) {
-            database.jobDao().all().mapNotNull { entity ->
-                runCatching { JobJsonCodec.decodeJob(entity) }.getOrNull()
-            }
+    suspend fun loadCache(): CacheLoadReport {
+        val entities = withContext(Dispatchers.IO) { database.jobDao().all() }
+        var quarantined = 0
+        val decoded = entities.map { entity ->
+            runCatching { JobJsonCodec.decodeJob(entity) }
+                .getOrElse { error ->
+                    quarantined++
+                    quarantineJob(entity)
+                    JobJsonCodec.damagedJob(entity)
+                }
         }
         _jobs.value = decoded.sortedByDescending { it.createdAt }
+        return CacheLoadReport(decoded.size, quarantined)
     }
+
+    private suspend fun quarantineJob(entity: JobEntity) = withContext(Dispatchers.IO) {
+        runCatching {
+            database.migrationDao().insertRecord(
+                MigrationRecordEntity(
+                    sourceKey = "room_jobs",
+                    sourceRow = 0,
+                    reason = "JOB_DECODE_FAILURE:${entity.id}",
+                    rawJson = JobJsonCodec.quarantineJson(entity),
+                    createdAt = clock(),
+                ),
+            )
+        }
+        Unit
+    }
+
+    suspend fun decodePageEntity(entity: JobEntity): DownloadJob =
+        runCatching { JobJsonCodec.decodeJob(entity) }
+            .getOrElse {
+                quarantineJob(entity)
+                JobJsonCodec.damagedJob(entity)
+            }
 
     fun cachedJobs(): List<DownloadJob> = _jobs.value
 
@@ -51,7 +84,7 @@ internal class RoomStorageRepository(
     suspend fun terminalJobIds(): List<String> = withContext(Dispatchers.IO) { database.jobDao().terminalIds() }
 
     fun historyPagingSource(): PagingSource<Int, DownloadJob> =
-        MappingPagingSource(database.jobDao().historyPagingSource())
+        MappingPagingSource(this, database.jobDao().historyPagingSource())
 
     suspend fun saveJobs(jobs: List<DownloadJob>, pinnedJobIds: Set<String>): JobStoreSaveResult =
         writeMutex.withLock {
@@ -64,6 +97,12 @@ internal class RoomStorageRepository(
                     for (job in jobs) {
                         val attemptId = JobJsonCodec.attemptIdFor(job.id, job.attempt)
                         val existing = database.jobDao().byId(job.id)
+                        if (existing != null &&
+                            runCatching { JobJsonCodec.decodeJob(existing) }.isFailure
+                        ) {
+                            // A cache placeholder must never overwrite the raw quarantined row.
+                            continue
+                        }
                         if (existing != null && shouldIgnoreIncoming(existing, job)) continue
                         val commitSequence = when {
                             !job.state.isTerminal -> existing?.commitSequence ?: 0L
@@ -150,14 +189,18 @@ internal class RoomStorageRepository(
         var allDeleted = true
         for (jobId in jobIds.toSet()) {
             val unresolved = database.publicationOutputDao().unreconciledForJob(jobId)
-            if (unresolved.isNotEmpty()) {
+            val providerCleanup = database.cleanupTaskDao().forJob(jobId)
+                .any { it.resourceType != "STAGING" }
+            if (unresolved.isNotEmpty() || providerCleanup) {
                 allDeleted = false
                 continue
             }
             database.publicationOutputDao().deleteForJob(jobId)
             database.publicationBatchDao().deleteForJob(jobId)
             database.attemptDao().deleteForJob(jobId)
-            database.cleanupTaskDao().deleteForJob(jobId)
+            // Cleanup obligations deliberately outlive a History row. Staging tasks are
+            // job-keyed; provider tasks remain protected by their unresolved output rows,
+            // so deletion is refused before this point when one exists.
             database.jobDao().delete(jobId)
         }
         return allDeleted
@@ -226,6 +269,7 @@ internal class RoomStorageRepository(
 
                 val batch = database.publicationBatchDao().byId(batchId)
                     ?: return@withTransaction false
+                if (batch.legacyAmbiguous) return@withTransaction false
                 if (batch.jobId != jobId || batch.attemptId != attemptId) return@withTransaction false
                 val outputs = database.publicationOutputDao().forBatch(batchId)
                 if (outputs.size != batch.totalOutputs) return@withTransaction false
@@ -325,12 +369,13 @@ internal class RoomStorageRepository(
     }
 
     private class MappingPagingSource(
+        private val repository: RoomStorageRepository,
         private val delegate: PagingSource<Int, JobEntity>,
     ) : PagingSource<Int, DownloadJob>() {
         override suspend fun load(params: LoadParams<Int>): LoadResult<Int, DownloadJob> =
             when (val result = delegate.load(params)) {
                 is LoadResult.Page -> LoadResult.Page(
-                    data = result.data.mapNotNull { runCatching { JobJsonCodec.decodeJob(it) }.getOrNull() },
+                    data = result.data.map { repository.decodePageEntity(it) },
                     prevKey = result.prevKey,
                     nextKey = result.nextKey,
                     itemsBefore = result.itemsBefore,
