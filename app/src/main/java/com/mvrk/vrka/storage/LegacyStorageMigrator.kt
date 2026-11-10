@@ -362,12 +362,25 @@ internal class LegacyStorageMigrator(
                 preserved++
                 continue
             }
-            val phase = runCatching { PublicationPhase.valueOf(obj.optString("publicationPhase")) }
-                .getOrDefault(PublicationPhase.INTENT_RECORDED)
-            val status = runCatching { PublicationTransactionStatus.valueOf(obj.optString("status")) }
-                .getOrDefault(PublicationTransactionStatus.PENDING)
-            val providerType = runCatching { PublicationProviderType.valueOf(obj.optString("providerType")) }
-                .getOrDefault(PublicationProviderType.MEDIA_STORE)
+            val phase = PublicationPhase.values().firstOrNull {
+                it.name == obj.optString("publicationPhase")
+            }
+            val status = PublicationTransactionStatus.values().firstOrNull {
+                it.name == obj.optString("status")
+            }
+            val providerType = PublicationProviderType.values().firstOrNull {
+                it.name == obj.optString("providerType")
+            }
+            if (phase == null || status == null || providerType == null) {
+                addRecord(
+                    key,
+                    index,
+                    "Unknown or missing legacy publication enum; original row preserved",
+                    obj.toString(),
+                )
+                preserved++
+                continue
+            }
             val pending = obj.optString("pendingFilename").takeIf { it.isNotBlank() }
                 ?: ".vrka_pending_${transactionId}_$intended"
             val destination = obj.optString("destinationIdentity").takeIf { it.isNotBlank() }
@@ -377,6 +390,17 @@ internal class LegacyStorageMigrator(
                 PublicationTransactionStatus.COMPLETED -> "LEGACY_UNVERIFIED"
                 else -> "LEGACY_UNVERIFIED"
             }
+            val rawAttemptNumber = obj.optInt("attemptNumber", 0)
+                .takeIf { it in 1..1_000_000 }
+            // The source journal is legacy evidence, not a trusted owner. Storage gets synthetic
+            // identities only; the raw row (including any supplied IDs) remains in the ledger.
+            val legacyAmbiguous = true
+            addRecord(
+                key,
+                index,
+                "Original legacy journal row preserved as unverified evidence",
+                obj.toString(),
+            )
             parsed += PublicationEntry(
                 transactionId = transactionId,
                 jobId = jobId,
@@ -395,8 +419,12 @@ internal class LegacyStorageMigrator(
                 createdAt = obj.optLong("createdAt", clock()).takeIf { it > 0 } ?: clock(),
                 updatedAt = obj.optLong("updatedAt", clock()).takeIf { it > 0 } ?: clock(),
                 errorMessage = obj.optString("errorMessage").takeIf { it.isNotBlank() && it != "null" },
+                attemptNumber = rawAttemptNumber ?: 1,
+                attemptId = "",
+                batchId = "",
                 verificationLevel = verification,
                 expectedSha256 = null,
+                legacyAmbiguous = legacyAmbiguous,
             )
         }
 
@@ -439,7 +467,11 @@ internal class LegacyStorageMigrator(
                     )
                 }
                 repository.publicationStore.recordBatchIntents(enriched)
-                if (duplicateIndex || sameTotalAttempts || byTotal.size > 1) {
+                if (enriched.any { it.legacyAmbiguous } ||
+                    duplicateIndex ||
+                    sameTotalAttempts ||
+                    byTotal.size > 1
+                ) {
                     val batch = database.publicationBatchDao().byId(batchId)
                     if (batch != null) {
                         database.publicationBatchDao().upsert(batch.copy(legacyAmbiguous = true))

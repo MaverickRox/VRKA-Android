@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mvrk.vrka.storage.CleanupTaskSummary
 import kotlinx.coroutines.launch
 
 @Composable
@@ -51,6 +52,8 @@ internal fun SettingsScreen(
     runtimeManager: com.mvrk.vrka.runtime.YtDlpRuntimeManager,
     diagnostics: List<DiagnosticEntry> = emptyList(),
     onClearDiagnostics: () -> Unit = {},
+    deadLetterCleanupTasks: List<CleanupTaskSummary> = emptyList(),
+    onRetryCleanupTask: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -1177,6 +1180,42 @@ internal fun SettingsScreen(
         var includeSourceUrl by remember { mutableStateOf(false) }
 
         VrkaSectionContainer {
+            if (deadLetterCleanupTasks.isNotEmpty()) {
+                Text(
+                    text = "Storage cleanup requires manual retry",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
+                    fontWeight = FontWeight.SemiBold,
+                    color = VrkaTokens.Warning,
+                )
+                deadLetterCleanupTasks.forEach { task ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "${task.resourceType} • job ${task.jobId ?: "unknown"}",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                                color = VrkaTokens.TextPrimary,
+                            )
+                            Text(
+                                text = "Retries: ${task.retryCount} • ${task.lastErrorClass ?: task.stage}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                                color = VrkaTokens.TextSecondary,
+                            )
+                        }
+                        VrkaOutlinedButton(
+                            text = stringResource(R.string.action_retry),
+                            onClick = { onRetryCleanupTask(task.taskId) },
+                            height = 30.dp,
+                        )
+                    }
+                }
+                VrkaDivider()
+            }
             if (diagnostics.isEmpty()) {
                 Text(
                     stringResource(R.string.diagnostics_empty),

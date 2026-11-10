@@ -24,7 +24,11 @@ internal data class StorageStatus(
     val readiness: StorageReadiness,
     val message: String = "",
     val migration: MigrationReport? = null,
-)
+    val quarantinedJobs: Int = 0,
+) {
+    val partialReadiness: Boolean
+        get() = readiness == StorageReadiness.READY && quarantinedJobs > 0
+}
 
 /**
  * Process-wide storage initialization gate. The database/repository objects are constructed
@@ -69,25 +73,41 @@ internal class StorageRuntime(
             return
         }
         try {
-            repository.loadCache()
+            val cacheReport = repository.loadCache()
             // Reopen the same database file with a fresh Room instance to prove that the
             // migrated data is durable and readable outside the importer's connection.
             val verifyDb = VrkaDatabase.build(context)
+            var verifyDamaged = 0
             try {
                 withContext(Dispatchers.IO) {
-                    val count = verifyDb.jobDao().all().size
+                    val jobs = verifyDb.jobDao().all()
                     val outputCount = verifyDb.publicationOutputDao().all().size
-                    if (count < 0 || outputCount < 0) error("Invalid verification counts")
+                    if (outputCount < 0) error("Invalid verification counts")
+                    jobs.forEach { entity ->
+                        if (runCatching { JobJsonCodec.decodeJob(entity) }.isFailure) {
+                            verifyDamaged++
+                        }
+                    }
                 }
             } finally {
                 verifyDb.close()
             }
-            val status = StorageStatus(StorageReadiness.READY, migration = report)
+            val quarantined = maxOf(cacheReport.quarantinedJobs, verifyDamaged)
+            val status = StorageStatus(
+                readiness = StorageReadiness.READY,
+                message = if (quarantined > 0) {
+                    "Some history records require storage recovery"
+                } else {
+                    ""
+                },
+                migration = report,
+                quarantinedJobs = quarantined,
+            )
             _status.value = status
             ready.complete(status)
         } catch (error: Throwable) {
             _status.value = StorageStatus(
-                StorageReadiness.STORAGE_FAILED,
+                readiness = StorageReadiness.STORAGE_FAILED,
                 message = error.message.orEmpty().take(500),
                 migration = report,
             )

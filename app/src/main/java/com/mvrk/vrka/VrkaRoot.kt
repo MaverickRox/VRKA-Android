@@ -90,6 +90,7 @@ fun VrkaRoot(
     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
     val diagnostics by manager.diagnostics.collectAsStateWithLifecycle()
+    val deadLetterCleanupTasks by manager.deadLetterCleanupTasks.collectAsStateWithLifecycle()
     val appUpdateCheckState by manager.appUpdateManager.checkState.collectAsStateWithLifecycle()
     val appUpdateDownloadState by manager.appUpdateManager.downloadState.collectAsStateWithLifecycle()
     val startupUpdateDialogData by manager.componentUpdateManager.startupUpdateDialogData.collectAsStateWithLifecycle()
@@ -102,13 +103,19 @@ fun VrkaRoot(
     var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     var pendingAppUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
     val snackbar = remember { SnackbarHostState() }
-    LaunchedEffect(storageStatus.readiness) {
+    LaunchedEffect(storageStatus) {
         when (storageStatus.readiness.name) {
             "INITIALIZING", "MIGRATING" -> snackbar.showSnackbar("Preparing local storage")
             "MIGRATION_FAILED", "STORAGE_FAILED" -> snackbar.showSnackbar(
                 storageStatus.message.ifBlank { "Local storage is unavailable" },
             )
-            else -> Unit
+            else -> {
+                if (storageStatus.partialReadiness) {
+                    snackbar.showSnackbar(
+                        storageStatus.message.ifBlank { "Some history records require storage recovery" },
+                    )
+                }
+            }
         }
     }
     val scope = rememberCoroutineScope()
@@ -327,6 +334,14 @@ fun VrkaRoot(
                                     runtimeManager = manager.ytDlpRuntimeManager,
                                     diagnostics = diagnostics,
                                     onClearDiagnostics = manager::clearDiagnostics,
+                                    deadLetterCleanupTasks = deadLetterCleanupTasks,
+                                    onRetryCleanupTask = { taskId ->
+                                        scope.launch {
+                                            if (!manager.retryDeadLetterCleanup(taskId)) {
+                                                snackbar.showSnackbar("The cleanup retry could not be started")
+                                            }
+                                        }
+                                    },
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),

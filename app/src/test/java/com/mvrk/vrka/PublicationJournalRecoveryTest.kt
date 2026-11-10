@@ -565,6 +565,9 @@ class PublicationJournalRecoveryTest {
         providerType = providerType,
         destinationIdentity = destination,
         publicationPhase = PublicationPhase.INTENT_RECORDED,
+        attemptNumber = 1,
+        attemptId = "$jobId:attempt:1",
+        batchId = "batch-$txId",
         createdAt = createdAt,
         updatedAt = createdAt,
     )
@@ -855,9 +858,13 @@ class PublicationJournalRecoveryTest {
         fresh.manager.reconcilePublicationJournalOnStartup()
 
         assertEquals(JobState.DONE, storedJob(dir, done.id)!!.state)
-        assertTrue("All transactions must be retired", fresh.journal.unreconciledEntries().isEmpty())
+        assertEquals(
+            "A transaction owned by a previous batch must remain preserved, not reconciled",
+            1,
+            fresh.journal.unreconciledEntries().size,
+        )
         assertTrue("The finalized current output must be preserved", ops.fileExists(newAttempt.uri!!))
-        assertFalse("Only the old pending object may be removed", ops.fileExists(oldAttempt.uri!!))
+        assertTrue("A previous attempt's provider object must not be deleted", ops.fileExists(oldAttempt.uri!!))
     }
 
     @Test

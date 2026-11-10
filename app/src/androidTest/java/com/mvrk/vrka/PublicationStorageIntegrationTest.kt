@@ -6,6 +6,7 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.mvrk.vrka.storage.JobJsonCodec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -127,6 +128,9 @@ class PublicationStorageIntegrationTest {
                 providerType = PublicationProviderType.MEDIA_STORE,
                 destinationIdentity = PublicationUriRules.MEDIA_STORE_DESTINATION,
                 publicationPhase = PublicationPhase.INTENT_RECORDED,
+                attemptNumber = 1,
+                attemptId = JobJsonCodec.attemptIdFor(jobId, 1),
+                batchId = "batch-$transactionId",
             ),
         )
         journal.updateProviderCreated(transactionId, uri.toString())

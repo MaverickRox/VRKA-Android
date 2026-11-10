@@ -521,7 +521,7 @@ internal class JobStore(
 
     private fun decode(value: JSONObject, recoverActive: Boolean): DownloadJob? = runCatching {
         val encodedRequest = value.getJSONObject("request")
-        val savedState = enumValue(value.optString("state"), JobState.FAILED)
+        val savedState = optionalEnum(value.optString("state"), JobState.FAILED, "state")
         val keepSavedState = savedState.isTerminal || recoverActive
         val restoredState = if (keepSavedState) savedState else JobState.FAILED
         val restoredError = if (keepSavedState) {
@@ -534,7 +534,7 @@ internal class JobStore(
         val restoredAudioFormat = if (storedAudioFormat == "FLAC") {
             AudioFormat.OPUS
         } else {
-            enumValue(storedAudioFormat, AudioFormat.MP3)
+            optionalEnum(storedAudioFormat, AudioFormat.MP3, "audioFormat")
         }
 
         val customHeadersObj = encodedRequest.optJSONObject("customHeaders")
@@ -554,10 +554,11 @@ internal class JobStore(
             id = value.getString("id"),
             request = DownloadRequest(
                 url = encodedRequest.getString("url"),
-                mode = enumValue(encodedRequest.optString("mode"), MediaMode.VIDEO),
-                quality = enumValue(
+                mode = optionalEnum(encodedRequest.optString("mode"), MediaMode.VIDEO, "mode"),
+                quality = optionalEnum(
                     encodedRequest.optString("quality"),
                     VideoQuality.BEST,
+                    "quality",
                 ),
                 prefer60Fps = encodedRequest.optBoolean("prefer60Fps"),
                 audioFormat = restoredAudioFormat,
@@ -606,9 +607,10 @@ internal class JobStore(
             etaSeconds = value.optionalLong("eta"),
             downloadedBytes = value.optionalLong("downloadedBytes"),
             estimatedTotalBytes = value.optionalLong("estimatedTotalBytes"),
-            estimatedSizeAccuracy = enumValue(
+            estimatedSizeAccuracy = optionalEnum(
                 value.optString("estimatedSizeAccuracy"),
                 SizeEstimateKind.UNAVAILABLE,
+                "estimatedSizeAccuracy",
             ),
             // Records written before the estimated/reported split stored the transfer total
             // under "totalBytes"; it belongs to the reported field, never the estimate.
@@ -621,7 +623,10 @@ internal class JobStore(
             },
             activeStream = value.optString("activeStream")
                 .takeIf { it.isNotBlank() && it != "null" }
-                ?.let { stored -> enumValues<ActiveStream>().firstOrNull { it.name == stored } },
+                ?.let { stored ->
+                    enumValues<ActiveStream>().firstOrNull { it.name == stored }
+                        ?: throw IllegalArgumentException("Unknown activeStream")
+                },
             playlistItemIndex = value.optionalInt("playlistItemIndex"),
             playlistItemCount = value.optionalInt("playlistItemCount"),
             actualFinalFileBytes = value.optionalLong("actualFinalBytes"),
@@ -633,7 +638,11 @@ internal class JobStore(
             actualResolution = value.optString("actualResolution").takeIf { it.isNotBlank() && it != "null" },
             runtimeName = value.optString("runtimeName"),
             runtimeVersion = value.optString("runtimeVersion"),
-            subtitleStatus = enumValue(value.optString("subtitleStatus"), com.mvrk.vrka.subtitle.SubtitleStatus.NONE),
+            subtitleStatus = optionalEnum(
+                value.optString("subtitleStatus"),
+                com.mvrk.vrka.subtitle.SubtitleStatus.NONE,
+                "subtitleStatus",
+            ),
             publishStarted = value.optBoolean("publishStarted", false),
         )
     }.getOrNull()
@@ -647,8 +656,11 @@ internal class JobStore(
     private fun JSONArray.strings(): List<String> =
         buildList { for (index in 0 until length()) add(optString(index)) }
 
-    private inline fun <reified T : Enum<T>> enumValue(value: String?, fallback: T): T =
-        enumValues<T>().firstOrNull { it.name == value } ?: fallback
+    private inline fun <reified T : Enum<T>> optionalEnum(value: String?, fallback: T, field: String): T {
+        val raw = value?.takeIf { it.isNotBlank() && it != "null" } ?: return fallback
+        return enumValues<T>().firstOrNull { it.name == raw }
+            ?: throw IllegalArgumentException("Unknown $field")
+    }
 
     companion object {
         const val CURRENT_SCHEMA_VERSION = 2

@@ -62,11 +62,53 @@ internal class RoomCleanupStore(
         }
     }
 
+    override fun deadLetters(): List<CleanupTaskSummary> =
+        runBlocking(Dispatchers.IO) {
+            database.cleanupTaskDao().deadLetters().map { task ->
+                CleanupTaskSummary(
+                    taskId = task.id,
+                    jobId = task.jobId,
+                    attemptId = task.attemptId,
+                    transactionId = task.transactionId,
+                    resourceType = task.resourceType,
+                    resourceIdentity = task.resourceIdentity,
+                    stage = task.stage,
+                    retryCount = task.retryCount,
+                    nextRetryAt = task.nextRetryAt,
+                    lastErrorClass = task.lastErrorClass,
+                    deadLetter = task.deadLetter,
+                )
+            }
+        }
+
+    override fun resetDeadLetter(taskId: String): Boolean = runBlocking(Dispatchers.IO) {
+        database.withTransaction {
+            val task = database.cleanupTaskDao().byId(taskId) ?: return@withTransaction false
+            if (!task.deadLetter) return@withTransaction true
+            val now = clock()
+            database.cleanupTaskDao().upsert(
+                task.copy(
+                    deadLetter = false,
+                    stage = "MANUAL_RETRY_REQUESTED",
+                    nextRetryAt = now,
+                    updatedAt = now,
+                ),
+            )
+            true
+        }
+    }
+
+    override fun isProviderCleanupDeadLetter(transactionId: String): Boolean =
+        runBlocking(Dispatchers.IO) {
+            database.cleanupTaskDao().byResource(PROVIDER_RESOURCE_TYPE, transactionId)?.deadLetter == true
+        }
+
     private fun backoffMillis(retries: Int): Long =
         min(3600L, 2.0.pow(retries.coerceAtMost(12)).toLong()) * 1000L
 
     private companion object {
         const val RESOURCE_TYPE = "STAGING"
+        const val PROVIDER_RESOURCE_TYPE = "PROVIDER_OBJECT"
         const val MAX_RETRIES = 10
     }
 }

@@ -20,6 +20,9 @@ internal class RoomPublicationStore(
     override var lastLoadResult: PublicationJournalLoadResult? = null
         private set
 
+    @Volatile
+    private var decodeFailure = false
+
     override fun recordIntent(entry: PublicationEntry) = recordBatchIntents(listOf(entry))
 
     override fun recordBatchIntents(batch: List<PublicationEntry>) {
@@ -177,9 +180,11 @@ internal class RoomPublicationStore(
     override fun clearJob(jobId: String) {
         blocking {
             database.withTransaction {
+                val unresolved = database.publicationOutputDao().unreconciledForJob(jobId)
+                if (unresolved.isNotEmpty()) return@withTransaction
+                if (database.cleanupTaskDao().forJob(jobId).isNotEmpty()) return@withTransaction
                 database.publicationOutputDao().deleteForJob(jobId)
                 database.publicationBatchDao().deleteForJob(jobId)
-                database.cleanupTaskDao().deleteForJob(jobId)
             }
         }
     }
@@ -188,6 +193,9 @@ internal class RoomPublicationStore(
         blocking {
             database.withTransaction {
                 for (job in database.jobDao().all()) {
+                    val unresolved = database.publicationOutputDao().unreconciledForJob(job.id)
+                    if (unresolved.isNotEmpty()) continue
+                    if (database.cleanupTaskDao().forJob(job.id).isNotEmpty()) continue
                     database.publicationOutputDao().deleteForJob(job.id)
                     database.publicationBatchDao().deleteForJob(job.id)
                 }
@@ -197,27 +205,90 @@ internal class RoomPublicationStore(
 
     override fun entriesForJob(jobId: String): List<PublicationEntry> {
         val entities = blocking { database.publicationOutputDao().forJob(jobId) }
-        return entities.map { toEntry(it) }
+        return entities.mapNotNull { decodeAndQuarantine(it) }
     }
 
     override fun unreconciledEntries(): List<PublicationEntry> {
         val entities = blocking { database.publicationOutputDao().unreconciled() }
-        return entities.map { toEntry(it) }
+        return entities.mapNotNull { decodeAndQuarantine(it) }
     }
 
     override fun allEntries(): List<PublicationEntry> {
         val entities = blocking { database.publicationOutputDao().all() }
-        return entities.map { toEntry(it) }
+        return entities.mapNotNull { decodeAndQuarantine(it) }
+    }
+
+    private fun decodeAndQuarantine(output: PublicationOutputEntity): PublicationEntry? {
+        val entry = decodeEntry(output)
+        if (entry == null) quarantineOutput(output)
+        return entry
+    }
+
+    private fun decodeEntry(output: PublicationOutputEntity): PublicationEntry? =
+        runCatching {
+            toEntry(output, database.publicationBatchDao().byId(output.batchId))
+        }.getOrElse {
+            decodeFailure = true
+            null
+        }
+
+    private fun quarantineOutput(output: PublicationOutputEntity) {
+        runCatching {
+            blocking {
+                database.migrationDao().insertRecord(
+                    MigrationRecordEntity(
+                        sourceKey = "room_publication_outputs",
+                        sourceRow = 0,
+                        reason = "OUTPUT_DECODE_FAILURE:${output.transactionId}",
+                        rawJson = org.json.JSONObject()
+                            .put("transactionId", output.transactionId)
+                            .put("jobId", output.jobId)
+                            .put("attemptId", output.attemptId)
+                            .put("attemptNumber", output.attemptNumber)
+                            .put("batchId", output.batchId)
+                            .put("outputIndex", output.outputIndex)
+                            .put("totalOutputs", output.totalOutputs)
+                            .put("providerType", output.providerType)
+                            .put("destinationIdentity", output.destinationIdentity)
+                            .put("pendingFilename", output.pendingFilename)
+                            .put("finalFilename", output.finalFilename)
+                            .put("providerUri", output.providerUri)
+                            .put("providerDocumentId", output.providerDocumentId)
+                            .put("stagingKey", output.stagingKey)
+                            .put("expectedSizeBytes", output.expectedSizeBytes)
+                            .put("expectedSha256", output.expectedSha256)
+                            .put("observedSha256", output.observedSha256)
+                            .put("copiedBytes", output.copiedBytes)
+                            .put("verificationLevel", output.verificationLevel)
+                            .put("providerCapabilitiesJson", output.providerCapabilitiesJson)
+                            .put("phase", output.phase)
+                            .put("status", output.status)
+                            .put("cleanupState", output.cleanupState)
+                            .put("errorMessage", output.errorMessage)
+                            .put("createdAt", output.createdAt)
+                            .put("updatedAt", output.updatedAt)
+                            .put("version", output.version)
+                            .toString(),
+                        createdAt = clock(),
+                    ),
+                )
+            }
+        }
     }
 
     override fun loadWithStatus(): PublicationJournalLoadResult {
+        decodeFailure = false
         val result = runCatching { allEntries() }
             .fold(
                 onSuccess = { entries ->
-                    if (entries.isEmpty()) {
-                        PublicationJournalLoadResult(emptyList(), PublicationJournalLoadState.EMPTY)
-                    } else {
-                        PublicationJournalLoadResult(entries, PublicationJournalLoadState.OK)
+                    when {
+                        decodeFailure -> PublicationJournalLoadResult(
+                            entries = emptyList(),
+                            state = PublicationJournalLoadState.CORRUPT,
+                            detail = "One or more publication rows contain unknown persisted values; raw rows were preserved for recovery",
+                        )
+                        entries.isEmpty() -> PublicationJournalLoadResult(emptyList(), PublicationJournalLoadState.EMPTY)
+                        else -> PublicationJournalLoadResult(entries, PublicationJournalLoadState.OK)
                     }
                 },
                 onFailure = { error ->
@@ -240,7 +311,7 @@ internal class RoomPublicationStore(
         blocking {
             database.withTransaction {
                 val output = database.publicationOutputDao().byId(transactionId) ?: return@withTransaction
-                val entry = toEntry(output)
+                val entry = decodeEntry(output) ?: return@withTransaction
                 val updated = transform(entry)
                 val (attemptId, batchId) = ensureAttribution(updated)
                 database.publicationOutputDao().upsert(toEntity(updated, attemptId, batchId, output))
@@ -285,10 +356,18 @@ internal class RoomPublicationStore(
                     providerType = entry.providerType.name,
                     destinationIdentity = entry.destinationIdentity,
                     status = "IN_PROGRESS",
-                    legacyAmbiguous = false,
+                    legacyAmbiguous = entry.legacyAmbiguous ||
+                        entry.batchId.isBlank() ||
+                        entry.attemptId.isBlank(),
                     createdAt = entry.createdAt,
                     updatedAt = entry.updatedAt,
                 ),
+            )
+        } else if ((entry.legacyAmbiguous || entry.batchId.isBlank() || entry.attemptId.isBlank()) &&
+            !batch.legacyAmbiguous
+        ) {
+            database.publicationBatchDao().upsert(
+                batch.copy(legacyAmbiguous = true, updatedAt = clock()),
             )
         }
         return attemptId to batchId
@@ -329,7 +408,10 @@ internal class RoomPublicationStore(
         version = (existing?.version ?: 0L) + 1L,
     )
 
-    private fun toEntry(output: PublicationOutputEntity): PublicationEntry {
+    private fun toEntry(
+        output: PublicationOutputEntity,
+        batch: PublicationBatchEntity?,
+    ): PublicationEntry {
         return PublicationEntry(
             transactionId = output.transactionId,
             jobId = output.jobId,
@@ -339,15 +421,12 @@ internal class RoomPublicationStore(
             pendingFilename = output.pendingFilename,
             stagingPath = output.stagingKey.orEmpty(),
             expectedSizeBytes = output.expectedSizeBytes,
-            providerType = runCatching { PublicationProviderType.valueOf(output.providerType) }
-                .getOrDefault(PublicationProviderType.MEDIA_STORE),
+            providerType = strictEnum(output.providerType, "providerType"),
             destinationIdentity = output.destinationIdentity,
-            publicationPhase = runCatching { PublicationPhase.valueOf(output.phase) }
-                .getOrDefault(PublicationPhase.INTENT_RECORDED),
+            publicationPhase = strictEnum(output.phase, "phase"),
             providerUri = output.providerUri,
             copiedBytes = output.copiedBytes,
-            status = runCatching { PublicationTransactionStatus.valueOf(output.status) }
-                .getOrDefault(PublicationTransactionStatus.FAILED),
+            status = strictEnum(output.status, "status"),
             createdAt = output.createdAt,
             updatedAt = output.updatedAt,
             errorMessage = output.errorMessage,
@@ -359,12 +438,19 @@ internal class RoomPublicationStore(
             verificationLevel = output.verificationLevel,
             providerDocumentId = output.providerDocumentId,
             providerCapabilitiesJson = output.providerCapabilitiesJson,
+            legacyAmbiguous = batch?.legacyAmbiguous ?: true,
         )
     }
 
     private fun sha256(value: String): String =
         MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
             .joinToString("") { "%02x".format(it) }
+
+    private inline fun <reified T : Enum<T>> strictEnum(value: String?, field: String): T {
+        val raw = value?.takeIf { it.isNotBlank() } ?: throw IllegalArgumentException("Missing $field")
+        return enumValues<T>().firstOrNull { it.name == raw }
+            ?: throw IllegalArgumentException("Unknown persisted $field")
+    }
 
     private inline fun <T> blocking(crossinline block: suspend () -> T): T =
         runBlocking(Dispatchers.IO) { block() }
