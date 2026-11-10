@@ -38,10 +38,23 @@ metadata, or APK. See [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.m
 - **JobStore durability and journal integrity:** retention never evicts nonterminal jobs or jobs
   pinned by unresolved publication transactions; strict journal schema/field/batch/URI
   validation; transaction-scoped reconciliation; no arbitrary 128-entry cleanup eviction.
+- **Recovery ownership:** startup completes a job only from one exact current attempt/batch with
+  a complete ordered index set and independent evidence; the same atomic Room terminal
+  transaction is used for recovery. Transactions from other attempts or batches are preserved
+  unresolved and are never adopted, finalized, reconciled, or deleted.
+- **Legacy ambiguity:** v5.1.2 journal rows without attempt/batch identity are preserved as raw
+  evidence and stored in explicitly ambiguous synthetic batches that cannot complete a job or
+  authorize provider actions. Unknown legacy enums are quarantined instead of defaulted.
+- **Cleanup after History deletion:** staging cleanup tasks outlive deleted History rows; provider
+  cleanup blocks deletion until ownership is resolved; dead-letter tasks are visible in
+  Diagnostics and support a task-scoped manual retry.
+- **Corrupt persisted rows:** undecodable Room jobs remain durable in quarantine records, appear
+  as safe damaged History entries, are excluded from overwrite by cache placeholders, and make
+  storage report explicit partial readiness. Unknown Room enums fail closed.
 - **OpenPGP policy:** only SHA-256/SHA-384/SHA-512; RSA-only; hashed issuer fingerprint must
   exactly match the pinned key. Published v5.1.1 and v5.1.2 signatures still verify.
 
-Verification: 800 JVM tests across 77 suites pass with 0 failures/errors/skips; lint reports 0
+Verification: 815 JVM tests across 78 suites pass with 0 failures/errors/skips; lint reports 0
 errors; debug, release-variant, and Android test-source compilation pass; 12 real provider
 instrumentation tests pass on an API 36 emulator (10 SAF protocol/recovery + 2 MediaStore).
 

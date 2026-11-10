@@ -58,6 +58,47 @@ exact transactions `RECONCILED` / `COMMITTED_RECONCILED`, marks the batch commit
 the staging cleanup task. A fresh DAO read verifies the terminal projection afterward. Stale
 callbacks fail the attempt/version comparison and never mark a different retry DONE.
 
+## Recovery ownership
+
+Startup recovery never selects transactions by "newest output index" alone. It selects exactly
+one non-ambiguous batch whose entries all share the logical job, current attempt number and
+attempt ID, batch ID, output count, provider type, and destination. The selected batch must own
+a unique index set within the declared range; a complete job also requires the exact ordered
+`0 until totalOutputs` set. A job with entries from different attempts or different batches is
+never completed, and its provider objects are preserved.
+
+Transactions from a previous attempt or a different batch are retained as unresolved evidence.
+Recovery does not adopt, finalize, reconcile, or delete them. A completed job is committed through
+the same atomic Room terminal transaction used by the normal publisher, so a recovery path cannot
+bypass the terminal ownership checks.
+
+Legacy journal rows are imported with a synthetic storage key but marked `legacy_ambiguous` when
+the source has no valid attempt/batch identity. Ambiguous batches are excluded from recovery
+completion, provider adoption/finalization, reconciliation, and deletion.
+
+## Corrupt persisted rows and partial readiness
+
+Undecodable `jobs` rows are never dropped from the cache or Paging. The repository writes a
+durable quarantine record containing the raw persisted fields, then surfaces a safe damaged
+History placeholder with `recoveryRequired = true`. The placeholder cannot be retried, never
+contains source URLs or credentials, and cannot overwrite the raw row through a cache save.
+`StorageRuntime` reports `READY` with `quarantinedJobs > 0` and `partialReadiness = true`; the UI
+shows a storage-recovery notice. Unknown enum values in jobs or publication rows fail decoding
+and are quarantined rather than mapped to active defaults.
+
+## Cleanup obligations, deletion and dead letters
+
+Staging and provider cleanup tasks are independent durable rows. Deleting a History record removes
+its job and settled publication rows but never deletes a staging cleanup task; the task is retried
+after restart. A provider cleanup obligation blocks History deletion (and `clearJob`) until the
+exact provider object is confirmed removed or definitely absent; the block is reported in
+Diagnostics. `clearJob` and `clearAll` cannot bypass unresolved outputs or cleanup tasks.
+
+Tasks that exhaust their retry budget become dead letters. Dead letters remain queryable, are
+reported in Diagnostics, and are skipped by automatic retry. The Diagnostics screen lists them and
+provides a manual, task-scoped retry that preserves the retry count and last error. Successful
+cleanup clears the obligation only after provider deletion or definite absence is confirmed.
+
 ## MediaStore protocol
 
 On API 29+ the publisher inserts a unique pending row, persists its URI before copying bytes,

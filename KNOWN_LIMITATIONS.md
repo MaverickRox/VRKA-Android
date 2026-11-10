@@ -15,6 +15,11 @@
 > creation; when content cannot be read back or a marker is rewritten/duplicated, the transaction
 > stays unresolved and is not reported as published. Room schema upgrades for future versions
 > must remain transactional and preserve legacy migration records.
+>
+> Corrupt Room rows are quarantined and shown as damaged History entries; storage reports
+> `READY` with `partialReadiness` rather than silently dropping them. Cleanup tasks that exhaust
+> their retry budget become dead letters and require an explicit Diagnostics retry. Provider
+> cleanup keeps the History record and publication row in place until ownership is resolved.
 
 > [!IMPORTANT]
 > **v5.0.2 USERS STILL NEED THE ONE-TIME MANUAL UPGRADE.** The v5.0.2 client has an `APK verification failed: APK filename does not match the expected release` check that cannot update itself. Download and install `VRKA-Android-v5.1.2.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) over v5.0.2 without uninstalling. Application data and settings are preserved. This warning remains until affected users have a published client that can update normally.

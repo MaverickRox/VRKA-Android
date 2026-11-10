@@ -7,18 +7,19 @@ published v5.1.2 APK.
 
 | Check | Command | Result |
 |---|---|---|
-| Full JVM unit tests | `./gradlew --no-daemon --rerun-tasks testDebugUnitTest` | PASS: 800 tests in 77 suites; 0 failures, 0 errors, 0 skipped |
-| Legacy migration corpus | `--tests com.mvrk.vrka.storage.LegacyMigrationFixtureTest` | PASS: 80 cases / 75 files; manifest SHA-256 verified; originals unchanged; integrity and FK checks; repeated import idempotent |
+| Full JVM unit tests | `.\gradlew.bat --no-daemon --rerun-tasks testDebugUnitTest` | PASS: 815 tests in 78 suites; 0 failures, 0 errors, 0 skipped |
+| Legacy migration corpus | `--tests com.mvrk.vrka.storage.LegacyMigrationFixtureTest` | PASS: 80 cases / 75 files; manifest SHA-256 verified; originals unchanged; integrity and FK checks; repeated import idempotent; interrupted import checkpoints resume without duplicates |
+| Defect remediation | `--tests com.mvrk.vrka.storage.StorageDefectRemediationTest` | PASS: cross-attempt/batch rejection, cleanup after History deletion, dead-letter retry, corrupt-row quarantine/paging, partial readiness, unknown enums |
 | Room repository | `--tests com.mvrk.vrka.storage.RoomStorageRepositoryTest` | PASS: full-field round trip, atomic terminal commit, stale attempt rejection, unverified-output rejection, paging, cleanup obligations, reopen |
 | Publication orchestration | `--tests com.mvrk.vrka.storage.RoomPublicationOrchestrationTest` | PASS: publish→commit→fresh runtime, incomplete batch not DONE |
 | Queue admission | `--tests com.mvrk.vrka.QueueAdmissionTest` | PASS: invalid URL, full queue, durable-write failure rollback |
 | Legacy publication journal | `--tests com.mvrk.vrka.PublicationJournalRecoveryTest` | PASS: 33 tests across strict parsing, recovery, cleanup, and terminal ordering |
-| Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
-| Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS |
-| Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS without production signing credentials |
-| Lint | `./gradlew lintDebug` | PASS: 0 errors; 303 warnings and 4 hints (all non-fatal) |
-| MediaStore instrumentation (API 36 emulator) | `connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.PublicationStorageIntegrationTest` | PASS: 2 tests |
-| SAF protocol instrumentation (API 36 emulator) | `connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.SafPublicationIntegrationTest` | PASS: 10 tests |
+| Debug Kotlin compilation | `.\gradlew.bat compileDebugKotlin` | PASS |
+| Android test-source compilation | `.\gradlew.bat compileDebugAndroidTestKotlin` | PASS |
+| Release-variant compilation | `.\gradlew.bat compileReleaseKotlin` | PASS without production signing credentials |
+| Lint | `.\gradlew.bat lintDebug` | PASS: 0 errors; 301 warnings and 4 hints (all non-fatal) |
+| MediaStore instrumentation (API 36 emulator) | `.\gradlew.bat --no-daemon connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.SafPublicationIntegrationTest,com.mvrk.vrka.PublicationStorageIntegrationTest'` | PASS: 2 tests |
+| SAF protocol instrumentation (API 36 emulator) | same Windows command | PASS: 10 tests |
 
 SAF instrumentation covers: in-place rename; rename returning a replacement document ID with
 recovery from the interruption window before URI persistence; null rename return verified by
@@ -48,10 +49,10 @@ Date: 2026-11-09
 | JobStore retention/durability suite | `--tests com.mvrk.vrka.JobStorePersistenceTest` | PASS: 31 tests |
 | OpenPGP verifier suite (includes published signatures) | `--tests com.mvrk.vrka.update.security.ReleaseManifestVerifierTest` | PASS: 26 tests; published v5.1.1 and v5.1.2 detached signatures verify with the pinned RSA-4096 key |
 | Real MediaStore instrumentation (API 36 emulator) | `connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.PublicationStorageIntegrationTest` | PASS: 2 tests (finalized-row verification; pending-row crash recovery) |
-| Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
+| Debug Kotlin compilation | `.\gradlew.bat compileDebugKotlin` | PASS |
 | Debug APK build (via instrumentation task) | `./gradlew connectedDebugAndroidTest` | PASS: debug APK and test APK built, installed, and exercised |
-| Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS |
-| Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS without production signing credentials |
+| Android test-source compilation | `.\gradlew.bat compileDebugAndroidTestKotlin` | PASS |
+| Release-variant compilation | `.\gradlew.bat compileReleaseKotlin` | PASS without production signing credentials |
 | Development/production release APK builds | not run in this remediation | Not claimed; v5.1.2 artifact evidence remains historical and unchanged |
 | Lint | `./gradlew lintDebug` | PASS: 0 errors, 291 warnings |
 | `git diff --check` | `git diff --check` | PASS |
@@ -110,9 +111,9 @@ Date: 2026-11-08
 | Check | Command | Result |
 |---|---|---|
 | Full JVM unit tests | `./gradlew --no-daemon -Duser.home=<empty temp dir> --rerun-tasks testDebugUnitTest` | PASS: 732 tests, 72 suites, 0 failures, 0 errors, 0 skipped |
-| Debug Kotlin compilation | `./gradlew compileDebugKotlin` | PASS |
+| Debug Kotlin compilation | `.\gradlew.bat compileDebugKotlin` | PASS |
 | Android test-source compilation | `./gradlew compileDebugAndroidTestKotlin` | PASS; instrumentation was not executed |
-| Release-variant compilation | `./gradlew compileReleaseKotlin` | PASS without production signing credentials |
+| Release-variant compilation | `.\gradlew.bat compileReleaseKotlin` | PASS without production signing credentials |
 | Debug APK | `./gradlew assembleDebug` | PASS |
 | Development release APK | `./gradlew assembleDevRelease` | PASS; R8 minification and debug-key signing |
 | Lint | `./gradlew lintDebug` | PASS: 277 warnings, 3 hints, 0 errors/fatal; no new lint ID from the v5.1.1 code |
