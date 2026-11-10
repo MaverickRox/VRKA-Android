@@ -460,12 +460,13 @@ class StorageDefectRemediationTest {
         seedJob("valid-job", attempt = 1, state = JobState.DONE)
         val validId = "valid-job"
         val valid = database.jobDao().byId(validId)!!
+        val privateRequestJson = """{"url":"https://private.example/watch?token=private-token","customHeaders":{"Authorization":"Bearer private-bearer","X-Private":"private-header"}}"""
         database.jobDao().upsert(
             valid.copy(
                 id = "corrupt-job",
                 state = JobState.DONE.name,
                 subtitleStatus = "NOT_A_STATUS",
-                requestJson = "{\"url\":\"https://example.com/secret?token=abc\"}",
+                requestJson = privateRequestJson,
             ),
         )
 
@@ -480,7 +481,12 @@ class StorageDefectRemediationTest {
         val damaged = cached.single { it.id == "corrupt-job" }
         assertTrue(damaged.recoveryRequired)
         assertEquals("Damaged history record", damaged.title)
+        assertEquals("A safe history placeholder must not expose the source URL", "", damaged.request.url)
+        assertTrue("A safe history placeholder must not expose request headers", damaged.request.customHeaders.isEmpty())
         assertTrue(database.migrationDao().records().any { it.sourceKey == "room_jobs" })
+        assertTrue(database.migrationDao().records().any { it.rawJson.contains("private-token") })
+        assertEquals("The corrupt raw row must remain unchanged", privateRequestJson,
+            database.jobDao().byId("corrupt-job")!!.requestJson)
 
         val source = repository.historyPagingSource()
         val page = source.load(
@@ -510,6 +516,7 @@ class StorageDefectRemediationTest {
                 id = "runtime-corrupt",
                 state = JobState.DONE.name,
                 subtitleStatus = "NOT_A_STATUS",
+                requestJson = """{"url":"https://private.example/watch?token=private-token","customHeaders":{"Authorization":"Bearer private-bearer","X-Private":"private-header"}}""",
             ),
         )
         database.close()
@@ -522,6 +529,11 @@ class StorageDefectRemediationTest {
             assertEquals(1, status.quarantinedJobs)
             assertTrue(status.partialReadiness)
             assertTrue(status.message.isNotBlank())
+            listOf("private.example", "private-token", "private-bearer", "private-header", "Authorization")
+                .forEach { privateValue -> assertFalse(status.message.contains(privateValue)) }
+            val damaged = runtime.repository.cachedJobs().single { it.id == "runtime-corrupt" }
+            assertEquals("", damaged.request.url)
+            assertTrue(damaged.request.customHeaders.isEmpty())
         } finally {
             runtime.close()
         }
