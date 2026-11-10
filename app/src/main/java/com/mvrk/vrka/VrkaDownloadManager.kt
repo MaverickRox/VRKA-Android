@@ -346,6 +346,14 @@ class VrkaDownloadManager internal constructor(
      * 9. Safe fallback for legacy in-flight jobs without journal records.
      */
     internal fun reconcilePublicationJournalOnStartup() {
+        val repo = repository ?: run {
+            reportStoreIssue(
+                stage = "Publication journal recovery",
+                summary = "Room storage is required for publication recovery",
+                detail = "Publication evidence was retained because this runtime cannot validate ownership and commit completion atomically.",
+            )
+            return
+        }
         val loadResult = runCatching { publisher.activeJournal.loadWithStatus() }.getOrElse { error ->
             PublicationJournalLoadResult(
                 emptyList(),
@@ -408,54 +416,82 @@ class VrkaDownloadManager internal constructor(
         // Recovery may only complete a job through the same atomic terminal transaction
         // used by the normal publisher. The selected batch and exact output set are
         // re-verified inside Room before DONE, reconciliation, or cleanup is written.
-        if (repository != null) {
-            var committedAny = false
-            for ((jobId, plan) in plans.toList()) {
-                val updated = plan.updatedJob ?: continue
-                if (updated.state != JobState.DONE) continue
-                val batchId = plan.batchId
-                if (batchId.isBlank()) {
-                    jobsToUpdate.remove(jobId)
-                    plans[jobId] = plan.copy(updatedJob = null, reconciledTransactions = emptySet())
-                    reportStoreIssue(
-                        stage = "Publication recovery",
-                        summary = "Recovered publication has no authoritative batch identity",
-                        detail = "Job $jobId was not marked DONE because its selected transaction set is not one verifiable batch.",
-                    )
-                    continue
-                }
+        var committedAny = false
+        for ((jobId, plan) in plans.toList()) {
+            val updated = plan.updatedJob ?: continue
+            val previous = _jobs.value.firstOrNull { it.id == jobId }
+            if (updated.state == JobState.FAILED && previous?.state == JobState.DONE) {
                 val committed = runBlocking(Dispatchers.IO) {
-                    repository.commitTerminalPublishedJob(
+                    repo.commitRecoveredPublicationFailure(
                         jobId = jobId,
                         attemptNumber = plan.attemptNumber,
-                        batchId = batchId,
-                        outputUris = updated.outputUris,
-                        detail = updated.detail,
-                        downloadedBytes = updated.downloadedBytes,
-                        reportedTotalBytes = updated.reportedTotalBytes,
-                        reportedTotalIsExact = updated.reportedTotalIsExact,
-                        actualFinalFileBytes = updated.actualFinalFileBytes,
-                        subtitleStatus = updated.subtitleStatus,
+                        batchId = plan.batchId,
+                        missingProviderOutputIds = plan.missingProviderOutputIds,
+                        reconciledTransactionIds = plan.reconciledTransactions,
+                        failedJob = updated,
                     )
                 }
+                jobsToUpdate.remove(jobId)
                 if (committed) {
                     committedAny = true
-                    jobsToUpdate.remove(jobId)
                 } else {
-                    jobsToUpdate.remove(jobId)
-                    plans[jobId] = plan.copy(updatedJob = null, reconciledTransactions = emptySet())
+                    plans[jobId] = plan.copy(
+                        updatedJob = null,
+                        reconciledTransactions = emptySet(),
+                        unresolvedTransactions = plan.unresolvedTransactions + byJob[jobId].orEmpty()
+                            .map { it.transactionId },
+                    )
                     reportStoreIssue(
                         stage = "Publication recovery",
-                        summary = "Atomic recovery commit was rejected",
-                        detail = "Job $jobId retained its previous state because the selected batch/output evidence did not satisfy the terminal transaction.",
+                        summary = "Atomic missing-output update was rejected",
+                        detail = "The stored completion for job $jobId was preserved because its output ownership could not be verified.",
                     )
                 }
+                continue
             }
-            if (committedAny) {
-                runBlocking(Dispatchers.IO) { repository.loadCache() }
-                synchronized(_jobs) {
-                    _jobs.value = repository.cachedJobs().sortedByDescending(DownloadJob::createdAt)
-                }
+            if (updated.state != JobState.DONE) continue
+            val batchId = plan.batchId
+            if (batchId.isBlank()) {
+                jobsToUpdate.remove(jobId)
+                plans[jobId] = plan.copy(updatedJob = null, reconciledTransactions = emptySet())
+                reportStoreIssue(
+                    stage = "Publication recovery",
+                    summary = "Recovered publication has no authoritative batch identity",
+                    detail = "Job $jobId was not marked DONE because its selected transaction set is not one verifiable batch.",
+                )
+                continue
+            }
+            val committed = runBlocking(Dispatchers.IO) {
+                repo.commitTerminalPublishedJob(
+                    jobId = jobId,
+                    attemptNumber = plan.attemptNumber,
+                    batchId = batchId,
+                    outputUris = updated.outputUris,
+                    detail = updated.detail,
+                    downloadedBytes = updated.downloadedBytes,
+                    reportedTotalBytes = updated.reportedTotalBytes,
+                    reportedTotalIsExact = updated.reportedTotalIsExact,
+                    actualFinalFileBytes = updated.actualFinalFileBytes,
+                    subtitleStatus = updated.subtitleStatus,
+                )
+            }
+            if (committed) {
+                committedAny = true
+                jobsToUpdate.remove(jobId)
+            } else {
+                jobsToUpdate.remove(jobId)
+                plans[jobId] = plan.copy(updatedJob = null, reconciledTransactions = emptySet())
+                reportStoreIssue(
+                    stage = "Publication recovery",
+                    summary = "Atomic recovery commit was rejected",
+                    detail = "Job $jobId retained its previous state because the selected batch/output evidence did not satisfy the terminal transaction.",
+                )
+            }
+        }
+        if (committedAny) {
+            runBlocking(Dispatchers.IO) { repo.loadCache() }
+            synchronized(_jobs) {
+                _jobs.value = repo.cachedJobs().sortedByDescending(DownloadJob::createdAt)
             }
         }
 
@@ -469,14 +505,14 @@ class VrkaDownloadManager internal constructor(
             }
         }
 
-        // Every unresolved job is pinned so the 250-record history cap cannot evict a job
+        // Every unresolved job is pinned so retention cannot evict a job
         // whose journal transaction still requires reconciliation.
         val persistSuccess = jobsToUpdate.isEmpty() || persistJobsNow(byJob.keys)
         if (!persistSuccess) {
             reportStoreIssue(
                 stage = "Publication journal reconciliation",
-                summary = "Failed to persist reconciled jobs to JobStore; retaining journal and staging",
-                detail = "JobStore save or durable verification failed during startup reconciliation",
+                summary = "Failed to persist reconciled jobs; retaining journal and staging",
+                detail = "Storage save or durable verification failed during startup reconciliation",
             )
             handleLegacyInFlightJobs()
             return
@@ -512,19 +548,25 @@ class VrkaDownloadManager internal constructor(
         val unresolvedTransactions: Set<String>,
         val batchId: String = "",
         val attemptNumber: Int = 1,
-        val outputUris: List<String> = emptyList(),
+        val missingProviderOutputIds: Set<String> = emptySet(),
     )
 
     /**
-     * The newest transaction per output index belongs to the current attempt; older
-     * transactions for the same job are leftovers from previous attempts and are cleaned
-     * or reconciled independently without affecting the current batch's verdict.
+     * Recovery selects one complete, explicitly identified attempt and batch. It does not
+     * infer ownership by choosing the newest transaction for each output index.
      */
     private fun planJobRecovery(
         jobId: String,
         existingJob: DownloadJob?,
         entries: List<PublicationEntry>,
     ): JobRecoveryPlan {
+        if (existingJob?.recoveryRequired == true) {
+            return JobRecoveryPlan(
+                updatedJob = null,
+                reconciledTransactions = emptySet(),
+                unresolvedTransactions = entries.mapTo(LinkedHashSet()) { it.transactionId },
+            )
+        }
         val jobAttemptNumber = existingJob?.attempt
         val jobAttemptId = existingJob?.let { JobJsonCodec.attemptIdFor(it.id, it.attempt) }
         val eligible = entries.filter { entry ->
@@ -562,6 +604,9 @@ class VrkaDownloadManager internal constructor(
                     it.providerType == currentCandidate.first().providerType &&
                     it.destinationIdentity == currentCandidate.first().destinationIdentity
             } &&
+            currentCandidate.size == currentCandidate.first().totalOutputs &&
+            currentCandidate.map { it.outputIndex }.sorted() ==
+            (0 until currentCandidate.first().totalOutputs).toList() &&
             currentCandidate.map { it.outputIndex }.toSet().size == currentCandidate.size &&
             currentCandidate.all { it.outputIndex in 0 until it.totalOutputs }
         val current: List<PublicationEntry>
@@ -579,6 +624,7 @@ class VrkaDownloadManager internal constructor(
         val unresolved = mutableSetOf<String>()
         val completed = linkedMapOf<String, PublicationEntry>()
         var missingCurrentOutput = false
+        val missingProviderOutputIds = mutableSetOf<String>()
 
         // A previous attempt, a different batch, or an ambiguous legacy row is preserved
         // exactly as evidence. Recovery never adopts, finalizes, reconciles, or deletes it.
@@ -608,6 +654,7 @@ class VrkaDownloadManager internal constructor(
                             entry.publicationPhase == PublicationPhase.RECORDED
                         ) {
                             missingCurrentOutput = true
+                            missingProviderOutputIds += entry.transactionId
                         } else {
                             runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
                         }
@@ -708,6 +755,7 @@ class VrkaDownloadManager internal constructor(
                                 }
                                 ProviderObjectStatus.ABSENT -> {
                                     missingCurrentOutput = true
+                                    missingProviderOutputIds += entry.transactionId
                                     reconciled += entry.transactionId
                                 }
                                 ProviderObjectStatus.PENDING,
@@ -735,6 +783,7 @@ class VrkaDownloadManager internal constructor(
                             entry.publicationPhase == PublicationPhase.RECORDED
                         ) {
                             missingCurrentOutput = true
+                            missingProviderOutputIds += entry.transactionId
                         } else {
                             runCatching { publisher.activeJournal.markInterrupted(entry.transactionId) }
                         }
@@ -769,7 +818,14 @@ class VrkaDownloadManager internal constructor(
                     outputUris = completedEntries.map { it.providerUri!! },
                     updatedAt = System.currentTimeMillis(),
                 )
-                return JobRecoveryPlan(demoted, reconciled, unresolved)
+                return JobRecoveryPlan(
+                    updatedJob = demoted,
+                    reconciledTransactions = reconciled,
+                    unresolvedTransactions = unresolved,
+                    batchId = current.firstOrNull()?.batchId.orEmpty(),
+                    attemptNumber = current.firstOrNull()?.attemptNumber ?: existingJob.attempt,
+                    missingProviderOutputIds = missingProviderOutputIds,
+                )
             }
             return JobRecoveryPlan(null, reconciled, unresolved)
         }
@@ -834,7 +890,6 @@ class VrkaDownloadManager internal constructor(
             unresolvedTransactions = unresolved,
             batchId = current.firstOrNull()?.batchId.orEmpty(),
             attemptNumber = current.firstOrNull()?.attemptNumber ?: existingJob?.attempt ?: 1,
-            outputUris = uris,
         )
     }
 
@@ -2744,13 +2799,10 @@ class VrkaDownloadManager internal constructor(
     }
 
     /**
-     * Executes the durable terminal completion protocol for published outputs:
-     * 1. Confirms provider outputs are finalized (validated by the publisher beforehand).
-     * 2. Constructs the complete terminal JobStore state.
-     * 3. Persists the terminal state with the current completion job pinned through retention.
-     * 4. Re-reads the durable store and verifies the exact terminal record, not just memory.
-     * 5. Only then retires exactly the publication transactions produced by this attempt.
-     * 6. Only after verified persistence performs staging cleanup and posts the notification.
+     * Executes the durable terminal completion protocol for published outputs. Room checks
+     * the job, attempt, batch, ordered output set, and verification evidence in one transaction.
+     * The same transaction marks those outputs reconciled and creates the staging cleanup task.
+     * Only after the durable commit does this method post a notification and clean staging.
      *
      * Returns true only when the terminal state is durably present. A false result leaves the
      * journal, provider outputs, and staging intact for restart recovery.
@@ -2768,141 +2820,53 @@ class VrkaDownloadManager internal constructor(
         attemptNumber: Int? = null,
         batchId: String = "",
     ): Boolean {
-        if (repository != null) {
-            val currentJob = current(jobId)
-            if (currentJob == null) {
-                Log.w("VRKA", "Job $jobId was not found for terminal commit.")
-                return false
-            }
-            val attempt = attemptNumber ?: currentJob.attempt
-            val committed = withContext(Dispatchers.IO + NonCancellable) {
-                repository.commitTerminalPublishedJob(
-                    jobId = jobId,
-                    attemptNumber = attempt,
-                    batchId = batchId,
-                    outputUris = outputUris,
-                    detail = detail,
-                    downloadedBytes = downloadedBytes,
-                    reportedTotalBytes = reportedTotalBytes,
-                    reportedTotalIsExact = reportedTotalIsExact,
-                    actualFinalFileBytes = actualFinalFileBytes,
-                    subtitleStatus = subtitleStatus,
-                )
-            }
-            if (!committed) {
-                reportStoreIssue(
-                    stage = "Queue/history persistence",
-                    summary = "Atomic terminal publication commit failed",
-                    detail = "Job $jobId was not committed as DONE with its exact output set; journal and staging remain recoverable.",
-                )
-                repository.loadCache()
-                synchronized(_jobs) {
-                    _jobs.value = repository.cachedJobs().sortedByDescending(DownloadJob::createdAt)
-                }
-                return false
-            }
-            repository.loadCache()
+        val repo = repository ?: run {
+            reportStoreIssue(
+                stage = "Queue/history persistence",
+                summary = "Room storage is required for terminal publication commit",
+                detail = "Job $jobId was not marked DONE. Publication evidence and staging remain available for recovery.",
+            )
+            return false
+        }
+        val currentJob = current(jobId)
+        if (currentJob == null) {
+            Log.w("VRKA", "Job $jobId was not found for terminal commit.")
+            return false
+        }
+        val attempt = attemptNumber ?: currentJob.attempt
+        val committed = withContext(Dispatchers.IO + NonCancellable) {
+            repo.commitTerminalPublishedJob(
+                jobId = jobId,
+                attemptNumber = attempt,
+                batchId = batchId,
+                outputUris = outputUris,
+                detail = detail,
+                downloadedBytes = downloadedBytes,
+                reportedTotalBytes = reportedTotalBytes,
+                reportedTotalIsExact = reportedTotalIsExact,
+                actualFinalFileBytes = actualFinalFileBytes,
+                subtitleStatus = subtitleStatus,
+            )
+        }
+        if (!committed) {
+            reportStoreIssue(
+                stage = "Queue/history persistence",
+                summary = "Atomic terminal publication commit failed",
+                detail = "Job $jobId was not committed as DONE with its exact output set; journal and staging remain recoverable.",
+            )
+            repo.loadCache()
             synchronized(_jobs) {
-                _jobs.value = repository.cachedJobs().sortedByDescending(DownloadJob::createdAt)
+                _jobs.value = repo.cachedJobs().sortedByDescending(DownloadJob::createdAt)
             }
-            runCatching { diagnosticStore.clearUrlsForJob(jobId) }
-            runCatching { current(jobId)?.let { DownloadNotifications.notifyCompleted(context, it) } }
-            cleanupStaging(jobId)
-            return true
-        }
-        // Step 1: In-memory mutation
-        var targetJob: DownloadJob? = null
-        mutate(persist = false) { list ->
-            list.map { job ->
-                if (job.id == jobId && JobStateGuard.allowsStateChange(job.state, JobState.DONE)) {
-                    val updated = job.copy(
-                        state = JobState.DONE,
-                        progress = 100f,
-                        detail = detail,
-                        downloadedBytes = downloadedBytes ?: job.downloadedBytes,
-                        reportedTotalBytes = reportedTotalBytes ?: job.reportedTotalBytes,
-                        reportedTotalIsExact = reportedTotalIsExact,
-                        actualFinalFileBytes = actualFinalFileBytes ?: job.actualFinalFileBytes,
-                        outputUris = outputUris,
-                        error = "",
-                        subtitleStatus = subtitleStatus ?: job.subtitleStatus,
-                        updatedAt = System.currentTimeMillis(),
-                    )
-                    targetJob = updated
-                    updated
-                } else {
-                    job
-                }
-            }
-        }
-
-        if (targetJob == null) {
-            Log.w("VRKA", "Job $jobId was not found or state guard rejected transition to DONE.")
             return false
         }
-
-        // Step 2 & 3: Checked, awaited terminal persistence. Cancellation cannot interrupt it.
-        val persistSuccess = withContext(Dispatchers.IO + NonCancellable) {
-            persistJobsNow(setOf(jobId))
+        repo.loadCache()
+        synchronized(_jobs) {
+            _jobs.value = repo.cachedJobs().sortedByDescending(DownloadJob::createdAt)
         }
-
-        if (!persistSuccess) {
-            reportStoreIssue(
-                stage = "Queue/history persistence",
-                summary = "Failed to persist terminal DONE state to JobStore",
-                detail = "JobStore save returned false for job $jobId; retaining publication journal and staging data for restart recovery.",
-            )
-            Log.e("VRKA", "JobStore save failed for job $jobId; retaining journal and staging data for recovery.")
-            return false
-        }
-
-        // Step 4: Verify the durable record by re-reading the actual store file.
-        val durableJob = withContext(Dispatchers.IO + NonCancellable) {
-            runCatching { store.load(recoverActive = true).firstOrNull { it.id == jobId } }.getOrNull()
-        }
-        if (durableJob?.state != JobState.DONE || durableJob.outputUris != outputUris) {
-            reportStoreIssue(
-                stage = "Queue/history persistence",
-                summary = "Durable terminal state verification failed",
-                detail = "Job $jobId is not present as DONE with its output URIs in the persisted store; retaining journal and staging.",
-            )
-            Log.e("VRKA", "Terminal job state verification failed for $jobId; retaining journal and staging data.")
-            return false
-        }
-
-        // Step 5: Retire exactly the transactions created by this attempt. Previous failed
-        // attempts for the same logical job remain in the journal and are handled separately.
-        val transactions = if (transactionIds.isNotEmpty()) {
-            transactionIds
-        } else {
-            runCatching {
-                publisher.activeJournal.entriesForJob(jobId)
-                    .filter { it.status == PublicationTransactionStatus.COMPLETED }
-                    .mapTo(HashSet()) { it.transactionId }
-            }.getOrDefault(emptySet())
-        }
-        val reconciled = transactions.isEmpty() || runCatching {
-            publisher.activeJournal.markReconciled(transactions)
-            true
-        }.getOrDefault(false)
         runCatching { diagnosticStore.clearUrlsForJob(jobId) }
-
-        if (!reconciled) {
-            reportStoreIssue(
-                stage = "Publication journal reconciliation",
-                summary = "Could not retire the completed publication transactions",
-                detail = "Terminal state for job $jobId is durable; journal reconciliation is retried on the next startup.",
-            )
-            runCatching { stagingCleanupStore.markPending(jobId) }
-            return true
-        }
-
-        // Step 6: Post completion notification and clean up staging only after durable
-        // persistence and reconciliation. Cleanup failure becomes a durable retry record.
         runCatching { current(jobId)?.let { DownloadNotifications.notifyCompleted(context, it) } }
-        Log.d("VRKA", "Finalize job=$jobId stage=done-state-posted")
         cleanupStaging(jobId)
-        Log.d("VRKA", "Finalize job=$jobId stage=staging-cleanup-complete")
         return true
     }
 
@@ -3068,9 +3032,9 @@ class VrkaDownloadManager internal constructor(
         private val PUBLISHABLE_EXTENSIONS = VIDEO_EXTENSIONS + AUDIO_EXTENSIONS + setOf("srt", "vtt", "ass", "ssa")
 
         fun create(context: Context): VrkaDownloadManager {
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            val settings = SettingsRepository(context.applicationContext, scope)
-            return VrkaDownloadManager(context.applicationContext, settings, scope)
+            val app = context.applicationContext as? VrkaApplication
+                ?: error("VrkaApplication is required for Room-backed download storage")
+            return app.downloads
         }
     }
 }

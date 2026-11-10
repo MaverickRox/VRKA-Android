@@ -6,9 +6,19 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import androidx.room.Room
+import androidx.room.withTransaction
+import androidx.test.core.app.ApplicationProvider
+import com.mvrk.vrka.storage.JobJsonCodec
+import com.mvrk.vrka.storage.CleanupStore
+import com.mvrk.vrka.storage.PublicationStore
+import com.mvrk.vrka.storage.RoomStorageRepository
+import com.mvrk.vrka.storage.VrkaDatabase
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -16,10 +26,14 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
@@ -34,18 +48,31 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * - Full production-orchestration tests execute `OutputPublisher.publishAll()` followed by the
  *   manager terminal commit, journal reconciliation, and staging cleanup, then reconstruct a
- *   fresh manager/journal/store from the files on disk.
+ *   fresh manager and Room repository from the database on disk.
  * - Production-method tests exercise real manager and publisher methods with injected storage,
  *   journal, and filesystem dependencies.
- * - Isolated state tests validate JobStore/PublicationJournal serialization only.
+ * - Isolated state tests validate legacy JobStore/PublicationJournal serialization only.
  *
  * Android instrumentation (real MediaStore and SAF providers) is not executed in this JVM
  * suite. The provider here is a controlled fake, not platform integration evidence.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class PublicationJournalRecoveryTest {
 
     @get:Rule
     val tempFolder = TemporaryFolder()
+
+    private val openDatabases = mutableListOf<Pair<String, VrkaDatabase>>()
+
+    @org.junit.After
+    fun closeRoomDatabases() {
+        openDatabases.forEach { (name, database) ->
+            runCatching { database.close() }
+            deleteRoomDatabase(name)
+        }
+        openDatabases.clear()
+    }
 
     // ---------------------------------------------------------------------------------------
     // Controlled provider and filesystem doubles
@@ -74,6 +101,7 @@ class PublicationJournalRecoveryTest {
         val safItems = LinkedHashMap<String, SafItem>()
         val deletedUris = mutableListOf<Uri>()
         var insertCount = 0
+        var providerOperationCount = 0
         var nextId = 1000L
 
         var failInsert = false
@@ -96,6 +124,7 @@ class PublicationJournalRecoveryTest {
             displayName: String?,
             isPending: Boolean?,
         ): Uri? {
+            providerOperationCount++
             if (failInsert) return null
             val id = nextId++
             val uri = Uri.parse("content://media/external/downloads/$id")
@@ -115,6 +144,7 @@ class PublicationJournalRecoveryTest {
         }
 
         override fun openOutputStream(uri: Uri, mode: String): OutputStream? {
+            providerOperationCount++
             val file = mediaItems[uri.toString()]?.file ?: safItems[uri.toString()]?.file ?: return null
             val base = file.outputStream()
             val limit = byteLimit ?: return base
@@ -144,6 +174,7 @@ class PublicationJournalRecoveryTest {
             displayName: String?,
             isPending: Boolean?,
         ): Int {
+            providerOperationCount++
             if (failUpdate) throw IOException("Simulated provider update failure")
             val item = mediaItems[uri.toString()] ?: return 0
             val affected = updateAffectedRows
@@ -159,6 +190,7 @@ class PublicationJournalRecoveryTest {
             selection: String?,
             selectionArgs: Array<String>?,
         ): Cursor? {
+            providerOperationCount++
             if (failProviderQuery) throw IOException("Simulated provider query failure")
             val key = uri.toString()
             if (key.startsWith("content://saf/")) {
@@ -176,6 +208,7 @@ class PublicationJournalRecoveryTest {
             selection: String?,
             selectionArgs: Array<String>?,
         ): Cursor? {
+            providerOperationCount++
             if (failProviderQuery) throw IOException("Simulated provider query failure")
             val nameFilter = selectionArgs?.firstOrNull()
             val rows = mediaItems.values
@@ -184,9 +217,15 @@ class PublicationJournalRecoveryTest {
             return cursor(projection, rows)
         }
 
-        override fun deleteUri(uri: Uri): Boolean = deleteObject(uri)
+        override fun deleteUri(uri: Uri): Boolean {
+            providerOperationCount++
+            return deleteObject(uri)
+        }
 
-        override fun deleteSafDocument(uri: Uri): Boolean = deleteObject(uri)
+        override fun deleteSafDocument(uri: Uri): Boolean {
+            providerOperationCount++
+            return deleteObject(uri)
+        }
 
         private fun deleteObject(uri: Uri): Boolean {
             if (throwOnDelete) throw IOException("Simulated provider delete failure")
@@ -199,16 +238,23 @@ class PublicationJournalRecoveryTest {
             return media != null || saf != null
         }
 
-        override fun fileExists(uri: Uri): Boolean =
-            mediaItems.containsKey(uri.toString()) || safItems.containsKey(uri.toString())
+        override fun fileExists(uri: Uri): Boolean {
+            providerOperationCount++
+            return mediaItems.containsKey(uri.toString()) || safItems.containsKey(uri.toString())
+        }
 
-        override fun getFileSize(uri: Uri): Long =
-            mediaItems[uri.toString()]?.file?.length() ?: safItems[uri.toString()]?.file?.length() ?: -1L
+        override fun getFileSize(uri: Uri): Long {
+            providerOperationCount++
+            return mediaItems[uri.toString()]?.file?.length() ?: safItems[uri.toString()]?.file?.length() ?: -1L
+        }
 
-        override fun queryDisplayName(uri: Uri): String? =
-            mediaItems[uri.toString()]?.displayName ?: safItems[uri.toString()]?.displayName
+        override fun queryDisplayName(uri: Uri): String? {
+            providerOperationCount++
+            return mediaItems[uri.toString()]?.displayName ?: safItems[uri.toString()]?.displayName
+        }
 
         override fun readBack(uri: Uri): ProviderReadback? {
+            providerOperationCount++
             val file = mediaItems[uri.toString()]?.file ?: safItems[uri.toString()]?.file ?: return null
             val bytes = file.readBytes()
             val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
@@ -216,15 +262,19 @@ class PublicationJournalRecoveryTest {
             return ProviderReadback(bytes.size.toLong(), digest)
         }
 
-        override fun querySafCapabilities(tree: Uri): SafCapabilities = SafCapabilities(
-            canCreate = true,
-            canEnumerate = true,
-            hasReliableDocumentIdentity = true,
-            canRename = !failRename,
-            canReadBack = true,
-        )
+        override fun querySafCapabilities(tree: Uri): SafCapabilities {
+            providerOperationCount++
+            return SafCapabilities(
+                canCreate = true,
+                canEnumerate = true,
+                hasReliableDocumentIdentity = true,
+                canRename = !failRename,
+                canReadBack = true,
+            )
+        }
 
         override fun findSafDocumentUriByName(tree: Uri, displayName: String): UriLookupResult {
+            providerOperationCount++
             if (failProviderQuery) throw IOException("Simulated provider query failure")
             if (permissionRevoked) throw SecurityException("SAF permission revoked")
             val matches = safItems.values.filter { it.tree == tree && it.displayName == displayName }
@@ -236,6 +286,7 @@ class PublicationJournalRecoveryTest {
         }
 
         override fun findPendingMediaStoreUri(pendingFilename: String): UriLookupResult {
+            providerOperationCount++
             if (failProviderQuery) throw IOException("Simulated provider query failure")
             val matches = mediaItems.values.filter { it.displayName == pendingFilename }
             return when (matches.size) {
@@ -245,10 +296,13 @@ class PublicationJournalRecoveryTest {
             }
         }
 
-        override fun existingSafNames(tree: Uri): Set<String> =
-            safItems.values.filter { it.tree == tree }.mapTo(HashSet()) { it.displayName }
+        override fun existingSafNames(tree: Uri): Set<String> {
+            providerOperationCount++
+            return safItems.values.filter { it.tree == tree }.mapTo(HashSet()) { it.displayName }
+        }
 
         override fun findPendingSafUri(tree: Uri, pendingFilename: String): UriLookupResult {
+            providerOperationCount++
             if (failProviderQuery) throw IOException("Simulated provider query failure")
             if (permissionRevoked) throw SecurityException("SAF permission revoked")
             val matches = safItems.values.filter { it.tree == tree && it.displayName == pendingFilename }
@@ -260,6 +314,7 @@ class PublicationJournalRecoveryTest {
         }
 
         override fun createSafDocument(tree: Uri, mimeType: String, pendingFilename: String): Uri? {
+            providerOperationCount++
             if (failCreateSaf) return null
             val id = nextId++
             val uri = Uri.parse("content://saf/tree/root/document/$id")
@@ -277,6 +332,7 @@ class PublicationJournalRecoveryTest {
         }
 
         override fun renameSafDocument(uri: Uri, finalName: String): Uri? {
+            providerOperationCount++
             if (failRename) return null
             val item = safItems[uri.toString()] ?: return null
             item.displayName = finalName
@@ -435,9 +491,11 @@ class PublicationJournalRecoveryTest {
         val directory: File,
         val ops: TestPublicationStorageOps,
         val jobStoreOps: JobStoreFileOps,
-        val store: JobStore,
-        val journal: PublicationJournal,
-        val cleanupStore: StagingCleanupStore,
+        val databaseName: String,
+        val database: VrkaDatabase,
+        val repository: RoomStorageRepository,
+        val journal: PublicationStore,
+        val cleanupStore: CleanupStore,
         val publisher: OutputPublisher,
         val manager: VrkaDownloadManager,
         val stagingRoot: File,
@@ -449,6 +507,7 @@ class PublicationJournalRecoveryTest {
             stagingDelete: ((File) -> Boolean)? = null,
         ): Harness {
             val effectiveOps = ops ?: this.ops
+            runCatching { database.close() }
             return createHarness(
                 directory = directory,
                 ops = effectiveOps,
@@ -467,12 +526,20 @@ class PublicationJournalRecoveryTest {
         sdkInt: Int = 34,
         stagingDelete: (File) -> Boolean = { it.deleteRecursively() },
     ): Harness {
-        val store = JobStore(File(directory, "download_jobs.json"), jobStoreOps)
-        if (initialJobs != null) {
-            val seeded = store.save(initialJobs, initialJobs.mapTo(HashSet()) { it.id })
+        val databaseName = roomDatabaseName(directory)
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.databaseBuilder(appContext, VrkaDatabase::class.java, databaseName)
+            .allowMainThreadQueries()
+            .build()
+        openDatabases += databaseName to database
+        val repository = RoomStorageRepository(database)
+        if (!initialJobs.isNullOrEmpty()) {
+            val seeded = runBlocking { repository.saveJobs(initialJobs, initialJobs.mapTo(HashSet()) { it.id }) }
             assertTrue("Harness seed save must succeed: ${seeded.error}", seeded.success)
         }
-        val journal = PublicationJournal(File(directory, "publication_journal.json"), jobStoreOps)
+        runBlocking { repository.loadCache() }
+        val jsonJournal = PublicationJournal(File(directory, "publication_journal.json"), jobStoreOps)
+        val journal = MirroredPublicationStore(jsonJournal, repository)
         val context = TestContext(directory)
         val settingsRepo = SettingsRepository(
             context,
@@ -487,14 +554,14 @@ class PublicationJournalRecoveryTest {
             mediaStoreCollection = Uri.parse(MEDIA_COLLECTION),
         )
         val stagingRoot = File(directory, "files/staging")
-        val cleanupStore = StagingCleanupStore(File(directory, "staging_cleanup.json"), jobStoreOps)
+        val cleanupStore = repository.cleanupStore
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val manager = VrkaDownloadManager(
             context = context,
             settingsRepository = settingsRepo,
             scope = testScope,
-            customStore = store,
             customPublisher = publisher,
+            customRepository = repository,
             customStagingRoot = stagingRoot,
             customStagingCleanupStore = cleanupStore,
             stagingDelete = stagingDelete,
@@ -504,7 +571,9 @@ class PublicationJournalRecoveryTest {
             directory = directory,
             ops = ops,
             jobStoreOps = jobStoreOps,
-            store = store,
+            databaseName = databaseName,
+            database = database,
+            repository = repository,
             journal = journal,
             cleanupStore = cleanupStore,
             publisher = publisher,
@@ -512,6 +581,141 @@ class PublicationJournalRecoveryTest {
             stagingRoot = stagingRoot,
             settingsRepository = settingsRepo,
         )
+    }
+
+    private inner class MirroredPublicationStore(
+        private val journal: PublicationJournal,
+        private val repository: RoomStorageRepository,
+    ) : PublicationStore {
+        private val room get() = repository.publicationStore
+
+        override val lastLoadResult: PublicationJournalLoadResult?
+            get() = room.lastLoadResult ?: journal.lastLoadResult
+
+        override fun recordIntent(entry: PublicationEntry) = recordBatchIntents(listOf(entry))
+
+        override fun recordBatchIntents(batch: List<PublicationEntry>) {
+            val missing = batch.map { it.jobId }.distinct().filter { id ->
+                repository.cachedJobs().none { it.id == id }
+            }
+            if (missing.isNotEmpty()) {
+                val jobs = missing.map { id -> sampleJob(id) }
+                val result = runBlocking { repository.saveJobs(jobs, missing.toSet()) }
+                check(result.success) { "Could not seed Room jobs for publication test: ${result.error}" }
+                runBlocking { repository.loadCache() }
+            }
+            room.recordBatchIntents(batch)
+            journal.recordBatchIntents(batch)
+        }
+
+        override fun updateProviderCreated(transactionId: String, providerUri: String) {
+            room.updateProviderCreated(transactionId, providerUri)
+            journal.updateProviderCreated(transactionId, providerUri)
+        }
+
+        override fun updateProviderUri(transactionId: String, providerUri: String) {
+            room.updateProviderUri(transactionId, providerUri)
+            journal.updateProviderUri(transactionId, providerUri)
+        }
+
+        override fun updateDataCopied(transactionId: String, copiedBytes: Long) {
+            room.updateDataCopied(transactionId, copiedBytes)
+            journal.updateDataCopied(transactionId, copiedBytes)
+        }
+
+        override fun updateValidated(transactionId: String) {
+            room.updateValidated(transactionId)
+            journal.updateValidated(transactionId)
+        }
+
+        override fun updateVerification(transactionId: String, verificationLevel: String, observedSha256: String?) {
+            room.updateVerification(transactionId, verificationLevel, observedSha256)
+            journal.updateVerification(transactionId, verificationLevel, observedSha256)
+        }
+
+        override fun updateFinalized(transactionId: String, newUri: String?) {
+            room.updateFinalized(transactionId, newUri)
+            journal.updateFinalized(transactionId, newUri)
+        }
+
+        override fun updateRecorded(transactionId: String) {
+            room.updateRecorded(transactionId)
+            journal.updateRecorded(transactionId)
+        }
+
+        override fun markInterrupted(transactionId: String) {
+            room.markInterrupted(transactionId)
+            journal.markInterrupted(transactionId)
+        }
+
+        override fun markFailed(transactionId: String, error: String) {
+            room.markFailed(transactionId, error)
+            journal.markFailed(transactionId, error)
+        }
+
+        override fun markCleanupPending(transactionId: String, error: String?) {
+            room.markCleanupPending(transactionId, error)
+            journal.markCleanupPending(transactionId, error)
+        }
+
+        override fun updateDeleted(transactionId: String) {
+            room.updateDeleted(transactionId)
+            journal.updateDeleted(transactionId)
+        }
+
+        override fun markReconciled(transactionIds: Collection<String>) {
+            room.markReconciled(transactionIds)
+            journal.markReconciled(transactionIds)
+        }
+
+        override fun clearJob(jobId: String) {
+            room.clearJob(jobId)
+            journal.clearJob(jobId)
+        }
+
+        override fun clearAll() {
+            room.clearAll()
+            journal.clearAll()
+        }
+
+        override fun entriesForJob(jobId: String): List<PublicationEntry> = room.entriesForJob(jobId)
+        override fun unreconciledEntries(): List<PublicationEntry> = room.unreconciledEntries()
+        override fun allEntries(): List<PublicationEntry> = room.allEntries()
+
+        override fun loadWithStatus(): PublicationJournalLoadResult {
+            val jsonStatus = journal.loadWithStatus()
+            if (jsonStatus.state in setOf(
+                    PublicationJournalLoadState.CORRUPT,
+                    PublicationJournalLoadState.UNSUPPORTED_SCHEMA,
+                    PublicationJournalLoadState.READ_FAILED,
+                )
+            ) return jsonStatus
+            return room.loadWithStatus()
+        }
+
+        override fun updatePhase(transactionId: String, phase: PublicationPhase) {
+            room.updatePhase(transactionId, phase)
+            journal.updatePhase(transactionId, phase)
+        }
+    }
+
+    private fun roomDatabaseName(directory: File): String =
+        "vrka-recovery-${directory.name.hashCode().toUInt().toString(16)}.db"
+
+    private fun deleteRoomDatabase(name: String) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val base = context.getDatabasePath(name)
+        listOf("", "-wal", "-shm").forEach { File(base.absolutePath + it).delete() }
+    }
+
+    private fun installRejectJobUpsert(database: VrkaDatabase) {
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER reject_job_insert BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'test write failure'); END",
+        )
+    }
+
+    private fun removeRejectJobUpsert(database: VrkaDatabase) {
+        database.openHelper.writableDatabase.execSQL("DROP TRIGGER IF EXISTS reject_job_insert")
     }
 
     // ---------------------------------------------------------------------------------------
@@ -538,6 +742,7 @@ class PublicationJournalRecoveryTest {
         detail = "Publishing to storage",
         publishStarted = publishStarted,
         outputUris = outputUris,
+        legacyVerification = if (state == JobState.DONE) "LEGACY_DONE_NO_HASH" else "",
         createdAt = createdAt,
         updatedAt = createdAt,
     )
@@ -566,7 +771,7 @@ class PublicationJournalRecoveryTest {
         destinationIdentity = destination,
         publicationPhase = PublicationPhase.INTENT_RECORDED,
         attemptNumber = 1,
-        attemptId = "$jobId:attempt:1",
+        attemptId = JobJsonCodec.attemptIdFor(jobId, 1),
         batchId = "batch-$txId",
         createdAt = createdAt,
         updatedAt = createdAt,
@@ -575,7 +780,7 @@ class PublicationJournalRecoveryTest {
     private data class SeededTransaction(val entry: PublicationEntry, val uri: Uri?)
 
     private fun seedTransaction(
-        journal: PublicationJournal,
+        journal: PublicationStore,
         publisher: OutputPublisher,
         ops: TestPublicationStorageOps,
         stagingRoot: File,
@@ -676,13 +881,31 @@ class PublicationJournalRecoveryTest {
         )
     }
 
-    private fun storedJob(directory: File, jobId: String): DownloadJob? =
-        JobStore(File(directory, "download_jobs.json"))
-            .load(recoverActive = true)
-            .firstOrNull { it.id == jobId }
+    private fun storedJob(directory: File, jobId: String): DownloadJob? {
+        val database = Room.databaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            VrkaDatabase::class.java,
+            roomDatabaseName(directory),
+        ).allowMainThreadQueries().build()
+        return try {
+            database.jobDao().byId(jobId)?.let(JobJsonCodec::decodeJob)
+        } finally {
+            database.close()
+        }
+    }
 
-    private fun storeJobs(directory: File): List<DownloadJob> =
-        JobStore(File(directory, "download_jobs.json")).load(recoverActive = true)
+    private fun storeJobs(directory: File): List<DownloadJob> {
+        val database = Room.databaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            VrkaDatabase::class.java,
+            roomDatabaseName(directory),
+        ).allowMainThreadQueries().build()
+        return try {
+            database.jobDao().all().map(JobJsonCodec::decodeJob)
+        } finally {
+            database.close()
+        }
+    }
 
     // ---------------------------------------------------------------------------------------
     // Full production orchestration
@@ -719,6 +942,8 @@ class PublicationJournalRecoveryTest {
                 actualFinalFileBytes = 256L,
                 outputUris = published.map { it.uri.toString() },
                 transactionIds = published.mapTo(HashSet()) { it.transactionId },
+                attemptNumber = job.attempt,
+                batchId = published.single().batchId,
             )
 
             assertTrue("Terminal commit must succeed when the store is healthy", committed)
@@ -739,14 +964,76 @@ class PublicationJournalRecoveryTest {
     }
 
     @Test
+    fun legacyJobStorePathCannotCommitOrReconcileACompletedPublication() = runBlocking {
+        val dir = tempFolder.newFolder("legacy-store-no-terminal-commit")
+        val ops = TestPublicationStorageOps(dir)
+        val job = sampleJob("job-legacy-no-room")
+        val store = JobStore(File(dir, "download_jobs.json"))
+        assertTrue(store.save(listOf(job), setOf(job.id)).success)
+        val journal = PublicationJournal(File(dir, "publication_journal.json"))
+        val context = TestContext(dir)
+        val settings = SettingsRepository(context, MutableStateFlow(AppSettings(outputTreeUri = "")))
+        val publisher = OutputPublisher(
+            context = context,
+            settingsRepository = settings,
+            journal = journal,
+            ops = ops,
+            sdkInt = 34,
+            mediaStoreCollection = Uri.parse(MEDIA_COLLECTION),
+        )
+        val stagingRoot = File(dir, "files/staging")
+        val manager = VrkaDownloadManager(
+            context = context,
+            settingsRepository = settings,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            customStore = store,
+            customPublisher = publisher,
+            customStagingRoot = stagingRoot,
+            customStagingCleanupStore = StagingCleanupStore(File(dir, "staging_cleanup.json")),
+            autoRecoverOnInit = false,
+        )
+        val seeded = seedTransaction(
+            journal = journal,
+            publisher = publisher,
+            ops = ops,
+            stagingRoot = stagingRoot,
+            jobId = job.id,
+            txId = "tx-legacy-no-room",
+            size = 16L,
+        )
+        val uri = seeded.uri!!
+
+        assertFalse(
+            "A JobStore-only manager must not mark a publication DONE",
+            manager.commitTerminalPublishedJob(
+                jobId = job.id,
+                detail = "Must require Room",
+                downloadedBytes = 16L,
+                reportedTotalBytes = 16L,
+                reportedTotalIsExact = true,
+                actualFinalFileBytes = 16L,
+                outputUris = listOf(uri.toString()),
+                transactionIds = setOf(seeded.entry.transactionId),
+                attemptNumber = 1,
+                batchId = seeded.entry.batchId,
+            ),
+        )
+
+        manager.reconcilePublicationJournalOnStartup()
+
+        assertEquals(JobState.POSTPROCESSING, store.load(recoverActive = true).single().state)
+        assertEquals(1, journal.unreconciledEntries().size)
+        assertTrue("The provider output must remain available", ops.fileExists(uri))
+    }
+
+    @Test
     fun terminalSaveFailure_retainsJournalAndStaging_freshRestartRecoversToDone() = runBlocking {
         DownloadTransferRuntime.markTransferJobInvoked()
         try {
             val dir = tempFolder.newFolder("terminal-failure")
             val ops = TestPublicationStorageOps(dir)
-            val fileOps = TestJobStoreFileOps()
             val job = sampleJob("job-terminal")
-            val harness = createHarness(dir, ops, initialJobs = listOf(job), jobStoreOps = fileOps)
+            val harness = createHarness(dir, ops, initialJobs = listOf(job))
             val stagingFile = File(harness.stagingRoot, "job-terminal/video.mp4").apply {
                 parentFile!!.mkdirs()
                 writeBytes(ByteArray(128))
@@ -762,7 +1049,7 @@ class PublicationJournalRecoveryTest {
                 size = 128,
             )
 
-            fileOps.failWrite = true
+            installRejectJobUpsert(harness.database)
             val committed = harness.manager.commitTerminalPublishedJob(
                 jobId = job.id,
                 detail = "Saved to Downloads/VRKA",
@@ -772,6 +1059,8 @@ class PublicationJournalRecoveryTest {
                 actualFinalFileBytes = 128L,
                 outputUris = listOf(seeded.uri!!.toString()),
                 transactionIds = setOf("tx-terminal"),
+                attemptNumber = job.attempt,
+                batchId = seeded.entry.batchId,
             )
 
             assertFalse("A save exception must not report durable completion", committed)
@@ -779,7 +1068,7 @@ class PublicationJournalRecoveryTest {
             assertTrue("Staging must be retained after a failed terminal commit", stagingFile.exists())
             assertEquals(JobState.POSTPROCESSING, storedJob(dir, job.id)!!.state)
 
-            fileOps.failWrite = false
+            removeRejectJobUpsert(harness.database)
             val fresh = harness.restart()
             fresh.manager.reconcilePublicationJournalOnStartup()
 
@@ -811,7 +1100,20 @@ class PublicationJournalRecoveryTest {
             state = JobState.DONE,
             outputUris = listOf(seeded.uri!!.toString()),
         )
-        assertTrue(harness.store.save(listOf(done), setOf(done.id)).success)
+        val previous = harness.database.jobDao().byId(done.id)!!
+        harness.database.jobDao().upsert(
+            previous.copy(
+                state = JobState.DONE.name,
+                outputUrisJson = org.json.JSONArray(done.outputUris).toString(),
+                detail = done.detail,
+                progress = 1f,
+                updatedAt = done.updatedAt,
+                terminalAt = done.updatedAt,
+                commitSequence = 1L,
+                version = previous.version + 1L,
+            ),
+        )
+        runBlocking { harness.repository.loadCache() }
 
         val fresh = harness.restart()
         fresh.manager.reconcilePublicationJournalOnStartup()
@@ -852,14 +1154,24 @@ class PublicationJournalRecoveryTest {
             state = JobState.DONE,
             outputUris = listOf(newAttempt.uri!!.toString()),
         )
-        assertTrue(initial.store.save(listOf(done), setOf(done.id)).success)
+        val existing = initial.database.jobDao().byId(done.id)!!
+        initial.database.jobDao().upsert(
+            existing.copy(
+                state = JobState.DONE.name,
+                outputUrisJson = org.json.JSONArray(done.outputUris).toString(),
+                terminalAt = System.currentTimeMillis(),
+                commitSequence = 1L,
+                version = existing.version + 1L,
+            ),
+        )
+        runBlocking { initial.repository.loadCache() }
 
         val fresh = initial.restart()
         fresh.manager.reconcilePublicationJournalOnStartup()
 
         assertEquals(JobState.DONE, storedJob(dir, done.id)!!.state)
         assertEquals(
-            "A transaction owned by a previous batch must remain preserved, not reconciled",
+            "A transaction owned by a previous batch must remain preserved, not reconciled; current=${fresh.journal.unreconciledEntries().map { it.transactionId to it.status }}",
             1,
             fresh.journal.unreconciledEntries().size,
         )
@@ -878,6 +1190,17 @@ class PublicationJournalRecoveryTest {
         DownloadTransferRuntime.markTransferJobInvoked()
         try {
             val harness = createHarness(dir, ops, initialJobs = history + longRunning)
+            val output = seedTransaction(
+                harness.journal,
+                harness.publisher,
+                ops,
+                harness.stagingRoot,
+                longRunning.id,
+                "tx-long-running",
+                finalName = "long-running.mp4",
+                size = 64L,
+                writtenSize = 64L,
+            )
             val committed = harness.manager.commitTerminalPublishedJob(
                 jobId = longRunning.id,
                 detail = "Saved to Downloads/VRKA",
@@ -885,7 +1208,10 @@ class PublicationJournalRecoveryTest {
                 reportedTotalBytes = 64L,
                 reportedTotalIsExact = true,
                 actualFinalFileBytes = 64L,
-                outputUris = emptyList(),
+                outputUris = listOf(output.uri!!.toString()),
+                transactionIds = setOf(output.entry.transactionId),
+                attemptNumber = longRunning.attempt,
+                batchId = output.entry.batchId,
             )
             assertTrue(committed)
             assertEquals(JobState.DONE, storedJob(dir, longRunning.id)!!.state)
@@ -1503,6 +1829,8 @@ class PublicationJournalRecoveryTest {
                 actualFinalFileBytes = 16L,
                 outputUris = listOf(seeded.uri!!.toString()),
                 transactionIds = setOf("tx-staging"),
+                attemptNumber = job.attempt,
+                batchId = seeded.entry.batchId,
             )
             assertTrue("The publication is durable even when staging cleanup fails", committed)
             assertTrue(stagingFile.exists())
@@ -1526,9 +1854,8 @@ class PublicationJournalRecoveryTest {
         try {
             val dir = tempFolder.newFolder("staging-retained")
             val ops = TestPublicationStorageOps(dir)
-            val fileOps = TestJobStoreFileOps()
             val job = sampleJob("job-retain")
-            val harness = createHarness(dir, ops, initialJobs = listOf(job), jobStoreOps = fileOps)
+            val harness = createHarness(dir, ops, initialJobs = listOf(job))
             val stagingDir = File(harness.stagingRoot, job.id).apply { mkdirs() }
             val stagingFile = File(stagingDir, "video.mp4").apply { writeBytes(ByteArray(16)) }
             val seeded = seedTransaction(
@@ -1542,7 +1869,7 @@ class PublicationJournalRecoveryTest {
                 size = 16,
             )
 
-            fileOps.failMove = true
+            installRejectJobUpsert(harness.database)
             val committed = harness.manager.commitTerminalPublishedJob(
                 jobId = job.id,
                 detail = "Saved to Downloads/VRKA",
@@ -1556,6 +1883,7 @@ class PublicationJournalRecoveryTest {
             assertFalse(committed)
             assertTrue(stagingFile.exists())
             assertTrue(harness.cleanupStore.pending().isEmpty())
+            removeRejectJobUpsert(harness.database)
         } finally {
             DownloadTransferRuntime.resetForTesting()
         }
@@ -1571,15 +1899,31 @@ class PublicationJournalRecoveryTest {
         try {
             val dir = tempFolder.newFolder("concurrent")
             val ops = TestPublicationStorageOps(dir)
-            val fileOps = BlockingJobStoreFileOps()
             val first = sampleJob("job-first", createdAt = 1L)
             val second = sampleJob("job-second", createdAt = 2L)
-            val harness = createHarness(dir, ops, initialJobs = listOf(first, second), jobStoreOps = fileOps)
-
-            fileOps.blockNextMove = true
+            val harness = createHarness(dir, ops, initialJobs = listOf(first, second))
+            val firstOutput = seedTransaction(
+                harness.journal, harness.publisher, ops, harness.stagingRoot,
+                first.id, "tx-concurrent-first", finalName = "first.mp4", size = 1L, writtenSize = 1L,
+            )
+            val secondOutput = seedTransaction(
+                harness.journal, harness.publisher, ops, harness.stagingRoot,
+                second.id, "tx-concurrent-second", finalName = "second.mp4", size = 1L, writtenSize = 1L,
+            )
+            val transactionEntered = CountDownLatch(1)
+            val releaseTransaction = CountDownLatch(1)
+            val lockTransaction = async(Dispatchers.IO) {
+                harness.database.withTransaction {
+                    transactionEntered.countDown()
+                    releaseTransaction.await(5, TimeUnit.SECONDS)
+                }
+            }
+            assertTrue("The test must hold the Room transaction", transactionEntered.await(5, TimeUnit.SECONDS))
             val firstResult = AtomicBoolean(false)
             val secondResult = AtomicBoolean(false)
+            val callsStarted = CountDownLatch(2)
             val firstThread = Thread {
+                callsStarted.countDown()
                 firstResult.set(
                     runBlocking {
                         harness.manager.commitTerminalPublishedJob(
@@ -1589,14 +1933,16 @@ class PublicationJournalRecoveryTest {
                             reportedTotalBytes = 1L,
                             reportedTotalIsExact = true,
                             actualFinalFileBytes = 1L,
-                            outputUris = emptyList(),
+                            outputUris = listOf(firstOutput.uri!!.toString()),
+                            transactionIds = setOf(firstOutput.entry.transactionId),
+                            attemptNumber = first.attempt,
+                            batchId = firstOutput.entry.batchId,
                         )
                     },
                 )
             }.apply { start() }
-            assertTrue(fileOps.moveStarted.await(5, TimeUnit.SECONDS))
-
             val secondThread = Thread {
+                callsStarted.countDown()
                 secondResult.set(
                     runBlocking {
                         harness.manager.commitTerminalPublishedJob(
@@ -1606,23 +1952,34 @@ class PublicationJournalRecoveryTest {
                             reportedTotalBytes = 1L,
                             reportedTotalIsExact = true,
                             actualFinalFileBytes = 1L,
-                            outputUris = emptyList(),
+                            outputUris = listOf(secondOutput.uri!!.toString()),
+                            transactionIds = setOf(secondOutput.entry.transactionId),
+                            attemptNumber = second.attempt,
+                            batchId = secondOutput.entry.batchId,
                         )
                     },
                 )
             }.apply { start() }
 
-            Thread.sleep(150)
-            assertFalse("A second writer must wait for the authoritative persistence lock", secondResult.get())
-            fileOps.releaseMove.countDown()
+            assertTrue("Both commits must start while the Room transaction is held", callsStarted.await(5, TimeUnit.SECONDS))
+            Thread.sleep(100)
+            assertFalse("The first commit must wait for Room ownership", firstResult.get())
+            assertFalse("The second commit must wait for Room ownership", secondResult.get())
+            releaseTransaction.countDown()
             firstThread.join(10_000)
             secondThread.join(10_000)
+            lockTransaction.await()
 
-            assertTrue(firstResult.get())
-            assertTrue(secondResult.get())
+            assertTrue("The first Room terminal transaction must commit", firstResult.get())
+            assertTrue("The second Room terminal transaction must commit", secondResult.get())
             val durable = storeJobs(dir).associateBy { it.id }
             assertEquals(JobState.DONE, durable.getValue(first.id).state)
             assertEquals(JobState.DONE, durable.getValue(second.id).state)
+            assertNotEquals(
+                "Concurrent Room commits must retain separate durable commit ordering",
+                harness.database.jobDao().byId(first.id)!!.commitSequence,
+                harness.database.jobDao().byId(second.id)!!.commitSequence,
+            )
         } finally {
             DownloadTransferRuntime.resetForTesting()
         }
@@ -1634,30 +1991,54 @@ class PublicationJournalRecoveryTest {
         try {
             val dir = tempFolder.newFolder("cancel")
             val ops = TestPublicationStorageOps(dir)
-            val fileOps = BlockingJobStoreFileOps()
             val job = sampleJob("job-cancel")
-            val harness = createHarness(dir, ops, initialJobs = listOf(job), jobStoreOps = fileOps)
-            fileOps.blockNextMove = true
+            val harness = createHarness(dir, ops, initialJobs = listOf(job))
+            val output = seedTransaction(
+                harness.journal,
+                harness.publisher,
+                ops,
+                harness.stagingRoot,
+                job.id,
+                "tx-cancel",
+                finalName = "cancel.mp4",
+                size = 1L,
+                writtenSize = 1L,
+            )
+            val transactionEntered = CountDownLatch(1)
+            val releaseTransaction = CountDownLatch(1)
+            val lockTransaction = async(Dispatchers.IO) {
+                harness.database.withTransaction {
+                    transactionEntered.countDown()
+                    releaseTransaction.await(5, TimeUnit.SECONDS)
+                }
+            }
+            assertTrue("The test must hold the Room transaction", transactionEntered.await(5, TimeUnit.SECONDS))
 
-            var committed = false
-            val work = launch(Dispatchers.IO) {
-                committed = harness.manager.commitTerminalPublishedJob(
+            val work = async(start = CoroutineStart.UNDISPATCHED) {
+                harness.manager.commitTerminalPublishedJob(
                     jobId = job.id,
                     detail = "Saved",
                     downloadedBytes = 1L,
                     reportedTotalBytes = 1L,
                     reportedTotalIsExact = true,
                     actualFinalFileBytes = 1L,
-                    outputUris = emptyList(),
+                    outputUris = listOf(output.uri!!.toString()),
+                    transactionIds = setOf(output.entry.transactionId),
+                    attemptNumber = job.attempt,
+                    batchId = output.entry.batchId,
                 )
             }
-            assertTrue(fileOps.moveStarted.await(5, TimeUnit.SECONDS))
+            Thread.sleep(100)
             work.cancel()
-            fileOps.releaseMove.countDown()
-            work.join()
+            releaseTransaction.countDown()
+            runCatching { work.await() }
+            lockTransaction.await()
 
-            assertTrue("Terminal persistence is non-cancellable", committed)
-            assertEquals(JobState.DONE, storedJob(dir, job.id)!!.state)
+            assertEquals(
+                "Cancellation during the Room write must not interrupt the durable terminal commit",
+                JobState.DONE,
+                storedJob(dir, job.id)!!.state,
+            )
         } finally {
             DownloadTransferRuntime.resetForTesting()
         }

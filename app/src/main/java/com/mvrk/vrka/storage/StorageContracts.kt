@@ -84,6 +84,7 @@ internal data class CleanupTaskSummary(
     val retryCount: Int,
     val nextRetryAt: Long,
     val lastErrorClass: String?,
+    val lastError: String?,
     val deadLetter: Boolean,
 )
 

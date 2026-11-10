@@ -76,6 +76,7 @@ internal class RoomCleanupStore(
                     retryCount = task.retryCount,
                     nextRetryAt = task.nextRetryAt,
                     lastErrorClass = task.lastErrorClass,
+                    lastError = task.lastError?.let { com.mvrk.vrka.DiagnosticStore.sanitizeText(it) },
                     deadLetter = task.deadLetter,
                 )
             }
