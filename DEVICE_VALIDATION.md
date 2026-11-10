@@ -1,33 +1,33 @@
 # Device Validation & Subsystem Verification Record — VRKA Android
 
-## Unreleased `main`: unified Room storage architecture
+## v5.1.3 release validation — API 36 emulator
 
-Validation date: 2026-11-09. This section records unreleased development verification and does
-not modify or replace the published v5.1.2 evidence below.
+Validation date: 2026-11-10. This section records the v5.1.3 release checks and leaves the
+historical v5.1.2 and v5.1.1 records below unchanged.
 
-- **Automated JVM verification:** 815 tests in 78 suites pass with 0 failures, 0 errors, and 0
-  skipped on an API 36 Robolectric configuration with JDK 21.
-- **Legacy migration corpus:** 80 cases / 75 files across v5.1.0, v5.1.1, v5.1.2, and the
-  unreleased baseline. All manifest SHA-256 values match; all originals are unchanged after
-  import; integrity and foreign-key checks pass; repeated import is idempotent. Independent
-  verification confirmed all 75 hashes also match the Phase 0 scratch corpus.
-- **Real provider instrumentation (API 36 emulator, `Medium_Phone_API_36.0`):**
-  - `PublicationStorageIntegrationTest`: 2 MediaStore tests pass (finalization verification and
-    real pending-row crash recovery).
-  - `SafPublicationIntegrationTest`: 10 tests pass through the real
-    `ContentResolver`/`DocumentsContract` path against a test provider: in-place rename,
-    replacement-ID rename with interruption recovery before URI persistence, null rename
-    re-query, unsupported and throwing rename, provider-modified marker, duplicate final-name
-    candidates, child-enumeration capability rejection, readback failure, delete-retry cleanup,
-    and revoked permission recovery.
-- **Build verification:** debug Kotlin, debug Android test-source, and release-variant Kotlin
-  compilation pass without production signing credentials; `lintDebug` reports 0 errors (303
-  warnings, 4 hints); debug and development release APKs build without production signing.
-- **Platform boundary:** the SAF provider is a controlled test provider that implements the
-  public DocumentsContract call/query contract. Third-party OEM providers with different
-  rename, enumeration, or readback behavior remain a documented boundary; the app rejects a
-  destination before side effects when enumeration or document identity is unavailable, and
-  preserves unresolved transactions when content evidence cannot be obtained.
+- **Environment:** Android API 36 emulator (`sdk_gphone64_x86_64`, ABI `x86_64`). No physical
+  device was available for v5.1.3 validation.
+- **Official v5.1.2 starting install:** SHA-256
+  `3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a`; production certificate
+  matched the recorded VRKA RSA-4096 identity. Installed before the upgrade test.
+- **In-place upgrade:** `adb install -r` installed the v5.1.3 APK over package
+  `com.mvrk.vrka`. Android reported version `5.1.3` / code `50103`; `firstInstallTime` remained
+  unchanged. The app launched after installation and after a force-stop/restart.
+- **Data visible after upgrade and restart:** the two existing failed History entries remained
+  visible; Queue remained empty; H.264 Compatibility Mode remained enabled. No successful
+  provider output existed in the starting installation, so no published output record could be
+  checked on this device.
+- **Production package:** package `com.mvrk.vrka`, version `5.1.3` / code `50103`, min SDK 26,
+  target SDK 36, ABI `arm64-v8a`. APK Signature Scheme v2 and the expected RSA-4096 signing
+  certificate verified. The release host built and signed the APK; the emulator installed it.
+- **Automated tests:** 828 JVM tests in 78 suites passed with no failures, errors, or skips.
+  `lintDebug` reported 0 errors. All 12 API 36 instrumentation tests passed: 10 SAF tests against
+  a controlled `DocumentsContract` provider and 2 MediaStore tests against the emulator provider.
+- **Emulator boundary:** the emulator is x86_64, while the production APK contains arm64-v8a
+  native libraries. A download attempt under v5.1.2 reported an ELF ABI mismatch, so a production
+  media transfer was not verified. This is not reported as a physical-device test.
+- **Provider boundary:** controlled SAF tests exercise the public provider contract. They do not
+  prove behavior for every OEM DocumentsProvider, Android release, or physical device.
 
 ---
 

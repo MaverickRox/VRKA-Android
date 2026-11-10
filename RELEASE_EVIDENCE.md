@@ -1,13 +1,63 @@
-# VRKA Android 5.1.2 — Release Evidence
+# VRKA Android 5.1.3 — Release Evidence
+
+- **Verification date:** 2026-11-10
+- **Source version:** `5.1.3` (`versionCode` 50103)
+- **APK build source commit:** `90de6b8e69b2b801eed4c838fe510fe91a29a80e`
+- **Release page:** https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.3
+
+**Validation state:** 828 JVM tests across 78 suites pass with no failures, errors, or skips; lint
+has 0 errors; Kotlin and Android test-source compilation pass; 12 API 36 provider instrumentation
+tests pass; the signed production APK and OpenPGP manifest verify; and the official v5.1.2 app
+upgrades in place with its visible History, Queue, and saved setting preserved. v5.1.3 was not
+validated on a physical device. The x86_64 emulator cannot run the APK's arm64 native downloader.
+
+## Automated checks
+
+| Check | Command or evidence | Result |
+| --- | --- | --- |
+| Full JVM suite and local build checks | `testDebugUnitTest lintDebug compileDebugAndroidTestKotlin compileReleaseKotlin assembleDebug assembleDevRelease` | PASS: 828 tests / 78 suites; 0 failures, 0 errors, or skips; lint 0 errors |
+| Legacy migration fixtures | `LegacyMigrationFixtureTest` in the full suite | PASS: 80 cases / 75 files; hashes, preservation, database integrity, foreign keys, repeat migration, and interrupted migration verified |
+| Storage recovery regressions | `StorageDefectRemediationTest`, `RoomStorageRepositoryTest`, `RoomPublicationOrchestrationTest` | PASS in the full JVM suite |
+| API 36 provider instrumentation | `connectedDebugAndroidTest` with `SafPublicationIntegrationTest` and `PublicationStorageIntegrationTest` | PASS: 12 tests, 0 failures/errors/skips (10 SAF test-provider, 2 MediaStore) |
+| Production release build | `assembleRelease` with configured production signing properties explicitly selected | PASS |
+| APK signature and metadata | `apksigner verify`, `aapt2 dump badging`, `zipalign -c -v 4` | PASS: v2 signature, package/version, SDK levels, ABI, alignment, non-debuggable flag, and certificate verified |
+| Signed updater manifest | `publishedV513ManifestDetachedSignatureVerifiesWithPinnedPublicKey` | PASS: pinned verifier accepts v5.1.2 code 50102 / revision 5 to v5.1.3 code 50103 / revision 6 |
+| In-place upgrade | Install official v5.1.2 APK, then `adb install -r` v5.1.3 on API 36 emulator | PASS: first install time unchanged; app launched; History, Queue, and H.264 setting persisted through restart |
+
+## Production release artifact
+
+- **APK:** `app/build/outputs/apk/release/app-release.apk` (`VRKA-Android-v5.1.3.apk` for release upload)
+- **Size:** 157,428,789 bytes
+- **SHA-256:** `c9f58d3a97d728315b51fc92f43b5f54b88ae4ad9c25b3b22ea0cd8338549ddf`
+- **Package/version:** `com.mvrk.vrka`, version name `5.1.3`, version code `50103`
+- **SDK/ABI:** min SDK 26; target SDK 36; `arm64-v8a` only
+- **Signer:** `CN=VRKA, OU=MVRK, O=MVRK, L=Private, ST=Private, C=IN`; RSA 4096-bit
+- **Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
+- **Certificate SHA-1:** `7758980F74A503684BF1A187994E447823D19D7C`
+- **APK signing:** APK Signature Scheme v2 verified; v1 and v3 signatures are absent. ZIP alignment and non-debuggable badging verified.
+
+## Signed updater metadata
+
+- **Manifest:** `VRKA-Android-v5.1.3.manifest.json`; metadata revision `6`
+- **Source commit:** `90de6b8e69b2b801eed4c838fe510fe91a29a80e`
+- **Validity:** issued `2026-11-10T17:19:31Z`; expires `2027-11-10T17:19:31Z`
+- **Manifest SHA-256:** `3e5f8593731e401c236b74c1ce727e831c80c71d05c486ab92a04fb5597e528c`
+- **Detached signature:** `VRKA-Android-v5.1.3.manifest.json.asc`; SHA-256 `ee142c5970d827cfdb882e83b7878ae512799667ef087e5f4ee0ef7d984757a8`
+- **OpenPGP signer:** RSA-4096 key fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7` (`0xD519380BEBA1B9F7`); GPG and the app's pinned-key verifier passed.
+- `SHA256SUMS` contains entries for the v5.1.3 APK and both manifest files. Existing v5.1.2 release assets and their historical checksums remain unchanged.
+
+## Emulator validation boundary
+
+The official v5.1.2 APK was installed first on an API 36 `sdk_gphone64_x86_64` emulator. The v5.1.3 package installed over it with the original `firstInstallTime` preserved. Two failed History rows, the empty Queue, and the enabled H.264 Compatibility Mode remained visible after installation and a force-stop/restart. The emulator uses x86_64, while the application ships arm64-v8a native libraries; no production media transfer was verified. SAF instrumentation uses a controlled `DocumentsContract` test provider and does not establish behavior for every OEM provider.
+
+---
+
+# Historical: VRKA Android 5.1.2 — Release Evidence
 
 > [!NOTE]
-> **Unreleased `main` storage work.** This document records the published v5.1.2 artifact and
-> its release evidence. The Room/SQLite storage architecture, legacy migration, startup gate,
-> SAF/MediaStore protocol changes, and emulator provider tests on unreleased `main` do not alter
-> the v5.1.2 tag, APK, manifest, signature, checksums, or version metadata. Unreleased
-> verification is recorded in [TEST_RESULTS.md](TEST_RESULTS.md),
-> [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md), and
-> [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md).
+> This section records the v5.1.2 artifact and its release evidence as published on 2026-11-09.
+> v5.1.3 uses the Room/SQLite storage architecture described above. The v5.1.2 tag, APK,
+> manifest, signature, checksum asset, and version metadata remain unchanged.
 
 **Verification date:** 2026-11-09
 

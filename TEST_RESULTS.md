@@ -1,37 +1,33 @@
 # VRKA Android — Test Results
 
-## Unreleased `main`: unified Room storage architecture
+## v5.1.3 release verification
 
-Date: 2026-11-09. This section covers unreleased development work and does not describe the
-published v5.1.2 APK.
+Date: 2026-11-10. The v5.1.3 release uses Room as the storage authority. The historical v5.1.2
+release results below are retained as they were recorded.
 
-| Check | Command | Result |
+**Source commit used to build the APK:** `90de6b8e69b2b801eed4c838fe510fe91a29a80e`.
+
+| Check | Command or evidence | Result |
 |---|---|---|
-| Full JVM unit tests | `.\gradlew.bat --no-daemon --rerun-tasks testDebugUnitTest` | PASS: 815 tests in 78 suites; 0 failures, 0 errors, 0 skipped |
-| Legacy migration corpus | `--tests com.mvrk.vrka.storage.LegacyMigrationFixtureTest` | PASS: 80 cases / 75 files; manifest SHA-256 verified; originals unchanged; integrity and FK checks; repeated import idempotent; interrupted import checkpoints resume without duplicates |
-| Defect remediation | `--tests com.mvrk.vrka.storage.StorageDefectRemediationTest` | PASS: cross-attempt/batch rejection, cleanup after History deletion, dead-letter retry, corrupt-row quarantine/paging, partial readiness, unknown enums |
-| Room repository | `--tests com.mvrk.vrka.storage.RoomStorageRepositoryTest` | PASS: full-field round trip, atomic terminal commit, stale attempt rejection, unverified-output rejection, paging, cleanup obligations, reopen |
-| Publication orchestration | `--tests com.mvrk.vrka.storage.RoomPublicationOrchestrationTest` | PASS: publish→commit→fresh runtime, incomplete batch not DONE |
-| Queue admission | `--tests com.mvrk.vrka.QueueAdmissionTest` | PASS: invalid URL, full queue, durable-write failure rollback |
-| Legacy publication journal | `--tests com.mvrk.vrka.PublicationJournalRecoveryTest` | PASS: 33 tests across strict parsing, recovery, cleanup, and terminal ordering |
-| Debug Kotlin compilation | `.\gradlew.bat compileDebugKotlin` | PASS |
-| Android test-source compilation | `.\gradlew.bat compileDebugAndroidTestKotlin` | PASS |
-| Release-variant compilation | `.\gradlew.bat compileReleaseKotlin` | PASS without production signing credentials |
-| Lint | `.\gradlew.bat lintDebug` | PASS: 0 errors; 301 warnings and 4 hints (all non-fatal) |
-| MediaStore instrumentation (API 36 emulator) | `.\gradlew.bat --no-daemon connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.SafPublicationIntegrationTest,com.mvrk.vrka.PublicationStorageIntegrationTest'` | PASS: 2 tests |
-| SAF protocol instrumentation (API 36 emulator) | same Windows command | PASS: 10 tests |
+| Full JVM suite, lint, compilation, and development APKs | `.\gradlew.bat --no-daemon -Duser.home=<empty temp> --rerun-tasks --no-build-cache testDebugUnitTest lintDebug compileDebugAndroidTestKotlin compileReleaseKotlin assembleDebug assembleDevRelease` | PASS: 828 tests in 78 suites; 0 failures, errors, or skipped tests |
+| Legacy migration corpus | `LegacyMigrationFixtureTest` in the full JVM run | PASS: 80 cases / 75 files; hash, raw-evidence, integrity, foreign-key, repeat-import, and interruption checks |
+| Storage defect and repository suites | `StorageDefectRemediationTest`, `RoomStorageRepositoryTest`, `RoomPublicationOrchestrationTest` | PASS in full JVM run; ownership, cleanup, quarantine, paging, readiness, and fresh-runtime recovery cases |
+| Lint | `lintDebug` in the full verification command | PASS: 0 errors; 301 warnings |
+| Kotlin and Android test compilation | `compileDebugAndroidTestKotlin`, `compileReleaseKotlin` | PASS |
+| Debug and development APK builds | `assembleDebug`, `assembleDevRelease` | PASS without production signing properties |
+| API 36 provider instrumentation | `connectedDebugAndroidTest` for `SafPublicationIntegrationTest` and `PublicationStorageIntegrationTest` | PASS: 12 tests; 0 failures, errors, or skips (10 SAF provider tests, 2 MediaStore tests) |
+| Release APK build | `assembleRelease`, with production signing properties explicitly selected | PASS |
+| Release APK identity | `apksigner`, `aapt2`, `zipalign` | PASS: v2 signature; expected RSA-4096 certificate; package/version, SDK, ABI, alignment, and non-debuggable metadata verified |
+| Release manifest | `publishedV513ManifestDetachedSignatureVerifiesWithPinnedPublicKey` | PASS: revision 6 is accepted from installed v5.1.2 revision 5; signature and APK metadata match the release asset |
+| In-place upgrade | Official v5.1.2 APK installed over by v5.1.3 APK on an API 36 emulator | PASS: Android retained the original install time; History, Queue, and H.264 setting remained after upgrade and process restart |
+| Diff validation | `git diff --check` | PASS |
 
-SAF instrumentation covers: in-place rename; rename returning a replacement document ID with
-recovery from the interruption window before URI persistence; null rename return verified by
-re-query; unsupported/throw rename failing without publication; provider-modified marker;
-duplicate final-name candidates preserved without deletion; destination child-enumeration
-failure rejected before creation; provider readback failure preventing finalization; failed
-deletion retried and completed on a later startup; and revoked permission preserving the
-transaction until access returns.
-
-The fixture corpus lives in `app/src/test/resources/phase0-fixtures` (80 cases, 75 files across
-v5.1.0/v5.1.1/v5.1.2/unreleased baseline). Independent verification against the Phase 0 scratch
-corpus confirmed all 75 file hashes matched both `CORPUS_MANIFEST.json` and the scratch copies.
+The fixture corpus lives in `app/src/test/resources/phase0-fixtures`. Its 80 cases cover the
+tagged v5.1.0, v5.1.1, and v5.1.2 encoders plus the pre-release baseline. The actual app upgrade
+also imported two existing v5.1.2 History entries and retained the saved H.264 setting. The
+emulator has an x86_64 runtime while the release APK ships arm64-v8a native libraries, so a real
+media transfer was not verified on this emulator. The provider test suite uses a controlled SAF
+DocumentsContract provider and does not establish behavior for every OEM provider.
 
 ---
 
