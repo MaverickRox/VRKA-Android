@@ -296,8 +296,7 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 With an API 36 emulator running, execute the real MediaStore and SAF protocol suites:
 
 ```powershell
-.\gradlew.bat connectedDebugAndroidTest `
-  -Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.SafPublicationIntegrationTest,com.mvrk.vrka.PublicationStorageIntegrationTest
+.\gradlew.bat --no-daemon connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.SafPublicationIntegrationTest,com.mvrk.vrka.PublicationStorageIntegrationTest'
 ```
 
 ### Assembling Debug APK

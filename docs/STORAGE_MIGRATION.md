@@ -41,7 +41,7 @@ Repeated imports are idempotent: the ledger detects completed sources by hash, a
 IDs prevent duplicate jobs, attempts, batches, outputs, or cleanup tasks. An interruption at any
 checkpoint resumes from the ledger and current rows.
 
-## Evidence levels
+## Evidence levels and ambiguous batches
 
 | Level | Meaning |
 |---|---|
@@ -52,6 +52,18 @@ checkpoint resumes from the ledger and current rows.
 | `LEGACY_ACTIVE` | A legacy non-publishing active job. |
 | `RECOVERY_REQUIRED` | A legacy in-flight publishing job with no journal (v5.1.0/v5.1.1) that cannot be transactionally reconstructed. |
 | `LEGACY_AMBIGUOUS` | Preserved records whose identity or batch membership cannot be established safely. |
+
+The v5.1.2 journal contains no attempt or batch identity. Every imported row is retained as raw
+migration evidence and its synthetic storage batch is marked `legacy_ambiguous`. A synthetic
+attempt/batch is never treated as proof of retry ownership: recovery cannot complete a job, adopt
+or finalize a provider object, reconcile a row, or delete an object from an ambiguous batch.
+Unknown phase, status, or provider values are preserved as raw records instead of being mapped to
+`INTENT_RECORDED`, `PENDING`, or `MEDIA_STORE`.
+
+If a source carries attempt/batch fields, they remain in the preserved raw row but are not used
+as storage authority; storage uses deterministic synthetic keys and marks the batch ambiguous.
+No legacy journal source can authorize completion, adoption, finalization, reconciliation, or
+deletion.
 
 No hashes are invented. A missing v5.1.2 staging file is expected in many legitimate cases and
 is not treated as corruption. Plain-name SAF documents whose old URI is invalid are never

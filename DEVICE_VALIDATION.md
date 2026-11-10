@@ -5,7 +5,7 @@
 Validation date: 2026-11-09. This section records unreleased development verification and does
 not modify or replace the published v5.1.2 evidence below.
 
-- **Automated JVM verification:** 800 tests in 77 suites pass with 0 failures, 0 errors, and 0
+- **Automated JVM verification:** 815 tests in 78 suites pass with 0 failures, 0 errors, and 0
   skipped on an API 36 Robolectric configuration with JDK 21.
 - **Legacy migration corpus:** 80 cases / 75 files across v5.1.0, v5.1.1, v5.1.2, and the
   unreleased baseline. All manifest SHA-256 values match; all originals are unchanged after
