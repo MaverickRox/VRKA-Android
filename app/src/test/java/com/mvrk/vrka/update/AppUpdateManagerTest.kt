@@ -549,6 +549,36 @@ class AppUpdateManagerTest {
     }
 
     @Test
+    fun test512UpdaterCanSelectCanonical513ReleaseAndInstallMetadata() {
+        val release = AppUpdateManager.parseReleaseJson(
+            releaseJson(
+                tag = "v5.1.3",
+                assets = listOf(
+                    "VRKA-Android-v5.1.3.apk" to
+                        "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.1.3/VRKA-Android-v5.1.3.apk",
+                ),
+            ),
+        )!!
+
+        assertEquals(SemanticVersion(5, 1, 3), release.version)
+        assertEquals("VRKA-Android-v5.1.3.apk", release.apkFileName)
+        assertTrue(release.version.isNewerThan(SemanticVersion(5, 1, 2)))
+        assertTrue(AppUpdateManager.isValidDownloadTarget("5.1.3", release.apkFileName))
+        assertTrue(AppUpdateManager.isValidReleaseForDownload(release))
+        assertNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = release.apkFileName,
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.1.3",
+                apkVersionCode = 50103L,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.1.2",
+                installedVersionCode = 50102L,
+            ),
+        )
+    }
+
+    @Test
     fun testInstallMetadataAcceptsValid511To512Upgrade() {
         // Upgrading installed v5.1.1 (50101) to incoming v5.1.2 (50102) is valid and returns null
         val error = AppUpdateManager.validateInstallMetadata(

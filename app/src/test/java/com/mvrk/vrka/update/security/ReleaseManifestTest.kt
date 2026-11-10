@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
 class ReleaseManifestTest {
 
@@ -65,6 +66,36 @@ class ReleaseManifestTest {
         val serialized = manifest.toJson()
         val parsedAgain = ReleaseManifest.fromJson(serialized)
         assertEquals(manifest, parsedAgain)
+    }
+
+    @Test
+    fun v512InstallAcceptsV513WithNextManifestRevision() {
+        val currentTime = Instant.parse("2026-11-10T18:00:00Z").toEpochMilli()
+        val manifest = ReleaseManifest.fromJson(validManifestJson()).copy(
+            metadataRevision = 6,
+            releaseTag = "v5.1.3",
+            versionName = "5.1.3",
+            versionCode = 50103,
+            sourceCommit = "7f".repeat(20),
+            issuedAt = "2026-11-10T17:00:00Z",
+            expiresAt = "2027-11-10T17:00:00Z",
+            minUpdaterVersion = "5.1.0",
+            apk = ReleaseManifest.fromJson(validManifestJson()).apk.copy(
+                filename = "VRKA-Android-v5.1.3.apk",
+            ),
+        )
+
+        ReleaseManifestVerifier().validateManifestData(
+            manifest = manifest,
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50102,
+            currentStoredRevision = 5,
+            expectedReleaseTag = "v5.1.3",
+            currentTimeMillis = currentTime,
+        )
+
+        assertTrue(manifest.versionCode > 50102)
+        assertTrue(manifest.metadataRevision > 5)
     }
 
     @Test
