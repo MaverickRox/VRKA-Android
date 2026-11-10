@@ -2,13 +2,18 @@ package com.mvrk.vrka
 
 import android.content.Context
 import android.os.Build
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.mvrk.vrka.storage.PublicationStore
+import com.mvrk.vrka.storage.RoomStorageRepository
+import com.mvrk.vrka.storage.VrkaDatabase
 import com.mvrk.vrka.storage.JobJsonCodec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,17 +37,21 @@ class SafPublicationIntegrationTest {
     private lateinit var context: Context
     private lateinit var scope: CoroutineScope
     private lateinit var stagingRoot: File
-    private lateinit var journalFile: File
-    private lateinit var jobStoreFile: File
+    private lateinit var databaseName: String
+    private lateinit var database: VrkaDatabase
+    private lateinit var repository: RoomStorageRepository
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         TestDocumentsProvider.reset(context)
         val stamp = System.nanoTime()
+        databaseName = "saf-publication-$stamp.db"
+        database = Room.databaseBuilder(context, VrkaDatabase::class.java, databaseName)
+            .allowMainThreadQueries()
+            .build()
+        repository = RoomStorageRepository(database)
         stagingRoot = File(context.cacheDir, "saf_staging_$stamp").apply { mkdirs() }
-        journalFile = File(context.cacheDir, "saf_journal_$stamp.json")
-        jobStoreFile = File(context.cacheDir, "saf_jobs_$stamp.json")
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 
@@ -53,16 +62,38 @@ class SafPublicationIntegrationTest {
         TestDocumentsProvider.failReadback = false
         TestDocumentsProvider.failChildQuery = false
         TestDocumentsProvider.clear()
-        journalFile.delete()
-        jobStoreFile.delete()
+        database.close()
+        val dbFile = context.getDatabasePath(databaseName)
+        listOf("", "-wal", "-shm").forEach { File(dbFile.absolutePath + it).delete() }
         stagingRoot.deleteRecursively()
         scope.cancel()
+    }
+
+    private val publicationStore: PublicationStore by lazy {
+        val roomStore = repository.publicationStore
+        object : PublicationStore by roomStore {
+            override fun recordIntent(entry: PublicationEntry) = recordBatchIntents(listOf(entry))
+
+            override fun recordBatchIntents(batch: List<PublicationEntry>) {
+                val missing = batch.map { it.jobId }.distinct().filter { id ->
+                    repository.cachedJobs().none { it.id == id }
+                }
+                if (missing.isNotEmpty()) {
+                    val seeded = runBlocking {
+                        repository.saveJobs(missing.map(::job), missing.toSet())
+                    }
+                    check(seeded.success) { "Could not seed Room publication jobs: ${seeded.error}" }
+                    runBlocking { repository.loadCache() }
+                }
+                roomStore.recordBatchIntents(batch)
+            }
+        }
     }
 
     private fun newPublisher(): OutputPublisher = OutputPublisher(
         context = context,
         settingsRepository = SettingsRepository(context, scope),
-        journal = PublicationJournal(journalFile),
+        journal = publicationStore,
         sdkInt = Build.VERSION.SDK_INT,
     )
 
@@ -80,14 +111,14 @@ class SafPublicationIntegrationTest {
     )
 
     private fun managerFor(job: DownloadJob): VrkaDownloadManager {
-        val store = JobStore(jobStoreFile)
-        val saved = store.save(listOf(job), setOf(job.id))
-        assertTrue("Seed JobStore save must succeed: ${saved.error}", saved.success)
+        val saved = runBlocking { repository.saveJobs(listOf(job), setOf(job.id)) }
+        assertTrue("Seed Room job save must succeed: ${saved.error}", saved.success)
+        runBlocking { repository.loadCache() }
         return VrkaDownloadManager(
             context = context,
             settingsRepository = SettingsRepository(context, scope),
             scope = scope,
-            customStore = store,
+            customRepository = repository,
             customPublisher = newPublisher(),
             customStagingRoot = stagingRoot,
             autoRecoverOnInit = false,
@@ -95,7 +126,7 @@ class SafPublicationIntegrationTest {
     }
 
     private fun durableJob(jobId: String): DownloadJob =
-        JobStore(jobStoreFile).load(recoverActive = true).single { it.id == jobId }
+        repository.cachedJobs().single { it.id == jobId }
 
     @Test
     fun safRenameInPlacePublishesVerifiedOutput() {
@@ -300,7 +331,7 @@ class SafPublicationIntegrationTest {
         ) ?: error("Test provider createDocument failed")
         ops.openOutputStream(oldUri, "w")!!.use { it.write(bytes) }
 
-        val journal = PublicationJournal(journalFile)
+        val journal = publicationStore
         journal.recordIntent(
             PublicationEntry(
                 transactionId = transactionId,

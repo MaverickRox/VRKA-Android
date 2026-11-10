@@ -42,17 +42,23 @@ internal class RoomStorageRepository(
 
     suspend fun loadCache(): CacheLoadReport {
         val entities = withContext(Dispatchers.IO) { database.jobDao().all() }
-        var quarantined = 0
-        val decoded = entities.map { entity ->
-            runCatching { JobJsonCodec.decodeJob(entity) }
-                .getOrElse { error ->
-                    quarantined++
-                    quarantineJob(entity)
-                    JobJsonCodec.damagedJob(entity)
-                }
-        }
+        val (decoded, quarantined) = decodeEntities(entities)
         _jobs.value = decoded.sortedByDescending { it.createdAt }
         return CacheLoadReport(decoded.size, quarantined)
+    }
+
+    private suspend fun decodeEntities(entities: List<JobEntity>): Pair<List<DownloadJob>, Int> {
+        var quarantined = 0
+        val decoded = ArrayList<DownloadJob>(entities.size)
+        for (entity in entities) {
+            val job = runCatching { JobJsonCodec.decodeJob(entity) }.getOrElse {
+                quarantined++
+                quarantineJob(entity)
+                JobJsonCodec.damagedJob(entity)
+            }
+            decoded += job
+        }
+        return decoded to quarantined
     }
 
     private suspend fun quarantineJob(entity: JobEntity) = withContext(Dispatchers.IO) {
@@ -71,11 +77,7 @@ internal class RoomStorageRepository(
     }
 
     suspend fun decodePageEntity(entity: JobEntity): DownloadJob =
-        runCatching { JobJsonCodec.decodeJob(entity) }
-            .getOrElse {
-                quarantineJob(entity)
-                JobJsonCodec.damagedJob(entity)
-            }
+        decodeEntities(listOf(entity)).first.single()
 
     fun cachedJobs(): List<DownloadJob> = _jobs.value
 
@@ -102,6 +104,17 @@ internal class RoomStorageRepository(
                         ) {
                             // A cache placeholder must never overwrite the raw quarantined row.
                             continue
+                        }
+                        if (job.state == JobState.DONE) {
+                            when {
+                                existing == null && job.legacyVerification != "LEGACY_DONE_NO_HASH" ->
+                                    error("A new DONE job requires a trusted legacy import")
+                                existing != null && existing.state != JobState.DONE.name ->
+                                    error("A publication must use the atomic terminal commit to reach DONE")
+                                existing != null && existing.outputUrisJson !=
+                                    org.json.JSONArray(job.outputUris).toString() ->
+                                    error("A DONE job cannot change its published output set")
+                            }
                         }
                         if (existing != null && shouldIgnoreIncoming(existing, job)) continue
                         val commitSequence = when {
@@ -234,43 +247,27 @@ internal class RoomStorageRepository(
         actualFinalFileBytes: Long?,
         subtitleStatus: SubtitleStatus?,
     ): Boolean = writeMutex.withLock {
+        if (batchId.isBlank() || outputUris.isEmpty()) return@withLock false
         val committed = try {
             database.withTransaction {
                 val job = database.jobDao().byId(jobId) ?: return@withTransaction false
-                if (job.attempt != attemptNumber) return@withTransaction false
+                val decodedJob = runCatching { JobJsonCodec.decodeJob(job) }.getOrNull()
+                    ?: return@withTransaction false
+                if (decodedJob.recoveryRequired || decodedJob.attempt != attemptNumber) {
+                    return@withTransaction false
+                }
                 if (job.state == JobState.DONE.name) return@withTransaction false
 
                 val attemptId = JobJsonCodec.attemptIdFor(jobId, attemptNumber)
-                if (batchId.isBlank()) {
-                    if (outputUris.isNotEmpty()) return@withTransaction false
-                    val sequence = database.jobDao().nextCommitSequence()
-                    database.jobDao().upsert(
-                        job.copy(
-                            state = JobState.DONE.name,
-                            detail = detail,
-                            progress = 1f,
-                            downloadedBytes = downloadedBytes ?: job.downloadedBytes,
-                            reportedTotalBytes = reportedTotalBytes ?: job.reportedTotalBytes,
-                            reportedTotalIsExact = reportedTotalIsExact,
-                            actualFinalFileBytes = actualFinalFileBytes ?: job.actualFinalFileBytes,
-                            outputUrisJson = "[]",
-                            error = "",
-                            subtitleStatus = (subtitleStatus ?: runCatching {
-                                SubtitleStatus.valueOf(job.subtitleStatus)
-                            }.getOrDefault(SubtitleStatus.NONE)).name,
-                            updatedAt = clock(),
-                            terminalAt = clock(),
-                            commitSequence = sequence,
-                            version = job.version + 1L,
-                        ),
-                    )
-                    return@withTransaction true
-                }
-
                 val batch = database.publicationBatchDao().byId(batchId)
                     ?: return@withTransaction false
                 if (batch.legacyAmbiguous) return@withTransaction false
                 if (batch.jobId != jobId || batch.attemptId != attemptId) return@withTransaction false
+                val attempt = database.attemptDao().byId(attemptId)
+                    ?: return@withTransaction false
+                if (attempt.jobId != jobId || attempt.attemptNumber != attemptNumber) {
+                    return@withTransaction false
+                }
                 val outputs = database.publicationOutputDao().forBatch(batchId)
                 if (outputs.size != batch.totalOutputs) return@withTransaction false
                 if (outputs.map { it.outputIndex }.sorted() != (0 until batch.totalOutputs).toList()) {
@@ -279,6 +276,10 @@ internal class RoomStorageRepository(
                 if (outputs.any {
                         it.jobId != jobId ||
                             it.attemptId != attemptId ||
+                            it.attemptNumber != attemptNumber ||
+                            it.totalOutputs != batch.totalOutputs ||
+                            it.providerType != batch.providerType ||
+                            it.destinationIdentity != batch.destinationIdentity ||
                             it.status !in setOf("COMPLETED", "RECONCILED") ||
                             it.phase !in setOf("FINALIZED", "RECORDED", "PUBLISHED", "COMMITTED_RECONCILED") ||
                             it.providerUri.isNullOrBlank() ||
@@ -362,10 +363,118 @@ internal class RoomStorageRepository(
         committed
     }
 
+    suspend fun commitRecoveredPublicationFailure(
+        jobId: String,
+        attemptNumber: Int,
+        batchId: String,
+        missingProviderOutputIds: Set<String>,
+        reconciledTransactionIds: Set<String>,
+        failedJob: DownloadJob,
+    ): Boolean = writeMutex.withLock {
+        if (missingProviderOutputIds.isEmpty() || batchId.isBlank() || failedJob.state != JobState.FAILED) {
+            return@withLock false
+        }
+        val committed = try {
+            database.withTransaction {
+                val entity = database.jobDao().byId(jobId) ?: return@withTransaction false
+                val existing = runCatching { JobJsonCodec.decodeJob(entity) }.getOrNull()
+                    ?: return@withTransaction false
+                if (entity.state != JobState.DONE.name || existing.attempt != attemptNumber ||
+                    failedJob.id != jobId || failedJob.attempt != attemptNumber
+                ) return@withTransaction false
+
+                val attemptId = JobJsonCodec.attemptIdFor(jobId, attemptNumber)
+                val batch = database.publicationBatchDao().byId(batchId)
+                    ?: return@withTransaction false
+                if (batch.legacyAmbiguous || batch.jobId != jobId || batch.attemptId != attemptId) {
+                    return@withTransaction false
+                }
+                val attempt = database.attemptDao().byId(attemptId)
+                    ?: return@withTransaction false
+                if (attempt.jobId != jobId || attempt.attemptNumber != attemptNumber) {
+                    return@withTransaction false
+                }
+                val outputs = database.publicationOutputDao().forBatch(batchId)
+                if (outputs.size != batch.totalOutputs ||
+                    outputs.map { it.outputIndex }.sorted() != (0 until batch.totalOutputs).toList() ||
+                    outputs.any {
+                        it.jobId != jobId || it.attemptId != attemptId ||
+                            it.attemptNumber != attemptNumber ||
+                            it.totalOutputs != batch.totalOutputs ||
+                            it.providerType != batch.providerType ||
+                            it.destinationIdentity != batch.destinationIdentity ||
+                            it.status !in setOf("COMPLETED", "RECONCILED") ||
+                            it.phase !in setOf("FINALIZED", "RECORDED", "PUBLISHED", "COMMITTED_RECONCILED") ||
+                            it.providerUri.isNullOrBlank() ||
+                            it.verificationLevel !in setOf("HASH_VERIFIED", "SIZE_VERIFIED")
+                    }
+                ) return@withTransaction false
+                val durableUris = runCatching {
+                    val json = org.json.JSONArray(entity.outputUrisJson)
+                    List(json.length()) { json.getString(it) }
+                }.getOrNull() ?: return@withTransaction false
+                val exactUris = outputs.sortedBy { it.outputIndex }.map { it.providerUri!! }
+                if (exactUris != durableUris) return@withTransaction false
+
+                val outputIds = outputs.mapTo(HashSet()) { it.transactionId }
+                if (!missingProviderOutputIds.all { it in outputIds } ||
+                    !reconciledTransactionIds.all { it in outputIds }
+                ) return@withTransaction false
+
+                val sequence = database.jobDao().nextCommitSequence()
+                database.jobDao().upsert(
+                    JobJsonCodec.encodeJob(
+                        job = failedJob,
+                        currentAttemptId = attemptId,
+                        legacyVerification = entity.legacyVerification,
+                        recoveryRequired = false,
+                        terminalAt = clock(),
+                        commitSequence = sequence,
+                        version = entity.version + 1L,
+                    ),
+                )
+                val attemptRecord = database.attemptDao().byId(attemptId)
+                if (attemptRecord != null) {
+                    database.attemptDao().upsert(
+                        attemptRecord.copy(
+                            status = JobState.FAILED.name,
+                            endedAt = clock(),
+                            version = attemptRecord.version + 1L,
+                        ),
+                    )
+                }
+                for (transactionId in reconciledTransactionIds) {
+                    val output = outputs.first { it.transactionId == transactionId }
+                    val phase = if (output.phase == "FINALIZED") "RECORDED" else output.phase
+                    database.publicationOutputDao().upsert(
+                        output.copy(
+                            status = "RECONCILED",
+                            phase = phase,
+                            updatedAt = clock(),
+                            version = output.version + 1L,
+                        ),
+                    )
+                }
+                database.publicationBatchDao().upsert(
+                    batch.copy(status = "RECOVERY_FAILED", updatedAt = clock()),
+                )
+                true
+            }
+        } catch (_: Throwable) {
+            false
+        }
+        if (committed) {
+            reloadCache()
+            val durable = withContext(Dispatchers.IO) { database.jobDao().byId(jobId) }
+            if (durable?.state != JobState.FAILED.name) return@withLock false
+        }
+        committed
+    }
+
     private suspend fun reloadCache() {
         val entities = withContext(Dispatchers.IO) { database.jobDao().all() }
-        _jobs.value = entities.mapNotNull { runCatching { JobJsonCodec.decodeJob(it) }.getOrNull() }
-            .sortedByDescending { it.createdAt }
+        val (decoded, _) = decodeEntities(entities)
+        _jobs.value = decoded.sortedByDescending { it.createdAt }
     }
 
     private class MappingPagingSource(

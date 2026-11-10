@@ -117,6 +117,7 @@ class RoomStorageRepositoryTest {
         outputUris = listOf("content://media/external/downloads/1"),
         error = "",
         attempt = attempt,
+        legacyVerification = if (state == JobState.DONE) "LEGACY_DONE_NO_HASH" else "",
         actualResolution = "1080p",
         runtimeName = "Stock yt-dlp",
         runtimeVersion = "2026.09.05",
@@ -292,6 +293,48 @@ class RoomStorageRepositoryTest {
     }
 
     @Test
+    fun generalJobSaveCannotMarkAnOutputJobDoneOrChangeDoneUris() = runBlocking {
+        val active = job("job-no-general-done")
+        assertTrue(repository.saveJobs(listOf(active), emptySet()).success)
+
+        val emptyPublicationCommit = repository.commitTerminalPublishedJob(
+            jobId = active.id,
+            attemptNumber = active.attempt,
+            batchId = "",
+            outputUris = emptyList(),
+            detail = "No output ownership",
+            downloadedBytes = 0L,
+            reportedTotalBytes = 0L,
+            reportedTotalIsExact = true,
+            actualFinalFileBytes = 0L,
+            subtitleStatus = SubtitleStatus.NONE,
+        )
+        assertFalse("A terminal commit must name an owned output batch", emptyPublicationCommit)
+        assertEquals(JobState.POSTPROCESSING.name, database.jobDao().byId(active.id)!!.state)
+
+        val attempted = repository.saveJobs(
+            listOf(active.copy(state = JobState.DONE)),
+            emptySet(),
+        )
+        assertFalse("Only the atomic publication transaction may transition an active job to DONE", attempted.success)
+        assertEquals(JobState.POSTPROCESSING.name, database.jobDao().byId(active.id)!!.state)
+
+        val untrusted = job("untrusted-done", state = JobState.DONE).copy(legacyVerification = "")
+        val untrustedResult = repository.saveJobs(listOf(untrusted), emptySet())
+        assertFalse("A new DONE row without historical import evidence must be rejected", untrustedResult.success)
+        assertEquals(null, database.jobDao().byId(untrusted.id))
+
+        val historical = job("historical-done", state = JobState.DONE)
+        assertTrue("Known historical DONE rows remain importable", repository.saveJobs(listOf(historical), emptySet()).success)
+        val changedUris = repository.saveJobs(
+            listOf(historical.copy(outputUris = listOf("content://media/external/downloads/other"))),
+            emptySet(),
+        )
+        assertFalse("A saved DONE record cannot replace its owned outputs", changedUris.success)
+        assertEquals(historical.outputUris, JobJsonCodec.decodeJob(database.jobDao().byId(historical.id)!!).outputUris)
+    }
+
+    @Test
     fun historyPagingDeliversEveryTerminalJobInStablePages() = runBlocking {
         val jobs = (0 until 75).map { index ->
             job(
@@ -406,7 +449,12 @@ class RoomStorageRepositoryTest {
     @Test
     fun databaseReopenPreservesJobsAndCleanupTasks() = runBlocking {
         val original = job("job-reopen")
-        assertTrue(repository.saveJobs(listOf(original.copy(state = JobState.DONE)), emptySet()).success)
+        assertTrue(
+            repository.saveJobs(
+                listOf(original.copy(state = JobState.DONE, legacyVerification = "LEGACY_DONE_NO_HASH")),
+                emptySet(),
+            ).success,
+        )
         database.cleanupTaskDao().upsert(
             CleanupTaskEntity(
                 id = "staging:job-reopen",

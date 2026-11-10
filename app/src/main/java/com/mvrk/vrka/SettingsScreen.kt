@@ -1206,6 +1206,13 @@ internal fun SettingsScreen(
                                 style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
                                 color = VrkaTokens.TextSecondary,
                             )
+                            task.lastError?.takeIf { it.isNotBlank() }?.let { lastError ->
+                                Text(
+                                    text = "Last error: ${DiagnosticStore.sanitizeText(lastError).take(240)}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                                    color = VrkaTokens.TextSecondary,
+                                )
+                            }
                         }
                         VrkaOutlinedButton(
                             text = stringResource(R.string.action_retry),
