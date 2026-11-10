@@ -28,8 +28,44 @@ class PackagingConfigurationTest {
 
     @Test
     fun releaseVersionConfigurationIsPreserved() {
-        assertTrue(buildFile.contains("versionCode = 50102"))
-        assertTrue(buildFile.contains("versionName = \"5.1.2\""))
+        assertTrue(buildFile.contains("versionCode = 50103"))
+        assertTrue(buildFile.contains("versionName = \"5.1.3\""))
         assertTrue(buildFile.contains("applicationId = \"com.mvrk.vrka\""))
+    }
+
+    @Test
+    fun productionSigningPropertiesAreLoadedOnlyForExplicitProductionSigningTasks() {
+        val normalizedBuildFile = buildFile.replace("\r\n", "\n")
+        assertTrue(normalizedBuildFile.contains("val productionSigningRequested = gradle.startParameter.taskNames.any"))
+
+        val signingGate = normalizedBuildFile.indexOf("val signingPropertiesFile = if (productionSigningRequested)")
+        val signingLoad = normalizedBuildFile.indexOf("val signingProperties = if (productionSigningRequested)")
+        val geckoVersion = normalizedBuildFile.indexOf("val geckoViewVersion =")
+
+        assertTrue("Signing path selection must be gated", signingGate >= 0)
+        assertTrue("Signing property parsing must be gated", signingLoad > signingGate)
+        assertTrue("Signing property parsing must remain before Android configuration", geckoVersion > signingLoad)
+
+        val gatedSigningConfiguration = normalizedBuildFile.substring(signingGate, geckoVersion)
+        val signingPropertiesVariableName = "VRKA_" + "SIGNING_PROPERTIES"
+        assertTrue(
+            gatedSigningConfiguration.contains(
+                "providers.environmentVariable(\"$signingPropertiesVariableName\")",
+            ),
+        )
+        assertTrue(gatedSigningConfiguration.contains("Properties().apply { load(input) }"))
+        assertTrue(gatedSigningConfiguration.contains("else {\n    null\n}"))
+        listOf(
+            "assembleRelease",
+            "bundleRelease",
+            "packageRelease",
+            "signRelease",
+            "validateSigningRelease",
+        ).forEach { taskName ->
+            assertTrue(
+                "$taskName must be an explicit production signing task",
+                normalizedBuildFile.contains("\"$taskName\""),
+            )
+        }
     }
 }

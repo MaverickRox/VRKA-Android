@@ -8,21 +8,43 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
-val signingPropertiesFile = providers.environmentVariable("VRKA_SIGNING_PROPERTIES")
-    .map { file(it) }
-    .orElse(providers.provider {
-        val localFile = rootProject.file("signing.properties")
-        val userHome = System.getProperty("user.home")
-        val userHomeFile = if (userHome != null) file("$userHome/.vrka-android-signing/signing.properties") else null
-        when {
-            localFile.isFile -> localFile
-            userHomeFile?.isFile == true -> userHomeFile
-            else -> null
-        }
-    })
-    .orNull
-val signingProperties = signingPropertiesFile?.takeIf { it.isFile }?.inputStream()?.use { input ->
-    Properties().apply { load(input) }
+val productionSigningTaskNames = setOf(
+    "assembleRelease",
+    "bundleRelease",
+    "installRelease",
+    "packageRelease",
+    "signRelease",
+    "signReleaseBundle",
+    "validateSigningReleaseBundle",
+    "validateSigningRelease",
+    "verifyReleaseSigning",
+)
+val productionSigningRequested = gradle.startParameter.taskNames.any { requestedTask ->
+    requestedTask.substringAfterLast(':') in productionSigningTaskNames
+}
+val signingPropertiesFile = if (productionSigningRequested) {
+    providers.environmentVariable("VRKA_SIGNING_PROPERTIES")
+        .map { file(it) }
+        .orElse(providers.provider {
+            val localFile = rootProject.file("signing.properties")
+            val userHome = System.getProperty("user.home")
+            val userHomeFile = if (userHome != null) file("$userHome/.vrka-android-signing/signing.properties") else null
+            when {
+                localFile.isFile -> localFile
+                userHomeFile?.isFile == true -> userHomeFile
+                else -> null
+            }
+        })
+        .orNull
+} else {
+    null
+}
+val signingProperties = if (productionSigningRequested) {
+    signingPropertiesFile?.takeIf { it.isFile }?.inputStream()?.use { input ->
+        Properties().apply { load(input) }
+    }
+} else {
+    null
 }
 val geckoViewVersion = "159.0.20261022150525"
 
@@ -43,8 +65,8 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 50102
-        versionName = "5.1.2"
+        versionCode = 50103
+        versionName = "5.1.3"
         buildConfigField("String", "GECKOVIEW_VERSION", "\"$geckoViewVersion\"")
 
         ndk {

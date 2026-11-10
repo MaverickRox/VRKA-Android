@@ -1,4 +1,40 @@
-# VRKA Android 5.1.2 — Release Notes
+# VRKA Android 5.1.3 — Release Notes
+
+> [!IMPORTANT]
+> **Users on v5.0.2 still need one manual install.** Install the official v5.1.2 APK over v5.0.2
+> first. Then update to v5.1.3 from the app or the official GitHub release. Do not uninstall.
+
+VRKA Android 5.1.3 ships storage reliability corrections after v5.1.2. The package remains
+`com.mvrk.vrka`; version code 50103 supports in-place upgrades from v5.1.2.
+
+## Storage and publication reliability
+
+- Recovery uses outputs from one current attempt and one publication batch. Atomic Room checks
+  own every completion. Stale callbacks cannot complete a newer attempt.
+- Ambiguous legacy publication records keep their raw evidence. They cannot complete a job or
+  authorize provider adoption, finalization, reconciliation, or deletion.
+- Migration supports v5.1.0, v5.1.1, and v5.1.2 data. Repeated and interrupted migration is
+  safe. Existing valid records remain available.
+- Cache refresh and paging preserve damaged History rows as safe recovery entries.
+- Cleanup tasks survive History deletion and database restart. Dead-letter tasks remain visible
+  in Diagnostics and support an ownership-checked manual retry.
+- Unsupported persisted states and unknown enum values are quarantined. They cannot start
+  provider operations.
+- Startup recovery checks publication ownership and storage state before it resumes work.
+
+## Compatibility and scope
+
+- Package ID: `com.mvrk.vrka`; minimum SDK 26; target SDK 36; `arm64-v8a` only.
+- Install v5.1.3 over v5.1.2. Keep the app installed to preserve its data.
+- The storage provider instrumentation ran on an API 36 emulator. SAF tests use a controlled
+  `DocumentsContract` provider. This release does not claim testing on every device or OEM
+  provider.
+- v5.1.0, v5.1.1, and v5.1.2 release evidence, assets, and signatures remain historical and
+  unchanged.
+
+---
+
+## Historical: VRKA Android 5.1.2 — Release Notes
 
 > [!IMPORTANT]
 > **USERS UPGRADING FROM VRKA v5.0.2 STILL REQUIRE A ONE-TIME MANUAL UPGRADE.** The v5.0.2 client cannot repair its own updater due to the legacy filename validation defect. Download and install `VRKA-Android-v5.1.2.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) over v5.0.2 without uninstalling. Application data, queue, history, and settings are preserved.

@@ -2,12 +2,12 @@
 
 All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
 
-## [Unreleased] - Unified Room storage architecture on `main`
+## [5.1.3] - 2026-11-10
 
-This unreleased work replaces the separate JSON transaction authorities with one Room/SQLite
-database and strengthens publication durability and provider safety beyond the published v5.1.2
-APK. It does not modify any release tag, manifest, signature, checksum, public key, version
-metadata, or APK. See [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) and
+VRKA Android 5.1.3 ships the storage reliability corrections that followed v5.1.2. The release
+uses one Room/SQLite authority for job, publication, migration, and cleanup state. It preserves
+v5.1.2 release evidence as historical data. See
+[docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) and
 [docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md).
 
 - **Single durable authority:** Room 2.8.5 + KSP 2.3.13 (built-in Kotlin preserved) stores
@@ -18,7 +18,7 @@ metadata, or APK. See [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.m
   and every output a transaction ID. The terminal DONE projection, exact ordered outputs,
   reconciliation, and staging cleanup task commit in one database transaction, followed by a
   fresh read. Stale callbacks and unverified outputs cannot commit.
-- **Crash-safe legacy import:** explicit v5.1.0, v5.1.1, v5.1.2, and unreleased-baseline
+- **Crash-safe legacy import:** explicit v5.1.0, v5.1.1, v5.1.2, and v5.1.3 baseline
   profiles; source hashes and ledger; deterministic IDs; bounded chunks; transactional resume;
   raw preservation of ambiguous records; WAL/foreign-key/integrity verification; originals and
   snapshots retained. A 80-case/75-file fixture corpus generated from the actual tagged
@@ -53,6 +53,8 @@ metadata, or APK. See [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.m
   storage report explicit partial readiness. Unknown Room enums fail closed.
 - **OpenPGP policy:** only SHA-256/SHA-384/SHA-512; RSA-only; hashed issuer fingerprint must
   exactly match the pinned key. Published v5.1.1 and v5.1.2 signatures still verify.
+- **Signing isolation:** development tasks do not select or read production signing properties.
+  The production properties load only when a production signing task is explicitly named.
 
 Verification: 815 JVM tests across 78 suites pass with 0 failures/errors/skips; lint reports 0
 errors; debug, release-variant, and Android test-source compilation pass; 12 real provider

@@ -1,16 +1,15 @@
-# VRKA Android 5.1.2 — Current Production Architecture
+# VRKA Android 5.1.3 — Current Production Architecture
 
-This document defines the architecture of the official, published VRKA Android v5.1.2 release (tag v5.1.2) and documents the production architectural pillars and crash-recovery hardening. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Subsystem verification and physical device validation evidence are authoritatively documented in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
+This document defines the architecture of the official VRKA Android v5.1.3 release. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Subsystem verification and device validation evidence are recorded in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
 > [!NOTE]
-> **Unreleased `main` storage changes are not part of v5.1.2.** The published v5.1.2 APK still
-> uses the JSON `JobStore`, `PublicationJournal`, and `StagingCleanupStore` described in this
-> document. The unreleased `main` branch replaces those transaction authorities with a single
-> Room/SQLite database, a crash-safe legacy importer, a startup gate, and durable
-> publication/cleanup tables. That architecture and its migration are documented separately in
+> **v5.1.3 uses the Room/SQLite storage authority.** The v5.1.2 APK used JSON `JobStore`,
+> `PublicationJournal`, and `StagingCleanupStore` files. v5.1.3 imports their data through a
+> crash-safe legacy importer and uses Room for current jobs, publication state, and cleanup
+> obligations. The migration is documented separately in
 > [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) and
-> [docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md). Nothing in those documents changes the
-> published artifact, its signature, or its evidence.
+> [docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md). The v5.1.2 artifact and evidence remain
+> historical and unchanged.
 
 ---
 
@@ -18,7 +17,7 @@ This document defines the architecture of the official, published VRKA Android v
 
 VRKA Android is a native Android media downloader and passive web stream discovery application built with **Jetpack Compose** and **Kotlin Coroutines**. It operates strictly on-device with zero application telemetry or cloud tracking.
 
-The 5.1.0 and 5.1.1 releases established the following core architectural pillars, retained by 5.1.2:
+The 5.1.0 and 5.1.1 releases established the following core architectural pillars, retained by 5.1.2 and 5.1.3:
 - **Primary Transfer Engine**: `yt-dlp` is the primary and sole transfer engine for both direct downloads and Browser Fallback acquisitions.
 - **Browser Fallback Engine**: Mozilla `GeckoView` operates in a task-scoped private session to load protected pages and observe media streams.
 - **Media Candidate Discovery**: An internal first-party `VRKA Media Detector` WebExtension passively intercepts media requests and DOM elements, passing candidates to native Kotlin via `GeckoMediaBridge`.
@@ -32,7 +31,7 @@ The 5.1.0 and 5.1.1 releases established the following core architectural pillar
 
 ## 2. Interface Localization & Multilingual Architecture
 
-VRKA Android 5.1.2 retains complete interface localization across **14 distinct languages** plus **System Default**:
+VRKA Android 5.1.3 retains complete interface localization across **14 distinct languages** plus **System Default**:
 
 | Locale Tag | Language | Native Name | Layout Direction | Resource Directory |
 |---|---|---|---|---|
@@ -169,7 +168,7 @@ When direct `yt-dlp` extraction fails due to anti-bot challenges (e.g., Cloudfla
 
 ## 6. Application Self-Updater Subsystem
 
-VRKA Android 5.1.2 retains the independent, cryptographically authenticated self-updater targeting official GitHub releases.
+VRKA Android 5.1.3 retains the independent, cryptographically authenticated self-updater targeting official GitHub releases.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -234,7 +233,7 @@ The UI is built with **Jetpack Compose** using design tokens (`VrkaTokens`):
 - **AGSL RuntimeShader (API 33+)**: High-performance lens transform with 1.35× center magnification, 20-dp refraction height, 14-dp displacement, normal-map edge curvature, and chromatic aberration channel splitting. Fallback glass rendering is provided on API 26–32.
 - **Directional Luminous Wake Progress**: 18-track directional streak with cached analytic teardrop glow optimized for AMOLED black backgrounds.
 - **Resolution-Aware Size Estimation**: `SizeEstimator` runs a metadata-only yt-dlp preflight with the same `-f` selector and 60 fps sort as the transfer. `requested_formats` from that document are authoritative; the complete `formats` table still supplies every resolution chip. `MetadataRepository` caches each document by source, format selection, playlist range, runtime version, and a header digest. Browser Fallback clears the page-level estimate, estimates the selected candidate independently, and never blocks the transfer. Estimates that cannot be supported by metadata are shown as unavailable.
-- **Recoverable Job Storage**: `JobStore` writes a versioned JSON object through a temporary file and atomic move, returns explicit save results, and on malformed input preserves a bounded recovery copy while salvaging valid records. On unreleased `main`, retention always preserves nonterminal jobs and jobs pinned by unresolved publication transactions, and every save re-reads the durable file before reporting success. The published v5.1.2 binary retains its original persistence behavior; the remediation is not part of that APK.
+- **Recoverable Job Storage**: Room stores current jobs, attempts, ordered publication batches and outputs, migration evidence, and cleanup obligations. Job state, outputs, and terminal completion commit atomically. The v5.1.3 cache refreshes only from committed rows; malformed rows stay in quarantine and appear as safe damaged History entries. The v5.1.2 JSON stores remain migration inputs.
 - **API-Range Destination Policy**: API 29+ publishes through `MediaStore.Downloads` (`Downloads/VRKA`); API 26–28 require a granted SAF tree before a job starts and return to the folder prompt if permission is revoked.
 - **Dynamic Typography**: Monospace Space Mono (`VRKA Font`) and clean System (`Roboto`) font switching.
 
@@ -256,9 +255,9 @@ The official published release binary (VRKA-Android-v5.1.2.apk) incorporates cri
 
 ---
 
-## 10. Unreleased Post-v5.1.2 Publication Integrity Remediation (`main`)
+## 10. Historical: Post-v5.1.2 Publication Integrity Remediation
 
-The published v5.1.2 APK remains unchanged. The following architecture applies to the unreleased remediation on `main` at verified source `0866d00df5952376a4da137a7667bd24f66c30e8` (the earlier `0866d001…` SHA was a reporting error and is not a Git object).
+This section records the intermediate publication-integrity work after v5.1.2. The v5.1.3 release now uses Room as the storage authority. The v5.1.2 tag, APK, and evidence remain unchanged.
 
 1. **JobStore retention and durable verification**:
    - Nonterminal jobs and jobs pinned by unresolved journal transactions are never evicted by the 250-record history cap; only safely retained terminal history is bounded.
@@ -277,4 +276,23 @@ The published v5.1.2 APK remains unchanged. The following architecture applies t
    - `publishAll()` retains its staging source. Staging is removed only after verified terminal persistence and reconciliation, and deletion failure is recorded in a bounded `StagingCleanupStore` retry list.
    - Staging is never deleted while an unresolved transaction or live job depends on the directory.
 5. **Verification boundary**:
-   - JVM tests use controlled provider and filesystem dependencies for deterministic failure injection. Two real MediaStore tests run on an API 36 emulator. SAF tree integration, multi-OEM MediaStore behavior, and physical-device crash recovery remain unverified boundaries.
+   - The original JVM tests used controlled provider and filesystem dependencies. Current release verification is recorded in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md). OEM provider differences and physical-device crash recovery remain boundaries.
+
+---
+
+## 11. v5.1.3 Unified Room Storage and Recovery
+
+- Room is the durable authority for jobs, attempts, publication batches and outputs, migration
+  records, and cleanup tasks. The in-memory StateFlow is a cache only.
+- A job can become DONE only when one current attempt owns one complete ordered batch and Room
+  commits the outputs and terminal state together. A stale callback cannot complete another
+  attempt.
+- The legacy importer preserves raw evidence for ambiguous journal rows. Synthetic migration
+  identities do not become trusted historical attempt or batch identities.
+- Cache refresh and paging keep malformed rows visible as damaged History entries. Quarantine
+  evidence remains durable and private request data stays out of the placeholder.
+- Cleanup obligations survive History deletion and database restart. Dead-letter tasks remain
+  visible in Diagnostics and require an ownership-checked retry.
+- Unsupported persisted states and enum values are quarantined and cannot trigger provider work.
+- API 36 instrumentation covers MediaStore and SAF behavior against the emulator and a controlled
+  DocumentsContract test provider. This is not evidence for every OEM provider or physical device.

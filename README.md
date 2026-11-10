@@ -10,7 +10,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v5.1.2)</b></a> •
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v5.1.3)</b></a> •
     <a href="#screenshots">Screenshots</a> •
     <a href="#features">Features</a> •
     <a href="#architecture">Architecture</a> •
@@ -23,7 +23,7 @@
 <br />
 
 > [!IMPORTANT]
-> **USERS UPGRADING FROM VRKA v5.0.2 MUST DOWNLOAD AND INSTALL v5.1.2 DIRECTLY FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON.**
+> **USERS UPGRADING FROM VRKA v5.0.2 MUST FIRST INSTALL v5.1.2 FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON. After that manual upgrade, update to v5.1.3 from the app or GitHub.**
 > 
 > **OFFICIAL DOWNLOAD PAGE:**
 > https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2
@@ -148,7 +148,7 @@ VRKA Android includes a hardened, cryptographically verified in-app update engin
 - **24-Hour Automatic Gate**: Automatic startup checks run at most once every 24 hours to reduce network traffic.
 - **Manual Check Bypass**: The `[Check for Updates]` button in Settings bypasses the 24-hour interval to check immediately.
 - **Non-Blocking Startup**: Checks run asynchronously without slowing down app startup.
-- **Canonical Stable Releases**: Accepts stable three-part tags such as `v5.1.2`, compares numeric version segments, and requires the exact matching asset `VRKA-Android-v5.1.2.apk`.
+- **Canonical Stable Releases**: Accepts stable three-part tags such as `v5.1.3`, compares numeric version segments, and requires the exact matching asset `VRKA-Android-v5.1.3.apk`.
 - **HTTPS-Only Networking & Host Validation**: Streams metadata and APK files over HTTPS from approved GitHub release hosts, rejecting user-info, nonstandard ports, and unapproved hosts.
 - **Redirect Validation**: Validates every redirect target and limits redirect hops to at most 5.
 - **Two-Stage Install Verification**: Verifies archive integrity, package identity, version code, and signer certificate on temporary downloads, followed by canonical filename verification on staged files before launching Android's `PackageInstaller`.
@@ -182,7 +182,7 @@ flowchart TD
     subgraph Core["Core Download Pipeline"]
         DM["VrkaDownloadManager<br/><i>Orchestration &amp; State Management</i>"]
         DRF["DownloadRequestFactory<br/><i>Argv Builder &amp; Header Redaction</i>"]
-        DB[("Room / SQLite<br/><i>Durable Authority (unreleased main)</i>)")]
+        DB[("Room / SQLite<br/><i>Durable Authority (v5.1.3)</i>)")]
         CACHE["StateFlow Cache<br/><i>UI, Service &amp; Notification Consumers</i>"]
         FGS["Foreground DownloadService<br/><i>Notification &amp; Concurrency</i>"]
     end
@@ -255,7 +255,7 @@ flowchart TD
 
 ### Architectural Highlights
 
-1. **Durable Storage Authority (unreleased `main`)**: A single Room/SQLite database owns jobs, retry attempts, publication batches/outputs, cleanup obligations, and migration records. The existing `StateFlow` projection remains an in-memory cache refreshed only after committed transactions. Existing v5.1.0/v5.1.1/v5.1.2 JSON data is imported through a crash-safe, idempotent migration. The published v5.1.2 APK retains its JSON architecture; see [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) and [docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md).
+1. **Durable Storage Authority (v5.1.3)**: A single Room/SQLite database owns jobs, retry attempts, publication batches/outputs, cleanup obligations, and migration records. The existing `StateFlow` projection remains an in-memory cache refreshed only after committed transactions. Existing v5.1.0/v5.1.1/v5.1.2 JSON data is imported through a crash-safe, idempotent migration. See [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) and [docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md).
 2. **UI Layer & Localization**: Built with Jetpack Compose and design tokens (`VrkaTokens`), featuring floating capsule navigation with adaptive backdrop blur across AMOLED Dark and Light modes. Full 14-language internationalization with complete Right-to-Left (RTL) layout mirroring for Arabic and 100% key parity.
 3. **Download Pipeline**: `VrkaDownloadManager` coordinates normal downloads using `DownloadRequestFactory` and `yt-dlp`. An eligible failure (such as anti-bot challenges or dynamic player scripts) triggers Browser Fallback.
 4. **Browser Fallback Subsystem**: Mozilla GeckoView navigates in a task-scoped private session. The bundled first-party `VRKA Media Detector` WebExtension (`media-detector@vrka.mvrk.com`) and `GeckoMediaBridge` pass observed candidate streams to the native ranker. Bundled `uBlock Origin` filters intrusive advertisements and tracking requests. `yt-dlp` probes the selected candidate and performs the transfer via its standard request path.
@@ -331,13 +331,13 @@ The compiled release artifact will be located at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-The official v5.1.2 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
+The official v5.1.3 release APK is production-signed. Check [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for its exact path, SHA-256, package metadata and signing certificate.
 
 ---
 
 ## Release Signing
 
-The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Verify the v5.1.2 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
+The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Development tasks do not load production signing properties. Verify the v5.1.3 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
 
 ---
 
@@ -346,7 +346,7 @@ The `release` build type requires explicit signing credentials and never silentl
 > [!NOTE]
 > **Upgrading from v5.0.2**: Due to a known client-side verification check on temporary download files in the v5.0.2 binary, the in-app updater cannot self-execute the upgrade. Existing v5.0.2 users should download `VRKA-Android-v5.1.2.apk` directly and install it over v5.0.2. Because both versions share the identical production signing key, all app data, settings, and download histories are preserved.
 
-1. Download the official `VRKA-Android-v5.1.2.apk` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
+1. Download the official `VRKA-Android-v5.1.2.apk` from the [v5.1.2 release page](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2).
 2. Verify the SHA-256 hash against `SHA256SUMS`:
    ```powershell
    (Get-FileHash .\VRKA-Android-v5.1.2.apk -Algorithm SHA256).Hash
