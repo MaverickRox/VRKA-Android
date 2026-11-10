@@ -56,9 +56,11 @@ v5.1.2 release evidence as historical data. See
 - **Signing isolation:** development tasks do not select or read production signing properties.
   The production properties load only when a production signing task is explicitly named.
 
-Verification: 815 JVM tests across 78 suites pass with 0 failures/errors/skips; lint reports 0
-errors; debug, release-variant, and Android test-source compilation pass; 12 real provider
-instrumentation tests pass on an API 36 emulator (10 SAF protocol/recovery + 2 MediaStore).
+Verification: 828 JVM tests across 78 suites pass with 0 failures, errors, or skips; `lintDebug`
+reports 0 errors; debug, development, release-variant, and Android test-source builds pass; 12
+API 36 provider instrumentation tests pass (10 SAF protocol/recovery + 2 MediaStore). The
+production APK, v2 signature, manifest, and in-place v5.1.2 upgrade are verified in
+[RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
 
 ## [5.1.2] - 2026-11-09
 
