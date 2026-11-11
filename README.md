@@ -26,7 +26,7 @@
 
 ---
 
-## 1-Minute Overview
+## Overview
 
 **VRKA Android** is an open-source, Jetpack Compose companion to desktop [**VRKA**](https://github.com/MaverickRox/VRKA). All media extraction, remuxing, and optional transcoding happen directly on your phone using bundled `yt-dlp`, `FFmpeg`, and an embedded Mozilla `GeckoView` private fallback browser.
 
