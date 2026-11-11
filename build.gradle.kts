@@ -4,3 +4,9 @@ plugins {
     id("com.google.devtools.ksp") version "2.3.13" apply false
 }
 
+allprojects {
+    dependencyLocking {
+        lockAllConfigurations()
+    }
+}
+
