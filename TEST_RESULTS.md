@@ -1,13 +1,18 @@
 # VRKA Android — Test Results
 
-## v5.1.4 release verification (pre-publication CI / local baseline)
+## v5.1.4 release verification
 
 Validation date: 2026-11-11. Historical release records (`v5.1.3` through `v5.0.2`) below are preserved unchanged.
 
-- **JVM Unit Test Suite (`testDebugUnitTest`):** `849` tests across `80` suites — `849` passed, `0` failed, `0` errors, `0` skipped (executed with `--no-daemon --no-configuration-cache --dependency-verification=strict`).
+- **JVM Unit Test Suite (`testDebugUnitTest`):**
+  - Source commit `6717da543df98fca33cdce78f8bc098edf6cef60` (`C1`, release tag `v5.1.4`): `849` tests across `80` suites — `849` passed, `0` failed, `0` errors, `0` skipped (`--no-daemon --no-configuration-cache --dependency-verification=strict`).
+  - Release evidence & signed manifest commit `38e2793685db089e075ae01163d348bba6ea9351` (`C2`): `850` tests across `80` suites — `850` passed, `0` failed, `0` errors, `0` skipped (adds `ReleaseManifestVerifierTest.publishedV514ManifestDetachedSignatureVerifiesWithPinnedPublicKey` verifying `VRKA-Android-v5.1.4.manifest.json` + `.asc` against the pinned release key).
 - **Android Lint:** `lintDebug` (`0` errors, `301` warnings, `305` total issues) and `lintRelease` (`0` errors, `300` warnings, `304` total issues).
-- **Compilation & Build Tasks:** `compileDebugAndroidTestKotlin`, `compileReleaseKotlin`, `assembleDebug`, `assembleDebugAndroidTest`, and `assembleDevRelease` all succeeded (`devRelease` R8 mapping `app/build/outputs/mapping/devRelease/mapping.txt`: `81,677,479` bytes, SHA-256 `1a745660c1bd6af6e99344ca53c5f5bbfd47080418c560fff48e29a411f7c38a`).
-- **Pending in subsequent release steps:** GitHub Actions CI (`Unit tests, lint and development build` and `Real MediaStore and SAF provider tests (API 36)`) on commit `C1`, production-signed `assembleRelease`, signed manifest `C2`, and live post-publish API 36 emulator upgrade validation in `C3`.
+- **Compilation & Build Tasks:** `compileDebugAndroidTestKotlin`, `compileReleaseKotlin`, `assembleDebug`, `assembleDebugAndroidTest`, `assembleDevRelease` (`devRelease` R8 mapping `app/build/outputs/mapping/devRelease/mapping.txt`: `81,677,479` bytes, SHA-256 `1a745660c1bd6af6e99344ca53c5f5bbfd47080418c560fff48e29a411f7c38a`), and production `assembleRelease` (`VRKA-Android-v5.1.4.apk`: `157,431,395` bytes, SHA-256 `5535291ff60c89852f1b2b960379a3b2637576e833ab3951759522110bba5d97`) all succeeded with `--dependency-verification=strict`.
+- **GitHub Actions CI (`Android CI`):**
+  - `C1` run `42988201135`: `Unit tests, lint and development build` (`ID 130414358701`, `11m41s`, pass) and `Real MediaStore and SAF provider tests (API 36)` (`ID 130414358794`, `6m7s`, pass).
+  - `C2` run `42990621462` (rerun after initial attempt cancellation): `Unit tests, lint and development build` (`ID 130426066416`, `9m37s`, pass) and `Real MediaStore and SAF provider tests (API 36)` (`ID 130426067712`, `5m30s`, pass).
+- **Post-publication Asset & API 36 Emulator Upgrade Validation:** Re-downloaded all 5 published `v5.1.4` release assets via `gh release download v5.1.4` and verified exact `SHA256SUMS` digests, `gpg --verify`, `apksigner verify` (v2-only RSA-4096 certificate `9BEF...E1FA`), and `aapt2 dump badging`. Verified both **Scenario A** (live `v5.1.3` -> `v5.1.4` in-app updater download + PackageInstaller upgrade) and **Scenario B** (direct `adb install -r` `v5.1.3` -> `v5.1.4`) on `Medium_Phone_API_36.0` (`sdk_gphone64_x86_64`), confirming preserved `firstInstallTime`, Room History, Diagnostics, Settings toggles, `VRKA v5.1.4` About display, and `VRKA is up to date` check. Physical hardware testing and `arm64-v8a` native media transfer on `x86_64` emulator were not performed (`EM_AARCH64 vs EM_X86_64` boundary documented in `DEVICE_VALIDATION.md`).
 
 ## Post-v5.1.3 supply-chain hardening on `main`
 
