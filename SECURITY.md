@@ -4,10 +4,11 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 5.1.2 | :white_check_mark: | Current official stable release |
+| 5.1.3 | :white_check_mark: | Current official stable release |
+| 5.1.2 | :white_check_mark: | Prior stable release; supported upgrade bridge for v5.0.2 |
 | 5.1.1 | :white_check_mark: | Prior stable release |
 | 5.1.0 | :white_check_mark: | Prior stable release |
-| 5.0.2 and older | :x: | Unsupported; upgrade to v5.1.2 directly |
+| 5.0.2 and older | :x: | Unsupported; use the one-time v5.1.2 bridge, then update to v5.1.3 |
 
 ## Reporting a Vulnerability
 
@@ -15,15 +16,18 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 
 ## Release Integrity
 
-The official v5.1.2, v5.1.1, and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation.
+The official v5.1.3, v5.1.2, v5.1.1, and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation. v5.1.3 provenance and its relationship to the release tag are documented in [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md).
 
-- **v5.1.2 Release APK:** `VRKA-Android-v5.1.2.apk`
+- **v5.1.3 Release APK:** `VRKA-Android-v5.1.3.apk`
+- **v5.1.3 SHA-256:** `c9f58d3a97d728315b51fc92f43b5f54b88ae4ad9c25b3b22ea0cd8338549ddf`
+- **v5.1.3 updater manifest SHA-256:** `3e5f8593731e401c236b74c1ce727e831c80c71d05c486ab92a04fb5597e528c`
+- **v5.1.2 Release APK (historical):** `VRKA-Android-v5.1.2.apk`
 - **v5.1.2 SHA-256:** `3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a`
-- **v5.1.1 Release APK:** `VRKA-Android-v5.1.1.apk`
+- **v5.1.1 Release APK (historical):** `VRKA-Android-v5.1.1.apk`
 - **v5.1.1 SHA-256:** `781d7910d9b5855d4060c247c09ac3f89156ebfd202c8af5385eea816380f4f8`
 - **Android Signing Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
 
-The `release` build type requires explicit signing properties; it has no debug-key fallback. Never publish signing properties, keystores, passwords, or private signing keys in this repository or artifact package.
+The `release` build type requires explicit signing properties; it has no debug-key fallback. Never publish signing properties, keystores, passwords, or private signing keys in this repository or artifact package. Key custody, backup, compromise response, and rotation are documented in [docs/KEY_MANAGEMENT.md](docs/KEY_MANAGEMENT.md); native component provenance is in [docs/NATIVE_BINARY_INVENTORY.md](docs/NATIVE_BINARY_INVENTORY.md); dependency controls are in [docs/DEPENDENCY_MANAGEMENT.md](docs/DEPENDENCY_MANAGEMENT.md).
 
 ## OpenPGP Release Signing and Trust Anchor
 
@@ -43,6 +47,14 @@ The application binary embeds and pins the official VRKA OpenPGP release signing
 - **Anti-Downgrade Protection:** Updates with `versionCode` less than the currently installed version are rejected before download.
 - **Anti-Freeze Protection:** Release manifests enforce an expiration timestamp (`expires_at`), preventing freeze attacks where an attacker serves stale but validly signed metadata.
 - **Certificate Pinning:** The manifest binds the target APK to the production signing certificate SHA-256 (`9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`).
+
+## Privacy and network paths
+
+VRKA contains no application analytics, advertising, or telemetry SDK. It still performs the
+documented automatic update checks and user-requested media/browser network traffic; the exact
+destinations and data exposure are recorded in [docs/PRIVACY_NETWORK.md](docs/PRIVACY_NETWORK.md).
+Do not summarize this as "zero network traffic" or "zero tracking"; the narrower verified claim is
+that there is no application analytics/telemetry upload.
 
 ## Security Boundaries
 

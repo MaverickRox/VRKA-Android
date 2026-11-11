@@ -3,6 +3,8 @@
 > [!IMPORTANT]
 > **Users on v5.0.2 still need one manual install.** Install the official v5.1.2 APK over v5.0.2
 > first. Then update to v5.1.3 from the app or the official GitHub release. Do not uninstall.
+> Users already on v5.1.2 can update directly to v5.1.3; the signing identity and app data are
+> preserved.
 
 VRKA Android 5.1.3 ships storage reliability corrections after v5.1.2. The package remains
 `com.mvrk.vrka`; version code 50103 supports in-place upgrades from v5.1.2.

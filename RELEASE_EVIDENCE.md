@@ -4,6 +4,7 @@
 - **Source version:** `5.1.3` (`versionCode` 50103)
 - **APK build source commit:** `90de6b8e69b2b801eed4c838fe510fe91a29a80e`
 - **Release page:** https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.3
+- **Provenance:** the annotated tag `7527e800e59bf6774b33011f3a23ca2049a41df1` targets the evidence commit `daac0b5b7f14dc5ce6b2af0be8fcaf5119ebd2b8`; the APK build source is the parent `90de6b8e69b2b801eed4c838fe510fe91a29a80e`. No CI-generated attestation exists for v5.1.3. See [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md).
 
 **Validation state:** 828 JVM tests across 78 suites pass with no failures, errors, or skips; lint
 has 0 errors; Kotlin and Android test-source compilation pass; 12 API 36 provider instrumentation
