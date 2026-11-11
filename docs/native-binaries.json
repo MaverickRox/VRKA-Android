@@ -1,6 +1,6 @@
 {
   "schema": "vrka-native-inventory/v1",
-  "generatedFor": "5.1.3",
+  "generatedFor": "5.1.4",
   "note": "Native binaries are delivered through prebuilt Android AARs, bundled browser assets, and the bundled stock yt-dlp zipapp/public key resources. SHA-256 values for Maven artifacts come from gradle/verification-metadata.xml; SHA-256 values for checked-in files are LF canonical file digests. These establish artifact integrity against pinned inputs, not a reproducible from-source native build.",
   "components": [
     {

@@ -332,6 +332,43 @@ class YtDlpRuntimeManagerTest {
         assertEquals("2026.11.12", manager.state.value.snapshot.runtimes.single().tag)
         assertEquals(sha256(v2Bytes), manager.state.value.snapshot.runtimes.single().sha256)
         assertArrayEquals(v2Bytes, binaryFile.readBytes())
+        assertFalse(manager.state.value.working)
+    }
+
+    @Test
+    fun corruptedLocalRuntimeCanBeReinstalledWhenUpstreamHashMatchesAndWorkingResetsOnActivationFailure() = runBlocking {
+        val originalBytes = "verified-custom-binary".toByteArray()
+        var failApplier = false
+        val transport = FakeTransport(
+            releasesProvider = { releasesJson("2026.11.11", originalBytes.size) },
+            binaryProvider = { originalBytes },
+        )
+        val manager = YtDlpRuntimeManager(
+            context = context,
+            scope = scope,
+            transport = transport,
+            versionProbe = { "2026.11.11" },
+            binaryApplier = {
+                if (failApplier) Result.failure(IllegalStateException("boom")) else Result.success(Unit)
+            },
+        )
+        assertTrue(manager.install("fork/yt-dlp").isSuccess)
+        val runtime = manager.state.value.snapshot.runtimes.single()
+        val binary = manager.customRuntimePathFor(runtime.id)
+
+        // Corrupt on disk, then reinstall the same verified upstream tag to repair it.
+        binary.writeBytes("corrupted".toByteArray())
+        val repair = manager.install("fork/yt-dlp")
+        assertTrue(repair.isSuccess)
+        assertArrayEquals(originalBytes, binary.readBytes())
+        assertFalse(manager.state.value.working)
+
+        // Failing activation resets working state back to false.
+        assertTrue(binary.delete())
+        failApplier = true
+        val failedInstall = manager.install("fork/yt-dlp")
+        assertTrue(failedInstall.isFailure)
+        assertFalse(manager.state.value.working)
     }
 
     private companion object {

@@ -78,7 +78,16 @@ class AppUpdateDownloadWorker(
                 expectedCertSha256 = expectedCertSha256,
             )
             if (targetFile.exists() && existingError == null) {
-                markReady(prefs, targetFile, targetVersion, expectedSizeBytes, expectedSha256, metadataRevision)
+                markReady(
+                    prefs = prefs,
+                    file = targetFile,
+                    version = targetVersion,
+                    targetVersionCode = targetVersionCode,
+                    expectedSizeBytes = expectedSizeBytes,
+                    expectedSha256 = expectedSha256,
+                    expectedCertSha256 = expectedCertSha256,
+                    metadataRevision = metadataRevision,
+                )
                 AppUpdateNotificationFactory.notifyReady(applicationContext, targetVersion)
                 return@withContext success(targetFile, targetVersion)
             }
@@ -86,6 +95,8 @@ class AppUpdateDownloadWorker(
             prefs.edit()
                 .putString(KEY_STATE, STATE_DOWNLOADING)
                 .putString(KEY_VERSION, targetVersion)
+                .putString(KEY_TARGET_VERSION, targetVersion)
+                .putLong(KEY_TARGET_VERSION_CODE, targetVersionCode)
                 .putString(KEY_DOWNLOAD_URL, downloadUrl)
                 .putString(KEY_APK_NAME, apkFileName)
                 .putLong(KEY_EXPECTED_SIZE, expectedSizeBytes)
@@ -247,7 +258,16 @@ class AppUpdateDownloadWorker(
                 throw PermanentAppUpdateException(stagedError)
             }
 
-            markReady(prefs, targetFile, targetVersion, expectedSizeBytes, expectedSha256, metadataRevision)
+            markReady(
+                prefs = prefs,
+                file = targetFile,
+                version = targetVersion,
+                targetVersionCode = targetVersionCode,
+                expectedSizeBytes = expectedSizeBytes,
+                expectedSha256 = expectedSha256,
+                expectedCertSha256 = expectedCertSha256,
+                metadataRevision = metadataRevision,
+            )
             AppUpdateNotificationFactory.notifyReady(applicationContext, targetVersion)
             success(targetFile, targetVersion)
         } catch (cancelled: CancellationException) {
@@ -277,16 +297,21 @@ class AppUpdateDownloadWorker(
         prefs: android.content.SharedPreferences,
         file: File,
         version: String,
+        targetVersionCode: Long,
         expectedSizeBytes: Long,
         expectedSha256: String,
+        expectedCertSha256: String,
         metadataRevision: Long,
     ) {
         val committed = prefs.edit()
             .putString(KEY_STATE, STATE_READY_TO_INSTALL)
             .putString(KEY_FILE_PATH, file.absolutePath)
             .putString(KEY_VERSION, version)
+            .putString(KEY_TARGET_VERSION, version)
+            .putLong(KEY_TARGET_VERSION_CODE, targetVersionCode)
             .putLong(KEY_EXPECTED_SIZE, expectedSizeBytes)
             .putString(KEY_EXPECTED_SHA256, expectedSha256)
+            .putString(KEY_EXPECTED_CERT_SHA256, expectedCertSha256)
             .putLong(KEY_METADATA_REVISION, metadataRevision)
             .commit()
         if (!committed) throw IOException("Unable to persist the verified update state")

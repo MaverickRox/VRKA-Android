@@ -1,0 +1,7 @@
+VRKA Android v5.1.4 focuses on security hardening, updater reliability, custom-runtime safety, and repository documentation clarity:
+
+- Bounded in-app updater HTTPS redirect handling (MAX_REDIRECTS = 5 across approved GitHub hosts) and persisted target versionCode verification across READY_TO_INSTALL state restoration.
+- Custom yt-dlp runtime SHA-256 verification, corrupted-file local repair when upstream digests match recorded metadata, verified badge gating (verifiedAt > 0L), and explicit experimental-binary warnings.
+- Shared CustomCommandPolicy enforcement across Settings templates and DownloadRequestFactory, blocking shell hooks, external downloaders, config/cookie files, and output overrides.
+- Fail-closed backup suppression (android:allowBackup="false"), diagnostic source-URL redaction with opt-in export warning, and explicit Browser Fallback GeckoView data-clearing controls.
+- Reorganized docs/ guides for new users, developers, security reviewers, and release operations, with historical release artifacts archived cleanly under docs/archive/.

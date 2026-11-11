@@ -42,7 +42,7 @@ update checks" switch. Manual checks are initiated from Settings.
   and website resources; uBlock Origin filters requests locally, and the VRKA Media Detector
   observes requests locally. Website traffic is governed by the site's own privacy policy.
 - No Discord integration, scrobbling service, lyrics provider, crash reporter, or application
-  backend is present in the v5.1.3 source.
+  backend is present in the v5.1.4 (or historical v5.1.3) source.
 
 ## Source references
 

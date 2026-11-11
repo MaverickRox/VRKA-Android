@@ -54,4 +54,4 @@ At build, branch was `vrka-5.0` with verified release commit. The annotated `v5.
 
 ## P. Validation
 
-The maintainer has physically inspected this final production-signed APK (`D821B65BE0D054F3232E7A3BB051408BC0150EB2A66CDF5E7D3FC9170D8DA487`) on the OnePlus 11 and accepted the product state for release; see [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md). Automated evidence and the hash are recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) and [ARTIFACT_MANIFEST_VRKA_5.0_2026-10-04.txt](ARTIFACT_MANIFEST_VRKA_5.0_2026-10-04.txt).
+The maintainer has physically inspected this final production-signed APK (`D821B65BE0D054F3232E7A3BB051408BC0150EB2A66CDF5E7D3FC9170D8DA487`) on the OnePlus 11 and accepted the product state for release; see [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md). Automated evidence and the hash are recorded in [RELEASE_EVIDENCE.md](../../RELEASE_EVIDENCE.md) and [ARTIFACT_MANIFEST_VRKA_5.0_2026-10-04.txt](ARTIFACT_MANIFEST_VRKA_5.0_2026-10-04.txt).
