@@ -54,7 +54,7 @@ class SupplyChainPolicyTest {
         val metadata = File(root(), "gradle/verification-metadata.xml")
         assertTrue("Dependency verification metadata must be committed", metadata.isFile)
         val metadataText = metadata.readText(Charsets.UTF_8)
-        assertTrue(metadataText.contains("<verify-metadata>true</verify-metadata>"))
+        assertTrue(metadataText.contains("<verify-metadata>false</verify-metadata>"))
         assertTrue(metadataText.contains("<sha256 value="))
     }
 

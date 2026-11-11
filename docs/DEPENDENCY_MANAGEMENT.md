@@ -38,6 +38,9 @@ after mavenLocal was removed; it is not generated from a local Maven repository.
 is committed with the lockfile.
 
 - Gradle verifies artifacts by default using this metadata.
+- Module metadata (`POM`/`.module`) is not checksum-verified; binary artifacts (`.jar`, `.aar`,
+  `.zip`) are. This keeps CI resolution independent of platform-specific metadata caches while
+  still requiring SHA-256 agreement for every binary artifact.
 - `verify-signatures` is disabled because checksum verification is the project baseline; PGP
   signatures are used for release manifests, not every third-party artifact.
 - A failed verification is a build failure, not a warning.
