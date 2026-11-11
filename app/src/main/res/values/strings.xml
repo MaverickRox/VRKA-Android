@@ -286,6 +286,7 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="runtime_badge_verified">EXECUTED</string>
     <string name="runtime_busy">Runtime operation in progress…</string>
     <string name="runtime_custom_warning">Custom forks are not covered by the upstream yt-dlp OpenPGP signature. The recorded SHA-256 only detects file changes; it is not proof of publisher authenticity. VRKA refuses to activate a fork that has not executed successfully on this device.</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">Install</string>
     <string name="runtime_install_failed">Installation failed.</string>
     <string name="runtime_remove">Remove</string>

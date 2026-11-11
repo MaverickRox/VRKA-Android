@@ -286,6 +286,7 @@
     <string name="runtime_badge_verified">চালিত</string>
     <string name="runtime_busy">রানটাইম কার্যক্রম চলছে…</string>
     <string name="runtime_custom_warning">কাস্টম ফোর্কগুলি আপস্ট্রিম yt-dlp OpenPGP স্বাক্ষরের আওতায় পড়ে না। রেকর্ড করা SHA-256 কেবল ফাইল পরিবর্তন শনাক্ত করে; এটি প্রকাশকের সত্যতার প্রমাণ নয়। এই ডিভাইসে সফলভাবে চালিত না হওয়া ফোর্ক সক্রিয় করতে VRKA অস্বীকার করে।</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">ইনস্টল করুন</string>
     <string name="runtime_install_failed">ইনস্টলেশন ব্যর্থ হয়েছে।</string>
     <string name="runtime_remove">সরান</string>

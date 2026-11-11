@@ -286,6 +286,7 @@
     <string name="runtime_badge_verified">تم تشغيله</string>
     <string name="runtime_busy">عملية على بيئة التشغيل قيد التنفيذ…</string>
     <string name="runtime_custom_warning">لا تشمل توقيع OpenPGP الرسمي لـ yt-dlp الـ forكات المخصصة. SHA-256 المسجّل يكشف تغيّر الملف فقط؛ وهو ليس دليلًا على أصالة الناشر. يرفض VRKA تفعيل fork لم يعمل بنجاح على هذا الجهاز.</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">تثبيت</string>
     <string name="runtime_install_failed">فشل التثبيت.</string>
     <string name="runtime_remove">إزالة</string>

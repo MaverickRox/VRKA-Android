@@ -124,9 +124,9 @@ class YtDlpRuntimeManager(
         val runtime = snapshot.activeRuntime()
         if (runtime == null) return applyBinary(stockBinary())
         val binary = binaryFor(runtime.id)
-        if (!binary.isFile) {
-            Log.w(TAG, "Active custom runtime ${runtime.id} is missing; reverting to stock")
-            saveSnapshot(snapshot.copy(activeKind = RuntimeKind.STOCK, activeId = null), "Custom runtime was missing; using stock yt-dlp.")
+        if (!binary.isFile || !recordedRuntimeMatches(runtime, binary)) {
+            Log.w(TAG, "Active custom runtime ${runtime.id} is missing or changed; reverting to stock")
+            saveSnapshot(snapshot.copy(activeKind = RuntimeKind.STOCK, activeId = null), "Custom runtime was missing or changed; using stock yt-dlp.")
             return applyBinary(stockBinary())
         }
         return applyBinary(binary)
@@ -146,6 +146,11 @@ class YtDlpRuntimeManager(
             val binary = binaryFor(id)
             if (!binary.isFile) {
                 return@synchronizedActivation Result.failure(IllegalStateException("Custom runtime binary is missing. Reinstall it."))
+            }
+            if (runtime.verifiedAt <= 0L || !recordedRuntimeMatches(runtime, binary)) {
+                return@synchronizedActivation Result.failure(
+                    IllegalStateException("Custom runtime failed its recorded SHA-256 verification. Reinstall it before activation."),
+                )
             }
             val applied = applyBinary(binary)
             applied.onSuccess {
@@ -431,6 +436,15 @@ class YtDlpRuntimeManager(
         if (target.parentFile == root) {
             runCatching { target.deleteRecursively() }
         }
+    }
+
+    private fun recordedRuntimeMatches(runtime: CustomRuntime, binary: File): Boolean {
+        if (runtime.sha256.length != 64 || runtime.verifiedAt <= 0L) return false
+        val actual = runCatching {
+            MessageDigest.getInstance("SHA-256").digest(binary.readBytes())
+                .joinToString("") { "%02x".format(it) }
+        }.getOrNull() ?: return false
+        return actual.equals(runtime.sha256, ignoreCase = true)
     }
 
     private fun applyBinary(binary: File): Result<Unit> = runCatching {

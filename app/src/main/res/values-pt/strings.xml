@@ -286,6 +286,7 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="runtime_badge_verified">EXECUTADO</string>
     <string name="runtime_busy">Operação no ambiente de execução em curso…</string>
     <string name="runtime_custom_warning">Os forks personalizados não estão abrangidos pela assinatura OpenPGP do yt-dlp. O SHA-256 registado apenas deteta alterações ao ficheiro; não prova a autenticidade do editor. O VRKA recusa ativar um fork que não tenha sido executado com sucesso neste dispositivo.</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">Instalar</string>
     <string name="runtime_install_failed">Falha na instalação.</string>
     <string name="runtime_remove">Remover</string>

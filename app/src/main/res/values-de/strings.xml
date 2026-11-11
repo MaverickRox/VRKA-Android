@@ -286,6 +286,7 @@ Möchten Sie parallele Downloads wirklich aktivieren?</string>
     <string name="runtime_badge_verified">AUSGEFÜHRT</string>
     <string name="runtime_busy">Runtime-Vorgang läuft…</string>
     <string name="runtime_custom_warning">Benutzerdefinierte Forks sind nicht durch die OpenPGP-Signatur von yt-dlp abgedeckt. Der aufgezeichnete SHA-256 erkennt nur Dateiänderungen; er ist kein Nachweis der Herausgeber-Authentizität. VRKA aktiviert keinen Fork, der auf diesem Gerät nicht erfolgreich ausgeführt wurde.</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">Installieren</string>
     <string name="runtime_install_failed">Installation fehlgeschlagen.</string>
     <string name="runtime_remove">Entfernen</string>

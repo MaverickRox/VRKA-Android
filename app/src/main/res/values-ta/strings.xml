@@ -286,6 +286,7 @@
     <string name="runtime_badge_verified">இயக்கப்பட்டது</string>
     <string name="runtime_busy">இயக்கச்சூழல் செயல்பாடு நடைபெறுகிறது…</string>
     <string name="runtime_custom_warning">தனிப்பயன் ஃபோர்க்குகள் yt-dlp இன் OpenPGP கையொப்பத்தால் பாதுகாக்கப்படுவதில்லை. பதிவுசெய்யப்பட்ட SHA-256 கோப்பு மாற்றங்களை மட்டுமே கண்டறியும்; இது வெளியீட்டாளரின் நம்பகத்தன்மைக்கான சான்றல்ல. இந்தச் சாதனத்தில் வெற்றிகரமாக இயங்காத ஃபோர்க்கை VRKA செயல்படுத்த மறுக்கிறது.</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">நிறுவு</string>
     <string name="runtime_install_failed">நிறுவல் தோல்வியடைந்தது.</string>
     <string name="runtime_remove">நீக்கு</string>

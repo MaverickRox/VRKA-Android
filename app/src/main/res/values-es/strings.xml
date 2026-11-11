@@ -286,6 +286,7 @@
     <string name="runtime_badge_verified">EJECUTADO</string>
     <string name="runtime_busy">Operación del entorno de ejecución en curso…</string>
     <string name="runtime_custom_warning">Los forks personalizados no están cubiertos por la firma OpenPGP de yt-dlp. El SHA-256 registrado solo detecta cambios en el archivo; no es prueba de autenticidad del editor. VRKA se niega a activar un fork que no se haya ejecutado correctamente en este dispositivo.</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">Instalar</string>
     <string name="runtime_install_failed">Error de instalación.</string>
     <string name="runtime_remove">Eliminar</string>

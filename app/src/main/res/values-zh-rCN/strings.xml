@@ -286,6 +286,7 @@
     <string name="runtime_badge_verified">已执行</string>
     <string name="runtime_busy">运行时操作进行中…</string>
     <string name="runtime_custom_warning">自定义分支不在 yt-dlp 上游 OpenPGP 签名的覆盖范围内。记录的 SHA-256 只能检测文件变化，并不能证明发布者身份。VRKA 不会激活从未在此设备上成功执行的分支。</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">安装</string>
     <string name="runtime_install_failed">安装失败。</string>
     <string name="runtime_remove">移除</string>
