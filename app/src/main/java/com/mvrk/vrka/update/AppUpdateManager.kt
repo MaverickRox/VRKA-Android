@@ -169,11 +169,14 @@ class AppUpdateManager(
                 val file = File(savedPath)
                 val release = loadStoredRelease(prefs)
                 val targetVersion = release?.version ?: savedVersion
+                val targetVersionCode = release?.manifest?.versionCode
+                    ?: prefs.getLong(AppUpdateDownloadWorker.KEY_TARGET_VERSION_CODE, 0L)
                 val error = if (targetVersion != null) {
                     verifyStagedApk(
                         context = context,
                         file = file,
                         targetVersion = targetVersion.toString(),
+                        targetVersionCode = targetVersionCode,
                         expectedSizeBytes = prefs.getLong(AppUpdateDownloadWorker.KEY_EXPECTED_SIZE, file.length()),
                         expectedSha256 = prefs.getString(AppUpdateDownloadWorker.KEY_EXPECTED_SHA256, null).orEmpty(),
                         expectedCertSha256 = prefs.getString(AppUpdateDownloadWorker.KEY_EXPECTED_CERT_SHA256, null).orEmpty(),
@@ -252,6 +255,7 @@ class AppUpdateManager(
             .remove(AppUpdateDownloadWorker.KEY_FILE_PATH)
             .remove(AppUpdateDownloadWorker.KEY_VERSION)
             .remove(AppUpdateDownloadWorker.KEY_TARGET_VERSION)
+            .remove(AppUpdateDownloadWorker.KEY_TARGET_VERSION_CODE)
             .remove(AppUpdateDownloadWorker.KEY_RELEASE_TAG)
             .remove(AppUpdateDownloadWorker.KEY_RELEASE_NAME)
             .remove(AppUpdateDownloadWorker.KEY_RELEASE_BODY)
@@ -363,6 +367,7 @@ class AppUpdateManager(
                 .putString(AppUpdateDownloadWorker.KEY_STATE, AppUpdateDownloadWorker.STATE_DOWNLOADING)
                 .putString(AppUpdateDownloadWorker.KEY_VERSION, release.version.toString())
                 .putString(AppUpdateDownloadWorker.KEY_TARGET_VERSION, release.version.toString())
+                .putLong(AppUpdateDownloadWorker.KEY_TARGET_VERSION_CODE, release.manifest?.versionCode ?: 0L)
                 .putString(AppUpdateDownloadWorker.KEY_RELEASE_TAG, release.tagName)
                 .putString(AppUpdateDownloadWorker.KEY_RELEASE_NAME, release.name)
                 .putString(AppUpdateDownloadWorker.KEY_RELEASE_BODY, release.body)

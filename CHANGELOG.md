@@ -2,36 +2,38 @@
 
 All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
 
-## [Unreleased] - Post-v5.1.3 supply-chain and privacy hardening
+## [5.1.4] - 2026-11-11
 
-This maintenance work does not change v5.1.3, its tag, assets, signatures, checksums, version
-metadata, or production signing material.
+VRKA Android 5.1.4 (`versionCode 50104`) ships all post-v5.1.3 security, runtime, updater, supply-chain, and documentation improvements while preserving the Room storage engine and production signing identity (`com.mvrk.vrka`).
 
-- Removed unrestricted `mavenLocal()` from production dependency resolution, added a content filter
-  for Mozilla Maven, and committed dependency lockfiles plus SHA-256 verification metadata.
-- Added pinned GitHub Actions, a pull-request dependency-review workflow, explicit strict
-  dependency verification in CI, release lint enforcement, and lockfile stability checks;
-  restored the single permanent `main` development branch policy by disabling automated
-  Dependabot version/security-update PRs while keeping GitHub Dependabot vulnerability alerts enabled.
-- Added source-grounded release provenance, signing-key custody/rotation, native binary inventory,
-  dependency management, CI security, and privacy/network documentation.
-- Corrected current-release documentation to v5.1.3 while preserving the v5.1.2 historical record
-  and the v5.0.2 one-time upgrade bridge.
-- Clarified the no-analytics claim as a narrower source-verifiable statement and documented all
-  application-controlled network destinations.
-- Added custom-runtime checksum re-verification (`activeBinary()` fail-closed fallback to stock),
-  explicit untrusted-runtime confirmation showing origin, version, and SHA-256, and unit tests
-  covering install/activation/update tamper and rollback handling (`YtDlpRuntimeManagerTest`).
-- Shared `CustomCommandPolicy` validation and filtering with `DownloadRequestFactory` for
-  case-insensitive blocked flags, allowlisted custom headers, control-character stripping, and
-  argument escaping coverage.
-- Normalized checked-in extension and OpenPGP key assets to LF in `.gitattributes`, updated
-  `docs/native-binaries.json` and `docs/NATIVE_BINARY_INVENTORY.md` to canonical LF hashes plus
-  stock `res/raw/ytdlp`, `res/raw/ytdlp_pubkey.asc`, and transitive AAR native `.so` inventory.
-- Added CI `devRelease` R8 `mapping.txt` + `mapping.sha256` verification/retention and concrete
-  private production mapping archival guidance, reconciled `CURRENT_PRODUCTION_ARCHITECTURE.md` to
-  Room (`VrkaDatabase`), updated `docs/PRIVACY_NETWORK.md`, and added a hermetic `K1 -> K2`
-  key-rotation transition test fixture (`ReleaseManifestVerifierTest`).
+### User Features & Runtime Controls
+- Require an explicit **Untrusted custom runtime** confirmation dialog displaying fork identity and full SHA-256 before installing or activating custom `yt-dlp` zipapps, plus visible SHA-256 metadata in Settings (`SettingsScreen`).
+- Repair locally corrupted custom `yt-dlp` binaries cleanly when reinstalling/updating the same tag if the upstream SHA-256 matches the verified record, while continuing to reject unexpected upstream binary mutations; ensure `YtDlpRuntimeManager` always resets `working = false` on early failure paths (`YtDlpRuntimeManager`).
+
+### Reliability & Storage
+- Persist `KEY_TARGET_VERSION_CODE` across `AppUpdateManager.downloadAndInstall`, `AppUpdateDownloadWorker.markReady`, and `restoreSavedUpdateState` so install-time archive verification checks exact target version codes in addition to semantic version strings and signer sets.
+- Preserve Room (`VrkaDatabase`) schema version 1 and `SettingsRepository` backward compatibility for direct upgrades from v5.1.3 and v5.1.2 (and one-time v5.0.2 -> v5.1.2 bridge).
+
+### Security & Privacy
+- Share `CustomCommandPolicy` option/header/control-character validators directly with `DownloadRequestFactory.safeCustomArguments()` for consistent case-insensitive blocking of execution, path, proxy, and credential-header arguments without shell invocation.
+- Re-verify installed custom `yt-dlp` SHA-256 hashes before use (`activeBinary()`, `applyActiveRuntime()`, `activateCustom()`), reverting fail-closed to stock if altered or missing.
+- Clarify the privacy boundary as a narrower source-verifiable claim (`docs/PRIVACY_NETWORK.md`) and document all application-controlled GitHub destinations (`MAX_REDIRECTS = 5`, 5 approved GitHub hosts), custom runtime risk, and failure-only URL redaction.
+
+### Supply Chain & CI/CD
+- Remove unrestricted `mavenLocal()` from production resolution, restrict Mozilla Maven with an explicit group regex, commit `app/gradle.lockfile` + `gradle/verification-metadata.xml` (`--dependency-verification=strict`), pin all GitHub Actions workflows to 40-char commit SHAs, enforce `lintRelease` and `devRelease` R8 `mapping.txt` + `mapping.sha256` CI artifacts, normalize checked-in JS/key/manifest assets to LF in `.gitattributes`, and enforce the single permanent `main` development branch policy (Dependabot version/security PR creation disabled; GitHub vulnerability alerts active).
+- Complete `docs/native-binaries.json` and `docs/NATIVE_BINARY_INVENTORY.md` with LF canonical hashes, stock `res/raw/ytdlp`, `res/raw/ytdlp_pubkey.asc`, and transitive AAR native `.so` libraries.
+
+### Performance & UI
+- Keep UI verification clean without compiler warnings in the Settings runtime section (removed dead local string lookup and gated the verified badge on `verifiedAt > 0L`).
+
+### Compatibility & Migration
+- Verified direct compatibility for upgrading existing v5.1.3 (`50103`) and v5.1.2 (`50102`) installations in place; retain historical documentation for the one-time v5.0.2 -> v5.1.2 bridge.
+
+### Testing & Verification
+- Added regression tests covering custom runtime tamper/repair/working-state reset (`YtDlpRuntimeManagerTest`), command/header filtering (`DownloadRequestFactoryTest`, `CustomCommandTemplatesTest`), v5.1.3 -> v5.1.4 updater selection/anti-downgrade (`AppUpdateManagerTest`), hermetic `K1 -> K2` key rotation (`ReleaseManifestVerifierTest`), and supply-chain/single-branch invariants (`SupplyChainPolicyTest`).
+
+### Documentation & Presentation
+- Remove the obsolete v5.1.1 framed showcase composite (`vrka-v5.1.1-showcase.png`), audit all screenshot captions against verified unframed captures, archive v5.0 / early v5.1.0 snapshot docs into `docs/archive/`, create structured `docs/user-guide/`, `docs/developer/`, `docs/security/`, `docs/release/`, and `docs/README.md` guides, and update `README.md`, `SECURITY.md`, `SECURITY_REVIEW.md`, `CURRENT_PRODUCTION_ARCHITECTURE.md`, `RELEASE_NOTES.md`, `RELEASE_EVIDENCE.md`, `KNOWN_LIMITATIONS.md`, `DEVICE_VALIDATION.md`, and `TEST_RESULTS.md`.
 
 ## [5.1.3] - 2026-11-10
 

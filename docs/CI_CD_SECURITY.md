@@ -50,12 +50,12 @@ Get-FileHash .\app\build\outputs\mapping\release\mapping.txt -Algorithm SHA256
 ```
 
 Mapping files must never contain signing credentials (verified against `devRelease` outputs) and are
-retained solely for private crash-stack deobfuscation. v5.1.3 has no published mapping file.
+retained solely for private crash-stack deobfuscation. No mapping file is published with release binaries.
 
 ## Improvement boundaries
 
 - CI does not rebuild the published APK and does not verify a reproducible native build.
-- No GitHub artifact attestation exists for v5.1.3; future releases should generate one as
+- No GitHub artifact attestation exists for v5.1.3 or v5.1.4; future releases should generate one as
   described in [RELEASE_PROVENANCE.md](RELEASE_PROVENANCE.md).
 - Dependency review and Dependabot vulnerability alerts reduce supply-chain risk but do not replace
   review of repository ownership, native artifact provenance, or signing-key custody.

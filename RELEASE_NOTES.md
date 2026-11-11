@@ -1,4 +1,28 @@
-# VRKA Android 5.1.3 — Release Notes
+# VRKA Android 5.1.4 — Release Notes
+
+> [!IMPORTANT]
+> **Upgrading to v5.1.4:**
+> - **Users on v5.1.3 or v5.1.2:** Update directly through **Settings -> Check for Updates** or install `VRKA-Android-v5.1.4.apk` over your existing install without uninstalling. Signing identity is unchanged, so Queue, History, Settings, and custom templates remain intact (and v5.1.2 JSON data imports automatically into Room on first launch).
+> - **Users on v5.0.2 or older:** Install `VRKA-Android-v5.1.2.apk` from the [v5.1.2 release page](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) manually over v5.0.2 first (without uninstalling), launch once, then update normally to v5.1.4.
+
+VRKA Android **5.1.4** (`versionCode 50104`, package `com.mvrk.vrka`) delivers security, custom runtime, custom command policy, updater, supply-chain, and documentation improvements on top of the Room storage engine introduced in v5.1.3.
+
+## Highlights
+
+- **Explicit Untrusted Custom Runtime Confirmation & Verification:** Installing or activating a custom `yt-dlp` zipapp fork displays an explicit untrusted-runtime warning with the repository, version, and full SHA-256 digest (`SettingsScreen`). Active custom binaries are continuously re-verified against their pinned SHA-256 and revert fail-closed to stock if missing or modified; corrupted local binaries can also be repaired cleanly by reinstalling the verified tag (`YtDlpRuntimeManager`).
+- **Unified Custom Command Policy:** `DownloadRequestFactory` and `CustomCommandPolicy` now share exact validation logic to reject execution hooks, output/path overrides, proxies, insecure TLS flags, positional URL injection, and persistent credential headers (`Cookie`, `Authorization`) while allowing safe metadata headers.
+- **Hardened App Self-Updater Persistence:** `AppUpdateManager` and `AppUpdateDownloadWorker` persist and re-verify `KEY_TARGET_VERSION_CODE` across background download completion, state restoration, and installer handoff.
+- **Supply-Chain & Build Integrity Controls:** Strict Gradle dependency locking and SHA-256 verification (`--dependency-verification=strict`), zero `mavenLocal()` fallback, SHA-pinned GitHub Actions, release lint checks, `devRelease` R8 mapping retention in CI, LF asset normalization, and a documented native binary inventory.
+- **Overhauled Documentation & Clean Showcase:** Removed the obsolete v5.1.1 framed showcase image and reorganized documentation into structured guides under [docs/README.md](docs/README.md) (`user-guide/`, `developer/`, `security/`, `release/`, and `archive/`).
+
+## Compatibility & Verification Summary
+
+- **Package / ABI / SDK:** `com.mvrk.vrka` • `arm64-v8a` only • Min SDK 26 (`Android 8.0`) • Target SDK 36 (`Android 16`).
+- **Verification:** Full local verification (`testDebugUnitTest`, `lintDebug`, `lintRelease`, `assembleDebug`, `assembleDebugAndroidTest`, `assembleDevRelease`), live GitHub Actions CI + API 36 provider instrumentation, production APK verification (`apksigner`, `aapt2`, `zipalign`), detached OpenPGP manifest signature verification (`0xD519380BEBA1B9F7`), and API 36 emulator in-place upgrade testing from `v5.1.3` -> `v5.1.4` are recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md), [TEST_RESULTS.md](TEST_RESULTS.md), and [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
+
+---
+
+## Historical: VRKA Android 5.1.3 — Release Notes
 
 > [!IMPORTANT]
 > **Users on v5.0.2 still need one manual install.** Install the official v5.1.2 APK over v5.0.2

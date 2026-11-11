@@ -186,9 +186,13 @@ class YtDlpRuntimeManager internal constructor(
         }
         try {
             val repo = CustomRuntimeSource.normalizeRepo(repoInput)
-                ?: return@withContext Result.failure(IllegalArgumentException("Enter a GitHub repository as owner/repo."))
+                ?: return@withContext failOperation(
+                    "Enter a GitHub repository as owner/repo.",
+                    IllegalArgumentException("Enter a GitHub repository as owner/repo."),
+                )
             if (repo in UPSTREAM_REPOS) {
-                return@withContext Result.failure(
+                return@withContext failOperation(
+                    "This repository is managed as the stock runtime. Choose a custom fork.",
                     IllegalArgumentException("This repository is managed as the stock runtime. Choose a custom fork."),
                 )
             }
@@ -196,7 +200,11 @@ class YtDlpRuntimeManager internal constructor(
             val candidate = fetchCandidate(repo)
             val snapshot = state.value.snapshot
             val existing = snapshot.runtimes.firstOrNull { it.repo == repo }
-            if (existing != null && existing.tag == candidate.tag && binaryFor(existing.id).isFile) {
+            if (existing != null &&
+                existing.tag == candidate.tag &&
+                binaryFor(existing.id).isFile &&
+                recordedRuntimeMatches(existing, binaryFor(existing.id))
+            ) {
                 publishWorking(false, "${candidate.tag} is already installed.")
                 return@withContext Result.success("${candidate.tag} is already installed.")
             }
@@ -219,9 +227,10 @@ class YtDlpRuntimeManager internal constructor(
             if (activation.isFailure) {
                 saveSnapshot(updated.copy(activeKind = RuntimeKind.STOCK, activeId = null), "")
                 notifyActiveChanged()
-                return@withContext Result.failure(
-                    IllegalStateException("Installed ${candidate.tag}, but activation failed: ${activation.exceptionOrNull()?.message.orEmpty()}"),
-                )
+                val failureMessage =
+                    "Installed ${candidate.tag}, but activation failed: ${activation.exceptionOrNull()?.message.orEmpty()}"
+                publishWorking(false, failureMessage)
+                return@withContext Result.failure(IllegalStateException(failureMessage))
             }
             notifyActiveChanged()
             publishWorking(false, "Custom runtime ${candidate.tag} installed and active.")
@@ -245,10 +254,17 @@ class YtDlpRuntimeManager internal constructor(
         try {
             val snapshot = state.value.snapshot
             val existing = snapshot.runtimes.firstOrNull { it.id == id }
-                ?: return@withContext Result.failure(IllegalArgumentException("Custom runtime not found."))
+                ?: return@withContext failOperation(
+                    "Custom runtime not found.",
+                    IllegalArgumentException("Custom runtime not found."),
+                )
             publishWorking(true, "Checking releases for ${existing.repo}")
             val candidate = fetchCandidate(existing.repo)
-            if (candidate.tag == existing.tag && binaryFor(id).isFile) {
+            val existingBinary = binaryFor(id)
+            if (candidate.tag == existing.tag &&
+                existingBinary.isFile &&
+                recordedRuntimeMatches(existing, existingBinary)
+            ) {
                 publishWorking(false, "${existing.repo} is up to date (${existing.tag}).")
                 return@withContext Result.success("${existing.repo} is up to date (${existing.tag}).")
             }
@@ -261,8 +277,8 @@ class YtDlpRuntimeManager internal constructor(
             _state.value = _state.value.copy(updateTags = _state.value.updateTags - id)
             if (updated.activeRuntime()?.id == id) {
                 applyBinary(binaryFor(id)).onFailure { error ->
-                    return@withContext Result.failure(
-                        IllegalStateException("Updated runtime could not be activated: ${error.message.orEmpty()}"),
+                    return@withContext failOperation(
+                        "Updated runtime could not be activated: ${error.message.orEmpty()}",
                     )
                 }
                 notifyActiveChanged()
@@ -510,6 +526,14 @@ class YtDlpRuntimeManager internal constructor(
 
     private fun publishWorking(working: Boolean, message: String) {
         _state.value = _state.value.copy(working = working, message = message)
+    }
+
+    private fun failOperation(
+        message: String,
+        error: Throwable = IllegalStateException(message),
+    ): Result<String> {
+        publishWorking(false, message)
+        return Result.failure(error)
     }
 
     private fun saveSnapshot(snapshot: RuntimeSnapshot, message: String) {

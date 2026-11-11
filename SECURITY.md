@@ -4,11 +4,12 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 5.1.3 | :white_check_mark: | Current official stable release |
+| 5.1.4 | :white_check_mark: | Current official stable release |
+| 5.1.3 | :white_check_mark: | Prior stable release |
 | 5.1.2 | :white_check_mark: | Prior stable release; supported upgrade bridge for v5.0.2 |
 | 5.1.1 | :white_check_mark: | Prior stable release |
 | 5.1.0 | :white_check_mark: | Prior stable release |
-| 5.0.2 and older | :x: | Unsupported; use the one-time v5.1.2 bridge, then update to v5.1.3 |
+| 5.0.2 and older | :x: | Unsupported; use the one-time v5.1.2 bridge, then update to v5.1.4 |
 
 ## Reporting a Vulnerability
 
@@ -16,12 +17,12 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 
 ## Release Integrity
 
-The official v5.1.3, v5.1.2, v5.1.1, and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation. v5.1.3 provenance and its relationship to the release tag are documented in [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md).
+The official v5.1.4, v5.1.3, v5.1.2, v5.1.1, and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation. Official v5.1.4 and historical v5.1.3 provenance and their relationship to their release tags are documented in [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md).
 
-- **v5.1.3 Release APK:** `VRKA-Android-v5.1.3.apk`
-- **v5.1.3 SHA-256:** `c9f58d3a97d728315b51fc92f43b5f54b88ae4ad9c25b3b22ea0cd8338549ddf`
-- **v5.1.3 updater manifest SHA-256:** `3e5f8593731e401c236b74c1ce727e831c80c71d05c486ab92a04fb5597e528c`
-- **v5.1.2 Release APK (historical):** `VRKA-Android-v5.1.2.apk`
+- **v5.1.4 Release APK:** `VRKA-Android-v5.1.4.apk`
+- **v5.1.4 SHA-256:** `Pending post-CI release build (populated in release evidence commit)`
+- **v5.1.4 updater manifest SHA-256:** `Pending post-CI release build (populated in release evidence commit)`
+- **v5.1.3 Release APK (historical):** `VRKA-Android-v5.1.3.apk`
 - **v5.1.2 SHA-256:** `3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a`
 - **v5.1.1 Release APK (historical):** `VRKA-Android-v5.1.1.apk`
 - **v5.1.1 SHA-256:** `781d7910d9b5855d4060c247c09ac3f89156ebfd202c8af5385eea816380f4f8`

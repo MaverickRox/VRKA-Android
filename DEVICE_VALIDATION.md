@@ -1,5 +1,9 @@
 # Device Validation & Subsystem Verification Record — VRKA Android
 
+## v5.1.4 release validation
+
+Pre-release `main` verification covers the full JVM unit suite, Android lint (`lintDebug` / `lintRelease`), strict dependency verification, and `devRelease` R8/minify build (`assembleDevRelease`), plus GitHub Actions CI (`Unit tests, lint and development build` and `Real MediaStore and SAF provider tests (API 36)`). Live post-publication asset re-download verification and API 36 emulator in-app updater + direct upgrade tests (`v5.1.3` -> `v5.1.4`, confirming Room History & Settings preservation) are recorded once the `v5.1.4` release APK is published. Historical release records below remain unchanged.
+
 ## v5.1.3 release validation — API 36 emulator
 
 Validation date: 2026-11-10. This section records the v5.1.3 release checks and leaves the
@@ -149,4 +153,4 @@ The following areas remain explicitly unverified on physical hardware:
 
 ## 4. Historical Reference: VRKA Android 5.1.0
 
-The 5.1.0 release APK was verified through automated unit tests (601 tests across 58 test suites, 0 failures), release lint (275 warnings, 0 errors), R8 minified release compilation, APK metadata and signature verification via `aapt2` and `apksigner`, and emulator-based UI verification. Physical OnePlus 11 testing was unavailable for the final 5.1.0 publication pass. The historical [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md) documents the earlier 5.0 APK and does not represent physical hardware validation for 5.1.0.
+The 5.1.0 release APK was verified through automated unit tests (601 tests across 58 test suites, 0 failures), release lint (275 warnings, 0 errors), R8 minified release compilation, APK metadata and signature verification via `aapt2` and `apksigner`, and emulator-based UI verification. Physical OnePlus 11 testing was unavailable for the final 5.1.0 publication pass. The historical [PHYSICAL_VALIDATION_REPORT.md](docs/archive/PHYSICAL_VALIDATION_REPORT.md) documents the earlier 5.0 APK and does not represent physical hardware validation for 5.1.0.

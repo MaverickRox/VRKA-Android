@@ -14,4 +14,4 @@ The maintainer has manually inspected this exact production-signed artifact on t
 - Navigation pill geometry, equal slot-based dimensions, and liquid-glass optics are accepted for 5.0.
 - The product state is approved for official release.
 
-No automated emulator, ADB, or device test framework was used in the engineering run; validation was performed directly by the maintainer. Automated build, unit-test (348 passed), lint, resource, JavaScript, and signature evidence is in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+No automated emulator, ADB, or device test framework was used in the engineering run; validation was performed directly by the maintainer. Automated build, unit-test (348 passed), lint, resource, JavaScript, and signature evidence is in [RELEASE_EVIDENCE.md](../../RELEASE_EVIDENCE.md).

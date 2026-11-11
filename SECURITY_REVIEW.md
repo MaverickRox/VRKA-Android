@@ -1,3 +1,27 @@
+# VRKA Android 5.1.4 — Release Security Review
+
+Review date: 2026-11-11. Historical security reviews for `v5.1.2`, `v5.1.1`, `v5.1.0`, and `v5.0` below are preserved unchanged.
+
+## Security-relevant changes since v5.1.3
+
+1. **Bounded HTTPS redirect and approved-host validation (`AppUpdateManager`, `AppUpdateDownloadPolicy`)**:
+   - Redirect chains during updater metadata/manifest/APK downloads are explicitly bounded to `MAX_REDIRECTS = 5`.
+   - Every hop is constrained to HTTPS over approved GitHub hosts (`api.github.com`, `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, and `raw.githubusercontent.com`).
+2. **Staged APK `versionCode` persistence and restore verification (`AppUpdateDownloadWorker`, `AppUpdateManager`)**:
+   - `KEY_TARGET_VERSION_CODE` (alongside `KEY_TARGET_VERSION` and `KEY_EXPECTED_CERT_SHA256`) is durably persisted when entering `READY_TO_INSTALL`.
+   - `restoreSavedUpdateState()` and install-time handoff re-verify the staged APK against the persisted target `versionCode` in addition to SHA-256, package ID (`com.mvrk.vrka`), production signing certificate SHA-256 (`9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`), and non-debuggable status.
+3. **Unified custom yt-dlp template policy (`CustomCommandPolicy`, `DownloadRequestFactory`)**:
+   - Both Settings custom template editing and normal request assembly enforce the shared `CustomCommandPolicy`, blocking shell execution flags, external downloaders, config/cookie files, and output-path overrides (`argv`-only execution; Browser Fallback strips custom template flags and custom HTTP headers).
+4. **Custom yt-dlp runtime integrity and UI trust gating (`YtDlpRuntimeManager`, `SettingsScreen`)**:
+   - Custom `yt-dlp` zipapps continue to undergo SHA-256 verification and CPython probing prior to activation; unverified or experimental binaries trigger explicit confirmation warnings before installation.
+   - Verified runtime status pills (`runtime_badge_verified`) are strictly gated on `runtime.verifiedAt > 0L`.
+   - Re-installing or updating over a corrupted local runtime file repairs the local binary when the upstream SHA-256 matches `existing.sha256` (`recordedRuntimeMatches`), while still rejecting silent upstream binary mutation on an unchanged release tag, and ensures `working = false` is restored cleanly on early or activation failures.
+5. **Backup, privacy, and diagnostic boundaries (`AndroidManifest.xml`, diagnostics, GeckoView)**:
+   - `android:allowBackup="false"` suppresses automatic Android cloud/ADB backup of database, preferences, and runtime state.
+   - Diagnostic logs redact query tokens, signed CDN URLs, and source userinfo by default, and diagnostic export displays an explicit warning and opt-in before including full original URLs.
+
+---
+
 # VRKA Android 5.1.2 — Post-Release Updater Security Review
 
 **Date:** 2026-11-09
@@ -204,4 +228,4 @@ This unreleased remediation strengthens publication durability and provider safe
 
 ## Verification boundary
 
-The clean build passed 348 unit tests and release lint (67 warnings, one hint, no errors or fatal findings). APK metadata and packaged assets were inspected. No emulator, ADB, physical device, or dynamic network interception was used. Browser Fallback remains dependent on yt-dlp and site behavior and does not bypass DRM, authentication, payment, CAPTCHA, or other access controls. See [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for exact artifact metadata and [PHYSICAL_VALIDATION_REPORT.md](PHYSICAL_VALIDATION_REPORT.md) for device-test status.
+The clean build passed 348 unit tests and release lint (67 warnings, one hint, no errors or fatal findings). APK metadata and packaged assets were inspected. No emulator, ADB, physical device, or dynamic network interception was used. Browser Fallback remains dependent on yt-dlp and site behavior and does not bypass DRM, authentication, payment, CAPTCHA, or other access controls. See [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) for exact artifact metadata and [PHYSICAL_VALIDATION_REPORT.md](docs/archive/PHYSICAL_VALIDATION_REPORT.md) for device-test status.

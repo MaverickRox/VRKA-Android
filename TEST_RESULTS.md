@@ -1,5 +1,14 @@
 # VRKA Android — Test Results
 
+## v5.1.4 release verification (pre-publication CI / local baseline)
+
+Validation date: 2026-11-11. Historical release records (`v5.1.3` through `v5.0.2`) below are preserved unchanged.
+
+- **JVM Unit Test Suite (`testDebugUnitTest`):** `849` tests across `80` suites — `849` passed, `0` failed, `0` errors, `0` skipped (executed with `--no-daemon --no-configuration-cache --dependency-verification=strict`).
+- **Android Lint:** `lintDebug` (`0` errors, `301` warnings, `305` total issues) and `lintRelease` (`0` errors, `300` warnings, `304` total issues).
+- **Compilation & Build Tasks:** `compileDebugAndroidTestKotlin`, `compileReleaseKotlin`, `assembleDebug`, `assembleDebugAndroidTest`, and `assembleDevRelease` all succeeded (`devRelease` R8 mapping `app/build/outputs/mapping/devRelease/mapping.txt`: `81,677,479` bytes, SHA-256 `1a745660c1bd6af6e99344ca53c5f5bbfd47080418c560fff48e29a411f7c38a`).
+- **Pending in subsequent release steps:** GitHub Actions CI (`Unit tests, lint and development build` and `Real MediaStore and SAF provider tests (API 36)`) on commit `C1`, production-signed `assembleRelease`, signed manifest `C2`, and live post-publish API 36 emulator upgrade validation in `C3`.
+
 ## Post-v5.1.3 supply-chain hardening on `main`
 
 Date: 2026-11-11. This section records unreleased maintenance after v5.1.3; the v5.1.3 release
@@ -192,7 +201,7 @@ The 5.1.0 test suite covers full 14-language key parity, tag normalization, RTL 
 
 ## Device boundary
 
-Physical OnePlus 11 hardware was unavailable during final 5.1.0 publication. Emulator-based testing and automated verification suites passed. The earlier [5.0 physical validation report](PHYSICAL_VALIDATION_REPORT.md) remains historical context.
+Physical OnePlus 11 hardware was unavailable during final 5.1.0 publication. Emulator-based testing and automated verification suites passed. The earlier [5.0 physical validation report](docs/archive/PHYSICAL_VALIDATION_REPORT.md) remains historical context.
 
 ## APK
 
@@ -216,7 +225,7 @@ The added updater coverage checks WorkManager persistent background downloads, r
 
 ## Device boundary
 
-No emulator, ADB, device farm, or physical-device testing was performed for 5.0.2. The separate [5.0 physical validation report](PHYSICAL_VALIDATION_REPORT.md) is historical and applies only to that release APK.
+No emulator, ADB, device farm, or physical-device testing was performed for 5.0.2. The separate [5.0 physical validation report](docs/archive/PHYSICAL_VALIDATION_REPORT.md) is historical and applies only to that release APK.
 
 ## APK
 

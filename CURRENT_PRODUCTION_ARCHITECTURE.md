@@ -1,15 +1,15 @@
-# VRKA Android 5.1.3 — Current Production Architecture
+# VRKA Android 5.1.4 — Current Production Architecture
 
-This document defines the architecture of the official VRKA Android v5.1.3 release. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Subsystem verification and device validation evidence are recorded in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
+This document defines the architecture of the official VRKA Android v5.1.4 release. Release-specific build, cryptographic, and test evidence is recorded in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Subsystem verification and device validation evidence are recorded in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
 > [!NOTE]
-> **v5.1.3 uses the Room/SQLite storage authority.** The v5.1.2 APK used JSON `JobStore`,
-> `PublicationJournal`, and `StagingCleanupStore` files. v5.1.3 imports their data through a
+> **v5.1.3 introduced and v5.1.4 retains the Room/SQLite storage authority.** The v5.1.2 APK used JSON `JobStore`,
+> `PublicationJournal`, and `StagingCleanupStore` files. v5.1.3+ imports their data through a
 > crash-safe legacy importer and uses Room for current jobs, publication state, and cleanup
 > obligations. The migration is documented separately in
 > [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) and
-> [docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md). The v5.1.2 artifact and evidence remain
-> historical and unchanged.
+> [docs/STORAGE_MIGRATION.md](docs/STORAGE_MIGRATION.md). The v5.1.2 and v5.1.3 artifacts and
+> evidence remain historical and unchanged.
 
 ---
 
@@ -17,7 +17,7 @@ This document defines the architecture of the official VRKA Android v5.1.3 relea
 
 VRKA Android is a native Android media downloader and passive web stream discovery application built with **Jetpack Compose** and **Kotlin Coroutines**. It has no application analytics, advertising, or telemetry SDK and does not upload History, diagnostics, or queue data to an application backend. Documented update checks and user-requested media/browser traffic are described in [docs/PRIVACY_NETWORK.md](docs/PRIVACY_NETWORK.md).
 
-The 5.1.0 and 5.1.1 releases established the following core architectural pillars, retained by 5.1.2 and 5.1.3:
+The 5.1.0 and 5.1.1 releases established the following core architectural pillars, retained by 5.1.2, 5.1.3, and 5.1.4:
 - **Primary Transfer Engine**: `yt-dlp` is the primary and sole transfer engine for both direct downloads and Browser Fallback acquisitions.
 - **Browser Fallback Engine**: Mozilla `GeckoView` operates in a task-scoped private session to load protected pages and observe media streams.
 - **Media Candidate Discovery**: An internal first-party `VRKA Media Detector` WebExtension passively intercepts media requests and DOM elements, passing candidates to native Kotlin via `GeckoMediaBridge`.
@@ -31,7 +31,7 @@ The 5.1.0 and 5.1.1 releases established the following core architectural pillar
 
 ## 2. Interface Localization & Multilingual Architecture
 
-VRKA Android 5.1.3 retains complete interface localization across **14 distinct languages** plus **System Default**:
+VRKA Android 5.1.4 retains complete interface localization across **14 distinct languages** plus **System Default**:
 
 | Locale Tag | Language | Native Name | Layout Direction | Resource Directory |
 |---|---|---|---|---|
@@ -82,7 +82,7 @@ VRKA Android 5.1.3 retains complete interface localization across **14 distinct 
 1. **Intake & Request Construction**:
    - The user inputs a URL directly or shares a link via the Android Share Sheet.
    - `VrkaDownloadManager` persists a durable job entry in Room (`VrkaDatabase`) via `RoomStorageRepository` and updates the UI `StateFlow` cache after commit.
-   - `DownloadRequestFactory` constructs argument lists (`argv`) for `yt-dlp` without invoking a shell.
+   - `DownloadRequestFactory` constructs argument lists (`argv`) for `yt-dlp` without invoking a shell, enforcing `CustomCommandPolicy` consistently with Settings custom-template validation to reject shell hooks, external downloaders, config/cookie file flags, and output-path overrides.
    - HTTP headers (`Referer`, `Origin`, custom headers) are validated against RFC 7230 token specifications and CRLF injection rejection. Sensitive tokens and cookies are redacted (`[REDACTED]`) from logs, crash reports, and UI state.
 2. **Extraction & Transfer**:
    - `yt-dlp` executes stream extraction and downloading directly to an isolated temporary staging directory (`cacheDir/staging/<jobId>`).
@@ -168,7 +168,7 @@ When direct `yt-dlp` extraction fails due to anti-bot challenges (e.g., Cloudfla
 
 ## 6. Application Self-Updater Subsystem
 
-VRKA Android 5.1.3 retains the independent, cryptographically authenticated self-updater targeting official GitHub releases.
+VRKA Android 5.1.4 retains the independent, cryptographically authenticated self-updater targeting official GitHub releases.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -192,15 +192,15 @@ VRKA Android 5.1.3 retains the independent, cryptographically authenticated self
 │  │                                                                       │
 │  ├── 4. WorkManager Download:                                            │
 │  │      • Stream APK to cacheDir/updates/app-update-<code >.download.tmp │
-│  │      • Validate HTTPS origin and host bounds                          │
+│  │      • Enforce HTTPS, approved GitHub hosts, and MAX_REDIRECTS = 5    │
 │  │                                                                       │
 │  ├── 5. Two-Stage Installation Verification:                             │
 │  │      • Stage 1 (Archive Integrity on .tmp): Zip archive validity,     │
 │  │        SHA-256 digest match, package ID ("com.mvrk.vrka"),           │
 │  │        versionCode, and signer certificate SHA-256.                   │
 │  │      • Stage 2 (Staged File Integrity): Atomic rename to canonical    │
-│  │        VRKA-Android-vX.Y.Z.apk, directory confinement, non-debuggable │
-│  │        flag, and FileProvider content URI generation.                 │
+│  │        VRKA-Android-vX.Y.Z.apk, KEY_TARGET_VERSION_CODE persistence,  │
+│  │        restore-time re-verification, non-debuggable flag, and URI.    │
 │  │                                                                       │
 │  └── 6. Android PackageInstaller:                                        │
 │         • Launch ACTION_VIEW intent with FLAG_GRANT_READ_URI_PERMISSION  │
@@ -223,6 +223,7 @@ In-app component updates are managed independently from application self-updates
 - **Concurrency Protection**: Strict single-flight locking per component prevents duplicate or spam requests.
 - **Dynamic Version Introspection**: `InstalledComponentVersionReader` dynamically reads `yt_dlp/version.py` directly from the active zipapp runtime or from bundled `R.raw.ytdlp` using `ZipFile` stream inspection.
 - **Network Guards**: Bounded connect (6s) and read (6s) timeouts, an 8-second per-component deadline, and a 64 KiB response cap protect against slow or hanging connections.
+- **Custom Runtime Controls (`YtDlpRuntimeManager`)**: Custom `yt-dlp` binaries require a verified SHA-256 pin for trusted activation, gate the verified status pill strictly on `verifiedAt > 0L`, warn and require confirmation before installing unverified or experimental binaries, repair corrupted local runtime files on re-install/update when the upstream binary hash matches the recorded digest while still rejecting silent upstream mutations, and reset active working state cleanly on activation failures.
 
 ---
 
@@ -233,7 +234,7 @@ The UI is built with **Jetpack Compose** using design tokens (`VrkaTokens`):
 - **AGSL RuntimeShader (API 33+)**: High-performance lens transform with 1.35× center magnification, 20-dp refraction height, 14-dp displacement, normal-map edge curvature, and chromatic aberration channel splitting. Fallback glass rendering is provided on API 26–32.
 - **Directional Luminous Wake Progress**: 18-track directional streak with cached analytic teardrop glow optimized for AMOLED black backgrounds.
 - **Resolution-Aware Size Estimation**: `SizeEstimator` runs a metadata-only yt-dlp preflight with the same `-f` selector and 60 fps sort as the transfer. `requested_formats` from that document are authoritative; the complete `formats` table still supplies every resolution chip. `MetadataRepository` caches each document by source, format selection, playlist range, runtime version, and a header digest. Browser Fallback clears the page-level estimate, estimates the selected candidate independently, and never blocks the transfer. Estimates that cannot be supported by metadata are shown as unavailable.
-- **Recoverable Job Storage**: Room stores current jobs, attempts, ordered publication batches and outputs, migration evidence, and cleanup obligations. Job state, outputs, and terminal completion commit atomically. The v5.1.3 cache refreshes only from committed rows; malformed rows stay in quarantine and appear as safe damaged History entries. The v5.1.2 JSON stores remain migration inputs.
+- **Recoverable Job Storage**: Room stores current jobs, attempts, ordered publication batches and outputs, migration evidence, and cleanup obligations. Job state, outputs, and terminal completion commit atomically. The v5.1.4 UI state cache refreshes only from committed rows (architecture introduced in v5.1.3); malformed rows stay in quarantine and appear as safe damaged History entries. The v5.1.2 JSON stores remain historical migration inputs.
 - **API-Range Destination Policy**: API 29+ publishes through `MediaStore.Downloads` (`Downloads/VRKA`); API 26–28 require a granted SAF tree before a job starts and return to the folder prompt if permission is revoked.
 - **Dynamic Typography**: Monospace Space Mono (`VRKA Font`) and clean System (`Roboto`) font switching.
 

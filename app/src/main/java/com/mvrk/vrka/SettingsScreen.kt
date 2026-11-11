@@ -892,11 +892,13 @@ internal fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.padding(top = 6.dp),
                         ) {
-                            VrkaStatusBadge(
-                                stringResource(R.string.runtime_badge_verified),
-                                VrkaTokens.Success,
-                                isMonospace = true,
-                            )
+                            if (runtime.verifiedAt > 0L) {
+                                VrkaStatusBadge(
+                                    stringResource(R.string.runtime_badge_verified),
+                                    VrkaTokens.Success,
+                                    isMonospace = true,
+                                )
+                            }
                             if (isActive) {
                                 VrkaStatusBadge(
                                     stringResource(R.string.status_active),
@@ -994,10 +996,9 @@ internal fun SettingsScreen(
         }
 
         if (showAddRuntimeDialog) {
-            // Resolved here so the dialog callbacks read composition-scoped values rather
+            // Resolved here so the dialog callback reads a composition-scoped string rather
             // than querying resources from LocalContext outside composition.
             val repoRequiredMessage = stringResource(R.string.runtime_repo_required)
-            val installFailedMessage = stringResource(R.string.runtime_install_failed)
             AlertDialog(
                 onDismissRequest = { if (!runtimeState.working) showAddRuntimeDialog = false },
                 title = {

@@ -1,37 +1,17 @@
-# Known Limitations — VRKA Android 5.1.3
+# Known Limitations — VRKA Android 5.1.4
 
 > [!NOTE]
-> **Historical Baseline & Scope**: This document tracks known limitations across VRKA Android releases and defines the current operational boundaries for official production release **v5.1.3**. For current production architecture and security policies, see [CURRENT_PRODUCTION_ARCHITECTURE.md](CURRENT_PRODUCTION_ARCHITECTURE.md), [README.md](README.md), and [SECURITY.md](SECURITY.md).
+> **Historical Baseline & Scope**: This document tracks known limitations and operational boundaries across VRKA Android releases, updated for official production release **v5.1.4** (`versionCode 50104`). For current production architecture and security policies, see [CURRENT_PRODUCTION_ARCHITECTURE.md](CURRENT_PRODUCTION_ARCHITECTURE.md), [README.md](README.md), and [SECURITY.md](SECURITY.md).
 
 > [!NOTE]
-> **v5.1.3 storage limitations.** The Room/SQLite authority, startup gate, and atomic publication
-> state machine described in [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) ship in
-> v5.1.3. Migration has been verified against an 80-case corpus generated from tagged encoders,
-> not every real-world legacy installation. The SAF protocol was exercised on an API 36 emulator
-> against a controlled DocumentsContract provider; third-party OEM providers may have
-> different rename, enumeration, readback, or permission behavior. When a provider cannot
-> enumerate children or return reliable document identities, VRKA rejects the destination before
-> creation; when content cannot be read back or a marker is rewritten/duplicated, the transaction
-> stays unresolved and is not reported as published. Room schema upgrades for future versions
-> must remain transactional and preserve legacy migration records.
+> **Storage & migration boundaries (Room/SQLite, introduced in v5.1.3 and active in v5.1.4):** The Room/SQLite authority, startup gate, and atomic publication state machine described in [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md) remain active in v5.1.4. Migration has been verified against an 80-case corpus generated from tagged encoders, not every real-world legacy installation. The SAF protocol was exercised on an API 36 emulator against a controlled DocumentsContract provider; third-party OEM providers may have different rename, enumeration, readback, or permission behavior. When a provider cannot enumerate children or return reliable document identities, VRKA rejects the destination before creation; when content cannot be read back or a marker is rewritten/duplicated, the transaction stays unresolved and is not reported as published. Room schema upgrades for future versions must remain transactional and preserve legacy migration records.
 >
-> Corrupt Room rows are quarantined and shown as damaged History entries; storage reports
-> `READY` with `partialReadiness` rather than silently dropping them. Cleanup tasks that exhaust
-> their retry budget become dead letters and require an explicit Diagnostics retry. Provider
-> cleanup keeps the History record and publication row in place until ownership is resolved.
+> Corrupt Room rows are quarantined and shown as damaged History entries; storage reports `READY` with `partialReadiness` rather than silently dropping them. Cleanup tasks that exhaust their retry budget become dead letters and require an explicit Diagnostics retry. Provider cleanup keeps the History record and publication row in place until ownership is resolved.
 >
-> **Supply-chain and release limitations.** Dependency checksums verify the committed metadata,
-> not the intent of every publisher. Native dependencies are prebuilt AARs and are not reproducibly
-> built in this repository. uBlock Origin is a bundled upstream asset not covered by Dependabot alerts
-> (automated Dependabot PR generation is disabled under the single-branch policy while vulnerability alerts remain enabled).
-> v5.1.3 has no CI-generated build attestation; the published artifact and tag are unchanged by
-> this maintenance work. Private signing-key custody, offline status, backup, and hardware
-> protection remain unverified until the maintainer records evidence. A future OpenPGP or APK
-> signing-key rotation requires a transition release or signing lineage; see
-> [docs/KEY_MANAGEMENT.md](docs/KEY_MANAGEMENT.md).
+> **Supply-chain, custom runtime, and release limitations (v5.1.4):** Dependency checksums verify committed metadata against trusted upstream repositories, not the intent of upstream maintainers. Native dependencies (`GeckoView`, `youtubedl-android`, `FFmpeg`) are prebuilt AARs and are not reproducibly built from source in this repository. `uBlock Origin` and bundled `res/raw/ytdlp` are checked-in assets not monitored by Dependabot alerts (automated Dependabot PR generation is disabled under the single-branch policy while GitHub vulnerability alerts remain enabled for Gradle/Maven dependencies). Custom `yt-dlp` forks added by the user bypass stock OpenPGP verification and execute with application privileges after SHA-256 pinning and explicit UI confirmation; `YtDlpRuntimeManager` does not isolate custom code in a separate OS sandbox. No from-source SLSA native binary provenance attestation is published; release provenance for v5.1.4 is documented in [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md) and [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md). Private signing-key custody, offline backup storage, and hardware protection remain outside repository-verifiable CI state. Future OpenPGP or APK signing-key rotation requires a transition release or signing lineage; see [docs/KEY_MANAGEMENT.md](docs/KEY_MANAGEMENT.md).
 
 > [!IMPORTANT]
-> **v5.0.2 USERS STILL NEED THE ONE-TIME MANUAL UPGRADE.** The v5.0.2 client has an `APK verification failed: APK filename does not match the expected release` check that cannot update itself. Download and install `VRKA-Android-v5.1.2.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) over v5.0.2 without uninstalling. Then update to v5.1.3. Application data and settings are preserved.
+> **v5.0.2 USERS STILL NEED THE ONE-TIME MANUAL BRIDGE.** The v5.0.2 client has an `APK verification failed: APK filename does not match the expected release` check that cannot update itself. Download and install `VRKA-Android-v5.1.2.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) over v5.0.2 without uninstalling, launch once, and then update to v5.1.4. Application data and settings are preserved.
 
 - The app and packaged native media libraries target `arm64-v8a`; other ABIs are not shipped.
 - VRKA does not bypass DRM, login, payment, CAPTCHA, consent, or other access controls. Site changes may require a yt-dlp or app update.

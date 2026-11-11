@@ -17,7 +17,7 @@ computed from the checked-in assets.
 | yt-dlp OpenPGP key | bundled raw resource (`app/src/main/res/raw/ytdlp_pubkey.asc`) | pinned upstream key | upstream yt-dlp release signing key | trust anchor for `SecureComponentUpdater` | SHA-256 of checked-in asset |
 | uBlock Origin | signed Firefox XPI asset | pinned bundled XPI (`1.74.0`) | upstream uBlock release | `app/src/main/assets/extensions/ublock.xpi` | SHA-256 of checked-in asset |
 | VRKA Media Detector | first-party JS extension | repository source | this repository | `manifest.json`, `background.js`, `content.js` | source review; LF asset hashes |
-| Release public key | ASC resource | pinned v5.1.3 trust anchor | this repository | `app/src/main/res/raw/vrka_release_pubkey.asc` | SHA-256 and fingerprint checks |
+| Release public key | ASC resource | pinned v5.1.4 trust anchor | this repository | `app/src/main/res/raw/vrka_release_pubkey.asc` | SHA-256 and fingerprint checks |
 
 ## What is not claimed
 
@@ -27,7 +27,8 @@ computed from the checked-in assets.
 - The bundled `res/raw/ytdlp` runtime and AAR native libraries (`libpython.so`, `libqjs.so`, `libffmpeg.so`, GeckoView `.so`s) are not independently rebuilt by
   VRKA. The official component updater can replace `yt-dlp` with a signed release artifact.
 - Custom runtimes added by the user via GitHub `owner/repo` bypass stock trust-anchor verification and execute with application privileges after SHA-256 pinning and explicit confirmation; users must return to stock to restore stock provenance.
-- No full native SBOM or binary-to-source reproducibility attestation is published for v5.1.3.
+- No full native SBOM or binary-to-source reproducibility attestation is published for v5.1.3 or v5.1.4.
+- Custom `yt-dlp` runtimes selected in Settings undergo SHA-256 pin verification, local corruption repair on re-install/update when matching the recorded digest, and explicit experimental-runtime confirmation (`YtDlpRuntimeManager`).
 - CI detects changes to checked-in assets, lockfile pins, verification metadata, and dependency versions; it does not rebuild or
   byte-compare upstream native binaries.
 - `ublock.xpi` and the checked-in `res/raw/ytdlp` zipapp are not covered by Gradle dependency monitoring; their upstream releases must be reviewed
