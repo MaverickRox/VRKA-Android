@@ -4,14 +4,13 @@ Notable changes for **VRKA Android** (`com.mvrk.vrka`). For full checksums, Open
 
 ## [5.1.4] - 2026-11-11
 
-Focused on security hardening, safer custom `yt-dlp` handling, stricter update verification, and cleaner documentation. Keeps the Room storage engine and signing key for direct upgrades from `v5.1.3` and `v5.1.2`.
+Security hardening, safer custom `yt-dlp` handling, stricter updates, and cleaner docs (`versionCode 50104`, direct upgrade from `v5.1.3`/`v5.1.2`).
 
-- **Safer custom `yt-dlp` forks:** Installing a third-party fork now requires confirming an explicit untrusted-runtime warning with repo, version, and full SHA-256. Active binaries are re-hashed on disk before execution and fall back fail-closed to stock if modified; reinstalling a verified tag repairs corrupted local files unless the upstream hash changed.
-- **Locked-down custom commands & backups:** Settings templates and download requests share one `CustomCommandPolicy` blocking shell hooks (`--exec*`, `--downloader*`), output/proxy overrides, insecure TLS flags, and persistent credential headers (`Cookie`, `Authorization`); `android:allowBackup="false"` is enforced.
-- **Hardened in-app updates:** Enforces `MAX_REDIRECTS = 5` across approved GitHub hosts and persists target `versionCode` checks across background downloads and installer handoff.
-- **Cleaner privacy & diagnostics:** Failure logs redact query tokens, signed CDN URLs, and local paths by default, warn before opt-in full-URL exports, and expose a one-tap private Browser Fallback wipe.
-- **Audited supply chain & docs:** Removed `mavenLocal()`, constrained Mozilla Maven by group regex, committed `app/gradle.lockfile` + SHA-256 verification metadata (`--dependency-verification=strict`), SHA-pinned GitHub Actions, hashed bundled binaries (`docs/native-binaries.json`), moved to a single `main` branch policy, replaced the framed showcase with unframed captures, and reorganized guides under [docs/README.md](docs/README.md).
-- **Verification:** `850` JVM tests (`80` suites), `0` lint errors, GitHub Actions CI + API 36 provider instrumentation, APK v2 + OpenPGP checks, and API 36 emulator upgrades from `v5.1.3`.
+- **Safer custom `yt-dlp` forks:** Requires confirming a SHA-256 untrusted-binary warning on install and re-verifies custom binaries on disk before running, falling back to stock if altered; reinstalling a verified tag repairs corrupted local files.
+- **Locked-down commands & privacy:** Enforces shared `CustomCommandPolicy` blocking for shell hooks, path/proxy overrides, and credential headers (`Cookie`, `Authorization`), disables Android backups (`allowBackup=false`), redacts URL tokens/paths in failure logs, and adds one-tap private Browser Fallback session clearing.
+- **Stricter in-app updates:** Caps updater HTTPS redirects at `5` hops across approved GitHub hosts and checks target `versionCode` through background staging and install.
+- **Verified builds & cleaner docs:** Locks Gradle dependencies offline (`--dependency-verification=strict`), SHA-pins GitHub Actions, tracks bundled native asset hashes (`docs/native-binaries.json`), keeps a single `main` branch, and replaces old docs/framed images with guides under [docs/README.md](docs/README.md).
+- **Tested:** `850` unit tests (`80` suites), `0` lint errors, API 36 CI provider tests, APK v2 + OpenPGP verification, and API 36 emulator `v5.1.3` -> `v5.1.4` upgrades.
 
 ## [5.1.3] - 2026-11-10
 

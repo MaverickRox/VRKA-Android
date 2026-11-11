@@ -1,6 +1,6 @@
 VRKA 5.1.4 hardens security, updates, and custom yt-dlp safety:
 
-- Requires SHA-256 confirmation for untrusted custom yt-dlp forks and re-verifies binaries before execution.
-- Blocks unsafe custom command flags and credential headers; disables backups and redacts failure URLs.
-- Bounds updater HTTPS redirects (5 hops, GitHub hosts only) and verifies target versionCode before install.
-- Enforces locked Gradle verification offline and simplifies user, security, and release docs.
+- Requires SHA-256 confirmation for custom yt-dlp forks and re-verifies binaries before running.
+- Blocks unsafe custom command flags and credential headers; disables backups and redacts failure logs.
+- Caps updater HTTPS redirects at 5 GitHub hops and verifies target versionCode before install.
+- Locks offline Gradle verification and simplifies project docs.

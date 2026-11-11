@@ -5,15 +5,14 @@
 > - **From v5.1.3 or v5.1.2:** Update via **Settings -> Check for Updates** or install `VRKA-Android-v5.1.4.apk` over your existing install without uninstalling. Queue, History, Settings, and templates are preserved.
 > - **From v5.0.2 or older:** First install [`VRKA-Android-v5.1.2.apk`](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) manually over v5.0.2 without uninstalling, launch once, then update normally to v5.1.4.
 
-VRKA Android **5.1.4** (`versionCode 50104`, `com.mvrk.vrka`) adds security hardening for custom `yt-dlp` forks, command templates, and background app updates, alongside cleaner documentation.
+VRKA Android **5.1.4** (`versionCode 50104`, `com.mvrk.vrka`) hardens custom `yt-dlp` fork safety, custom command blocking, in-app update verification, and project documentation.
 
 ## What Changed in 5.1.4
 
-- **Explicit custom runtime confirmation & integrity checks:** Installing a third-party `yt-dlp` binary requires confirming its repo, version, and full SHA-256 hash; stored custom binaries are re-hashed before execution (reverting fail-closed to stock if altered) and repair cleanly when reinstalling a verified tag.
-- **Unified command & backup hardening:** Download requests and custom templates enforce shared `CustomCommandPolicy` blocking for shell hooks, path/proxy overrides, and persistent credential headers (`Cookie`, `Authorization`), with `android:allowBackup="false"`.
-- **Safer in-app updates:** Enforces bounded HTTPS redirects (`MAX_REDIRECTS = 5` on approved GitHub hosts) and persists target `versionCode` verification through WorkManager staging and install handoff.
-- **Privacy & diagnostics polish:** Redacts URL credentials/tokens and paths in failure logs by default, warns before exporting full URLs, and adds one-tap GeckoView Browser Fallback session clearing.
-- **Supply-chain & documentation cleanup:** Enforces locked/hashed Gradle dependencies (`--dependency-verification=strict`), SHA-pinned GitHub Actions, hashed native assets, single `main` branch policy, and reorganized guides in [docs/README.md](docs/README.md).
+- **Safer custom `yt-dlp` forks:** Requires confirming a SHA-256 untrusted-runtime warning before installing a fork, re-hashes active custom binaries before execution (falling back fail-closed to stock if altered), and repairs corrupted local binaries when reinstalling a verified tag.
+- **Locked-down commands & privacy:** Blocks unsafe custom template flags and credential headers (`Cookie`, `Authorization`) via shared `CustomCommandPolicy`, sets `android:allowBackup="false"`, redacts tokens/paths in failure logs, and adds one-tap GeckoView Browser Fallback session clearing.
+- **Stricter in-app updates:** Bounds HTTPS redirects (`5` hops across approved GitHub hosts) and verifies target `versionCode` through WorkManager staging and installer handoff.
+- **Audited builds & simpler docs:** Uses locked/hashed Gradle dependencies (`--dependency-verification=strict`), SHA-pinned GitHub Actions, hashed bundled binaries, single `main` branch policy, and concise guides in [docs/README.md](docs/README.md).
 
 ## Compatibility & Verification
 
