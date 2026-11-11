@@ -20,8 +20,8 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 The official v5.1.4, v5.1.3, v5.1.2, v5.1.1, and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation. Official v5.1.4 and historical v5.1.3 provenance and their relationship to their release tags are documented in [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md).
 
 - **v5.1.4 Release APK:** `VRKA-Android-v5.1.4.apk`
-- **v5.1.4 SHA-256:** `Pending post-CI release build (populated in release evidence commit)`
-- **v5.1.4 updater manifest SHA-256:** `Pending post-CI release build (populated in release evidence commit)`
+- **v5.1.4 SHA-256:** `5535291ff60c89852f1b2b960379a3b2637576e833ab3951759522110bba5d97`
+- **v5.1.4 updater manifest SHA-256:** `3b8cbf09cd3e836fe655714ebde7486d727f4988cb98734ce045a7d8ceb5d18e`
 - **v5.1.3 Release APK (historical):** `VRKA-Android-v5.1.3.apk`
 - **v5.1.2 SHA-256:** `3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a`
 - **v5.1.1 Release APK (historical):** `VRKA-Android-v5.1.1.apk`
