@@ -1,10 +1,10 @@
-# Legacy Storage Migration (Unreleased `main`)
+# Legacy Storage Migration (v5.1.3)
 
 ## Scope
 
-Existing installations of v5.1.0, v5.1.1, v5.1.2, and the unreleased JSON baseline are imported
-into the Room database on first launch after upgrading. This applies only to unreleased `main`;
-the published v5.1.2 APK is unchanged.
+VRKA Android v5.1.3 ships the Room database and imports existing installations of v5.1.0,
+v5.1.1, and v5.1.2 on first launch after upgrading. The v5.1.2 APK and its JSON storage remain
+historical release evidence; v5.1.3 is the released implementation of this migration.
 
 The importer is in `LegacyStorageMigrator`. Original JSON files and bounded corrupt recovery
 copies are never deleted or rewritten. After import, the JSON decoders remain migration-only
@@ -17,10 +17,10 @@ code; they are not a competing durable authority.
 | v5.1.0 | Native bare JSON array, older field set, FLAC→OPUS loader mapping | Absent | Absent | No attempt/batch IDs, no hashes. |
 | v5.1.1 | JobStore schema 2, `publishStarted` and newer fields | Absent | Absent | In-flight publishing cannot be reconstructed transactionally. |
 | v5.1.2 | JobStore schema 2 | Schema 1 | Absent | `RECONCILED` is a job-scoped tombstone, not proof of publication; `FINALIZED` is not independently verified; no attempt/batch ID or SHA-256; staging often absent. |
-| unreleased baseline | JobStore schema 2 | Strict journal | Schema 1 | `CLEANUP_PENDING` and newer states may exist. |
+| v5.1.3 baseline | JobStore schema 2 | Strict journal | Schema 1 | `CLEANUP_PENDING` and newer states may exist. |
 
 Detection uses the actual files and structure, not the application version. A journal without a
-cleanup store selects the v5.1.2 profile; a cleanup store selects the unreleased baseline; a bare
+cleanup store selects the v5.1.2 profile; a cleanup store selects the v5.1.3 baseline; a bare
 array selects v5.1.0; a JSON object without a journal selects v5.1.1.
 
 ## Import sequence
@@ -73,7 +73,7 @@ adopted or deleted automatically.
 
 `app/src/test/resources/phase0-fixtures` contains the Phase 0 corpus generated from the actual
 tagged encoders: 80 cases and 75 files across v5.1.0 (10 cases), v5.1.1 (10), v5.1.2 (45), and
-the unreleased baseline (15). `CORPUS_MANIFEST.json` records each case's source commit, encoder,
+the v5.1.3 baseline (15). `CORPUS_MANIFEST.json` records each case's source commit, encoder,
 byte length, and SHA-256. The corpus and generator sources are committed so CI does not depend on
 the external Phase 0 scratch directory.
 

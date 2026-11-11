@@ -23,12 +23,13 @@
 <br />
 
 > [!IMPORTANT]
-> **USERS UPGRADING FROM VRKA v5.0.2 MUST FIRST INSTALL v5.1.2 FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON. After that manual upgrade, update to v5.1.3 from the app or GitHub.**
+> **USERS UPGRADING FROM VRKA v5.0.2 MUST FIRST INSTALL v5.1.2 FROM THE OFFICIAL GITHUB RELEASE PAGE. THE v5.0.2 IN-APP UPDATER CANNOT COMPLETE THIS UPDATE. DO NOT USE THE RETRY BUTTON. After that one-time bridge, update normally to v5.1.3 from the app or GitHub.**
 > 
-> **OFFICIAL DOWNLOAD PAGE:**
-> https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2
-> 
-> **INSTALLATION:** Download `VRKA-Android-v5.1.2.apk` from the Assets section and install it over your existing VRKA installation. NO NEED TO UNINSTALL v5.0.2 FIRST.
+> **v5.1.2 USERS:** update directly to v5.1.3 through the in-app updater or by installing the v5.1.3 APK over v5.1.2. The v5.1.3 signing identity is unchanged, so app data, settings, queue, and History are preserved.
+>
+> **CURRENT DOWNLOAD PAGE:** https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.3
+>
+> **v5.0.2 BRIDGE:** https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2 — download `VRKA-Android-v5.1.2.apk`, install it over v5.0.2 without uninstalling, then update to v5.1.3 normally.
 
 <div align="center">
   <img src="docs/screenshots/v5.1.1/vrka-v5.1.1-showcase.png" alt="VRKA Android v5.1.1 Product Showcase" width="900" />
@@ -48,7 +49,7 @@
 
 ## Overview
 
-**VRKA Android** is built with **Jetpack Compose** and **Kotlin Coroutines**. It is an open-source, on-device media downloader designed for Android with zero tracking or telemetry.
+**VRKA Android** is built with **Jetpack Compose** and **Kotlin Coroutines**. It is an open-source, on-device media downloader with no application analytics, advertising, or telemetry SDKs. Network access is limited to documented update checks, user-requested media/provider traffic, and the user-initiated Browser Fallback; see [docs/PRIVACY_NETWORK.md](docs/PRIVACY_NETWORK.md).
 
 Core capabilities:
 - **14-Language Localization**: Comprehensive multilingual interface across 14 languages plus System Default, with complete Right-to-Left (RTL) layout support for Arabic and 100% resource key parity.
@@ -339,23 +340,36 @@ The official v5.1.3 release APK is production-signed. Check [RELEASE_EVIDENCE.md
 
 The `release` build type requires explicit signing credentials and never silently falls back to a debug key. Development tasks do not load production signing properties. Verify the v5.1.3 artifact's certificate and SHA-256 against [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md) or official release checksums before installation.
 
+Supply-chain references:
+
+- [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md) — source commit, tag relationship, artifact hashes, and attestation boundary
+- [docs/DEPENDENCY_MANAGEMENT.md](docs/DEPENDENCY_MANAGEMENT.md) — trusted repositories, locking, verification metadata, and updates
+- [docs/PRIVACY_NETWORK.md](docs/PRIVACY_NETWORK.md) — documented network destinations and data exposure
+- [docs/KEY_MANAGEMENT.md](docs/KEY_MANAGEMENT.md) — signing-key custody and trust-anchor rotation policy
+- [docs/NATIVE_BINARY_INVENTORY.md](docs/NATIVE_BINARY_INVENTORY.md) — native artifact inventory and limitations
+- [docs/CI_CD_SECURITY.md](docs/CI_CD_SECURITY.md) — CI permissions, pinned actions, lint gates, and mapping-file policy
+
 ---
 
 ## Installation
 
 > [!NOTE]
-> **Upgrading from v5.0.2**: Due to a known client-side verification check on temporary download files in the v5.0.2 binary, the in-app updater cannot self-execute the upgrade. Existing v5.0.2 users should download `VRKA-Android-v5.1.2.apk` directly and install it over v5.0.2. Because both versions share the identical production signing key, all app data, settings, and download histories are preserved.
+> **Upgrading from v5.1.2:** install v5.1.3 directly through the in-app updater or over the existing app. The production signing identity is unchanged; data, settings, queue, and History are preserved.
+>
+> **Upgrading from v5.0.2:** due to a known client-side verification check on temporary download files in the v5.0.2 binary, the v5.0.2 in-app updater cannot self-execute the upgrade. First install the v5.1.2 bridge APK over v5.0.2 without uninstalling, then update normally to v5.1.3. Because all three versions share the production signing key, application data is preserved.
 
-1. Download the official `VRKA-Android-v5.1.2.apk` from the [v5.1.2 release page](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2).
-2. Verify the SHA-256 hash against `SHA256SUMS`:
+1. Download the current official `VRKA-Android-v5.1.3.apk` from the [v5.1.3 release page](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.3).
+2. Verify the SHA-256 hash against the published `SHA256SUMS`:
    ```powershell
-   (Get-FileHash .\VRKA-Android-v5.1.2.apk -Algorithm SHA256).Hash
+   (Get-FileHash .\VRKA-Android-v5.1.3.apk -Algorithm SHA256).Hash
    ```
-   Expected: `3a28262db691858757afd9edbded1bedfcbbcef5d1eeeb56743a16d08eeafe9a`. The same value is recorded in `SHA256SUMS` and the official release page.
+   Expected: `c9f58d3a97d728315b51fc92f43b5f54b88ae4ad9c25b3b22ea0cd8338549ddf`
 3. Install on your Android device:
    ```bash
-   adb install -r .\VRKA-Android-v5.1.2.apk
+   adb install -r .\VRKA-Android-v5.1.3.apk
    ```
+
+For the v5.0.2 bridge only, use `VRKA-Android-v5.1.2.apk` from the [v5.1.2 release page](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) and the hash recorded in historical release evidence before continuing to v5.1.3.
 
 ---
 

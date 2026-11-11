@@ -1,7 +1,8 @@
-# VRKA Storage Architecture (Unreleased `main`)
+# VRKA Storage Architecture (v5.1.3)
 
-**Status:** unreleased development architecture on `main`. The published v5.1.2 APK and its
-release evidence remain unchanged. Nothing in this document describes the published artifact.
+**Status:** shipped in the official v5.1.3 release (`90de6b8e69b2b801eed4c838fe510fe91a29a80e`).
+The v5.1.2 APK and its JSON storage architecture remain historical release evidence and are not
+modified by this document.
 
 ## Authority and cache
 

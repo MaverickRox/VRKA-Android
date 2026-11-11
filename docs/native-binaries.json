@@ -1,0 +1,88 @@
+{
+  "schema": "vrka-native-inventory/v1",
+  "generatedFor": "5.1.3",
+  "note": "Native binaries are delivered through third-party Android AARs or bundled browser assets. SHA-256 values are artifact hashes from Gradle verification metadata; they establish integrity of the exact artifact, not a reproducible build.",
+  "components": [
+    {
+      "name": "Mozilla GeckoView",
+      "kind": "prebuilt Android AAR",
+      "maven": "org.mozilla.geckoview:geckoview-arm64-v8a:159.0.20261022150525",
+      "artifact": "geckoview-arm64-v8a-159.0.20261022150525.aar",
+      "sha256": "fe774fc331941c8d9bab342426286ca168420de0a1d763eead64bb64191925a8",
+      "upstream": "https://wiki.mozilla.org/Mobile/GeckoView",
+      "sourceUrl": "https://hg.mozilla.org/mozilla-central/",
+      "license": "MPL-2.0",
+      "origin": "Mozilla Maven repository",
+      "update": "version is pinned in app/build.gradle.kts; Dependabot/manual review",
+      "vulnerabilityMonitoring": "Mozilla security advisories and Dependabot"
+    },
+    {
+      "name": "yt-dlp Android library (includes bundled yt-dlp runtime)",
+      "kind": "prebuilt Android AAR",
+      "maven": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "artifact": "library-0.18.1.aar",
+      "sha256": "579b5fb480892b1abc2b218c2089699d52759cc8d7ba256bf876453f0365faef",
+      "upstream": "https://github.com/yausername/youtubedl-android",
+      "sourceUrl": "https://github.com/yausername/youtubedl-android",
+      "license": "GPL-3.0 (wrapper); yt-dlp Unlicense",
+      "origin": "Maven Central",
+      "update": "pinned; stock runtime may be updated by the signed component updater",
+      "vulnerabilityMonitoring": "Dependabot and upstream release monitoring"
+    },
+    {
+      "name": "FFmpeg Android library",
+      "kind": "prebuilt Android AAR",
+      "maven": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "artifact": "ffmpeg-0.18.1.aar",
+      "sha256": "0a87ffa6cf912b0fe76c1a99b9107f543ee2f247935fae2c71f0822eb7bc5f49",
+      "upstream": "https://ffmpeg.org/",
+      "sourceUrl": "https://github.com/yausername/youtubedl-android",
+      "license": "LGPL/GPL components; see upstream notices",
+      "origin": "Maven Central",
+      "update": "pinned; no automatic native binary replacement",
+      "vulnerabilityMonitoring": "Dependabot and FFmpeg security advisories"
+    },
+    {
+      "name": "uBlock Origin Firefox extension",
+      "kind": "bundled browser extension",
+      "version": "1.74.0",
+      "asset": "app/src/main/assets/extensions/ublock.xpi",
+      "sha256": "175756d74468c9ba45863f7fc333d3be670f82d5b066314e915814dd547d1652",
+      "upstream": "https://github.com/gorhill/uBlock",
+      "sourceUrl": "https://github.com/gorhill/uBlock",
+      "license": "GPL-3.0",
+      "origin": "signed upstream Firefox XPI",
+      "update": "component updater with release signature/checksum controls",
+      "vulnerabilityMonitoring": "Dependabot cannot track this asset; monitor upstream releases"
+    },
+    {
+      "name": "VRKA Media Detector WebExtension",
+      "kind": "first-party browser extension source",
+      "assets": [
+        "app/src/main/assets/extensions/media-detector/manifest.json",
+        "app/src/main/assets/extensions/media-detector/background.js",
+        "app/src/main/assets/extensions/media-detector/content.js"
+      ],
+      "sha256": {
+        "manifest.json": "0a4ac7e5087d03221ebe955ef1aa35470b7bad9660f144ba459a69f2ba16716b",
+        "background.js": "fed31270cab1b77b8a5ec8d3b41772d3b70fb00a99e3e567ede0e8bbc9b7a99f",
+        "content.js": "aedb3bdb53cb80fa7b783456e7682d3a21ec3c4231279991e90f31570cdbcaf8"
+      },
+      "upstream": "VRKA Android repository",
+      "sourceUrl": "https://github.com/MaverickRox/VRKA-Android",
+      "license": "Project license",
+      "origin": "built from this repository",
+      "update": "source review and normal application release"
+    },
+    {
+      "name": "Pinned release OpenPGP public key",
+      "kind": "trust anchor resource",
+      "asset": "app/src/main/res/raw/vrka_release_pubkey.asc",
+      "sha256": "7f2a6ef42a4f66289e31c4fefff44b7ba294f9d0c696ace1f20602401641f38a",
+      "upstream": "VRKA release identity",
+      "license": "N/A",
+      "origin": "repository resource",
+      "update": "requires a signed trust-anchor transition; see KEY_MANAGEMENT.md"
+    }
+  ]
+}

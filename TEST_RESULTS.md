@@ -1,5 +1,28 @@
 # VRKA Android — Test Results
 
+## Post-v5.1.3 supply-chain hardening on `main`
+
+Date: 2026-11-11. This section records unreleased maintenance after v5.1.3; the v5.1.3 release
+evidence below remains historical and unchanged.
+
+| Check | Command | Result |
+|---|---|---|
+| Full JVM suite (with dependency locks and verification metadata) | `.\gradlew.bat --no-daemon --no-configuration-cache testDebugUnitTest lintDebug lintRelease compileDebugAndroidTestKotlin assembleDebug assembleDebugAndroidTest assembleDevRelease` | PASS: 835 tests in 79 suites; 0 failures, 0 errors, 0 skipped |
+| Supply-chain policy suite | `--tests com.mvrk.vrka.SupplyChainPolicyTest` | PASS: repository policy, lock/verification metadata, pinned Actions, documentation versions, provenance, native inventory hashes, privacy documentation |
+| Debug lint | `lintDebug` in the same run | PASS: 0 errors; 301 warnings, 4 hints |
+| Release lint | `lintRelease` in the same run | PASS: 0 errors; 300 warnings, 4 hints |
+| Dependency locking | `app/gradle.lockfile` | Generated with `--write-locks`; release/debug/devRelease/unit-test/androidTest/KSP/lint configurations covered |
+| Dependency verification | `gradle/verification-metadata.xml` | SHA-256 metadata generated from trusted repositories after mavenLocal removal; verification enabled |
+| Release/debug/androidTest compilation | same run | PASS |
+| Debug, androidTest, and development release APKs | same run | PASS without production signing |
+| API 36 provider instrumentation | `.\gradlew.bat --no-daemon connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.SafPublicationIntegrationTest,com.mvrk.vrka.PublicationStorageIntegrationTest'` | PASS: 12 tests |
+
+The supply-chain policy test also verifies that `mavenLocal()` is absent from production
+resolution, every `uses:` action is pinned to a 40-character commit, release lint is part of CI,
+and the native inventory hashes match the checked-in assets.
+
+---
+
 ## v5.1.3 release verification
 
 Date: 2026-11-10. The v5.1.3 release uses Room as the storage authority. The historical v5.1.2
@@ -57,7 +80,7 @@ Date: 2026-11-09
 
 ## Publication-integrity remediation on unreleased `main`
 
-The current `main` suite (784 tests) covers the post-v5.1.2 remediation; it is not the release-time 747-test count.
+The suite at the time of that post-v5.1.2 remediation (784 tests) was not the release-time 747-test count; later hardening adds the separate suite recorded above.
 
 - **PUB-01 (terminal durability):** `JobStore` retention protects every nonterminal job and any job pinned by an unresolved publication transaction, then bounds only safely retained terminal history. All persistence goes through a manager-level lock that selects the snapshot, applies retention, writes, and re-reads the durable file before reporting success. `commitTerminalPublishedJob()` pins the completing job, re-reads the persisted record, retires only the exact transactions created by that attempt, and performs staging cleanup only afterwards. `publishAll()` no longer deletes its staging source.
 - **PUB-02 (provider verification):** API 29+ finalization requires an existing row, the expected display name, and `IS_PENDING = 0`; a missing `IS_PENDING` column is treated as unverifiable, never as finalized. Startup recovery re-inspects even `FINALIZED`/`RECORDED` transactions before marking a job `DONE`. API 26–28 uses name-only legacy semantics without pending-state operations.

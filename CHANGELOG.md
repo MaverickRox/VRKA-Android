@@ -2,6 +2,24 @@
 
 All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
 
+## [Unreleased] - Post-v5.1.3 supply-chain and privacy hardening
+
+This maintenance work does not change v5.1.3, its tag, assets, signatures, checksums, version
+metadata, or production signing material.
+
+- Removed unrestricted `mavenLocal()` from production dependency resolution, added a content filter
+  for Mozilla Maven, and committed dependency lockfiles plus SHA-256 verification metadata.
+- Added pinned GitHub Actions, a dependency-review workflow, Dependabot update monitoring, explicit
+  strict dependency verification in CI, release lint enforcement, and lockfile stability checks.
+- Added source-grounded release provenance, signing-key custody/rotation, native binary inventory,
+  dependency management, CI security, and privacy/network documentation.
+- Corrected current-release documentation to v5.1.3 while preserving the v5.1.2 historical record
+  and the v5.0.2 one-time upgrade bridge.
+- Clarified the no-analytics claim as a narrower source-verifiable statement and documented all
+  application-controlled network destinations.
+- Added custom-runtime checksum re-verification and an explicit untrusted-runtime warning showing
+  origin, version, and SHA-256; preserved safe argv validation and return-to-stock behavior.
+
 ## [5.1.3] - 2026-11-10
 
 VRKA Android 5.1.3 ships the storage reliability corrections that followed v5.1.2. The release

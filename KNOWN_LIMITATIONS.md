@@ -19,6 +19,15 @@
 > `READY` with `partialReadiness` rather than silently dropping them. Cleanup tasks that exhaust
 > their retry budget become dead letters and require an explicit Diagnostics retry. Provider
 > cleanup keeps the History record and publication row in place until ownership is resolved.
+>
+> **Supply-chain and release limitations.** Dependency checksums verify the committed metadata,
+> not the intent of every publisher. Native dependencies are prebuilt AARs and are not reproducibly
+> built in this repository. uBlock Origin is a bundled upstream asset not tracked by Dependabot.
+> v5.1.3 has no CI-generated build attestation; the published artifact and tag are unchanged by
+> this maintenance work. Private signing-key custody, offline status, backup, and hardware
+> protection remain unverified until the maintainer records evidence. A future OpenPGP or APK
+> signing-key rotation requires a transition release or signing lineage; see
+> [docs/KEY_MANAGEMENT.md](docs/KEY_MANAGEMENT.md).
 
 > [!IMPORTANT]
 > **v5.0.2 USERS STILL NEED THE ONE-TIME MANUAL UPGRADE.** The v5.0.2 client has an `APK verification failed: APK filename does not match the expected release` check that cannot update itself. Download and install `VRKA-Android-v5.1.2.apk` from the official GitHub release page (https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) over v5.0.2 without uninstalling. Then update to v5.1.3. Application data and settings are preserved.

@@ -15,7 +15,7 @@ This document defines the architecture of the official VRKA Android v5.1.3 relea
 
 ## 1. Architectural Overview
 
-VRKA Android is a native Android media downloader and passive web stream discovery application built with **Jetpack Compose** and **Kotlin Coroutines**. It operates strictly on-device with zero application telemetry or cloud tracking.
+VRKA Android is a native Android media downloader and passive web stream discovery application built with **Jetpack Compose** and **Kotlin Coroutines**. It has no application analytics, advertising, or telemetry SDK and does not upload History, diagnostics, or queue data to an application backend. Documented update checks and user-requested media/browser traffic are described in [docs/PRIVACY_NETWORK.md](docs/PRIVACY_NETWORK.md).
 
 The 5.1.0 and 5.1.1 releases established the following core architectural pillars, retained by 5.1.2 and 5.1.3:
 - **Primary Transfer Engine**: `yt-dlp` is the primary and sole transfer engine for both direct downloads and Browser Fallback acquisitions.
