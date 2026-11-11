@@ -778,6 +778,7 @@ internal fun SettingsScreen(
         var showAddRuntimeDialog by remember { mutableStateOf(false) }
         var runtimeRepoInput by remember { mutableStateOf("") }
         var runtimeDialogError by remember { mutableStateOf("") }
+        var pendingRuntimeConfirmation by remember { mutableStateOf<RuntimeConfirmation?>(null) }
         VrkaSectionContainer {
             VrkaSettingRow(
                 title = stringResource(R.string.runtime_active_title),
@@ -881,6 +882,12 @@ internal fun SettingsScreen(
                             color = VrkaTokens.TextSecondary,
                             modifier = Modifier.padding(top = 2.dp),
                         )
+                        Text(
+                            text = "SHA-256: ${runtime.sha256}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                            color = VrkaTokens.TextTertiary,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.padding(top = 6.dp),
@@ -914,10 +921,10 @@ internal fun SettingsScreen(
                             VrkaOutlinedButton(
                                 text = stringResource(R.string.runtime_use),
                                 onClick = {
-                                    scope.launch {
-                                        runtimeManager.activateCustom(runtime.id)
-                                            .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
-                                    }
+                                    pendingRuntimeConfirmation = RuntimeConfirmation.Activate(
+                                        id = runtime.id,
+                                        label = "${runtime.repo} ${runtime.tag}",
+                                    )
                                 },
                                 enabled = !runtimeState.working,
                                 height = 32.dp,
@@ -1045,18 +1052,8 @@ internal fun SettingsScreen(
                                 runtimeDialogError = repoRequiredMessage
                                 return@TextButton
                             }
-                            scope.launch {
-                                runtimeManager.install(repo)
-                                    .onSuccess { message ->
-                                        showAddRuntimeDialog = false
-                                        runtimeRepoInput = ""
-                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                                    }
-                                    .onFailure { error ->
-                                        runtimeDialogError = error.message
-                                            ?: installFailedMessage
-                                    }
-                            }
+                            showAddRuntimeDialog = false
+                            pendingRuntimeConfirmation = RuntimeConfirmation.Install(repo)
                         },
                         enabled = !runtimeState.working,
                     ) {
@@ -1066,6 +1063,79 @@ internal fun SettingsScreen(
                 dismissButton = {
                     TextButton(
                         onClick = { showAddRuntimeDialog = false },
+                        enabled = !runtimeState.working,
+                    ) {
+                        Text(stringResource(R.string.fallback_cancel), color = VrkaTokens.TextSecondary)
+                    }
+                },
+                containerColor = VrkaTokens.SurfaceCard,
+            )
+        }
+
+        pendingRuntimeConfirmation?.let { confirmation ->
+            AlertDialog(
+                onDismissRequest = { if (!runtimeState.working) pendingRuntimeConfirmation = null },
+                title = {
+                    Text(
+                        "Untrusted custom runtime",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VrkaTokens.TextPrimary,
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            stringResource(R.string.runtime_untrusted_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = VrkaTokens.TextSecondary,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = when (confirmation) {
+                                is RuntimeConfirmation.Activate -> confirmation.label
+                                is RuntimeConfirmation.Install -> confirmation.repo
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                            color = VrkaTokens.Warning,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val action = confirmation
+                            pendingRuntimeConfirmation = null
+                            scope.launch {
+                                val result = when (action) {
+                                    is RuntimeConfirmation.Activate -> runtimeManager.activateCustom(action.id)
+                                        .map { "Custom runtime activated." }
+                                    is RuntimeConfirmation.Install -> runtimeManager.install(action.repo)
+                                }
+                                result.onSuccess { message ->
+                                    if (action is RuntimeConfirmation.Install) {
+                                        runtimeRepoInput = ""
+                                    }
+                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                }.onFailure { error ->
+                                    val message = error.message ?: installFailedMessageFallback(context)
+                                    if (action is RuntimeConfirmation.Install) {
+                                        runtimeDialogError = message
+                                        showAddRuntimeDialog = true
+                                    } else {
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !runtimeState.working,
+                    ) {
+                        Text("Continue", color = VrkaTokens.Warning)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { pendingRuntimeConfirmation = null },
                         enabled = !runtimeState.working,
                     ) {
                         Text(stringResource(R.string.fallback_cancel), color = VrkaTokens.TextSecondary)
@@ -1724,3 +1794,12 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is android.content.ContextWrapper -> baseContext.findActivity()
     else -> null
 }
+
+
+private sealed interface RuntimeConfirmation {
+    data class Activate(val id: String, val label: String) : RuntimeConfirmation
+    data class Install(val repo: String) : RuntimeConfirmation
+}
+
+private fun installFailedMessageFallback(context: android.content.Context): String =
+    context.getString(R.string.runtime_install_failed)

@@ -286,6 +286,7 @@
     <string name="runtime_badge_verified">నిర్వహించబడింది</string>
     <string name="runtime_busy">రన్టైమ్ ఆపరేషన్ జరుగుతోంది…</string>
     <string name="runtime_custom_warning">కస్టమ్ ఫోర్క్లు yt-dlp యొక్క OpenPGP సంతకం పరిధిలో లేవు. నమోదు చేసిన SHA-256 ఫైల్ మార్పులను మాత్రమే గుర్తిస్తుంది; ఇది ప్రచురణకర్త ప్రామాణికతకు రుజువు కాదు. ఈ పరికరంలో విజయవంతంగా అమలు కాని ఫోర్క్ను యాక్టివేట్ చేయడానికి VRKA నిరాకరిస్తుంది.</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">ఇన్స్టాల్ చేయండి</string>
     <string name="runtime_install_failed">ఇన్స్టాలేషన్ విఫలమైంది.</string>
     <string name="runtime_remove">తీసివేయండి</string>

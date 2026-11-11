@@ -286,6 +286,7 @@
     <string name="runtime_badge_verified">निष्पादित</string>
     <string name="runtime_busy">रनटाइम कार्रवाई जारी है…</string>
     <string name="runtime_custom_warning">कस्टम फोर्क yt-dlp के OpenPGP हस्ताक्षर के अंतर्गत नहीं आते। रिकॉर्ड किया गया SHA-256 केवल फ़ाइल परिवर्तनों का पता लगाता है; यह प्रकाशक की प्रामाणिकता का प्रमाण नहीं है। VRKA ऐसे फोर्क को सक्रिय करने से मना करता है जो इस डिवाइस पर सफलतापूर्वक नहीं चला हो।</string>
+    <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">इंस्टॉल करें</string>
     <string name="runtime_install_failed">इंस्टॉलेशन विफल रहा।</string>
     <string name="runtime_remove">हटाएँ</string>
