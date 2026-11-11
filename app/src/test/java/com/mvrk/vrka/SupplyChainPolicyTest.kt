@@ -87,10 +87,10 @@ class SupplyChainPolicyTest {
         assertTrue(workflow.contains("app/build/outputs/mapping/devRelease/mapping.txt"))
         assertTrue(workflow.contains("app/build/outputs/mapping/devRelease/mapping.sha256"))
         val dependabot = File(root(), ".github/dependabot.yml")
-        assertTrue("Dependabot configuration must be committed", dependabot.isFile)
-        val dependabotText = dependabot.readText(Charsets.UTF_8)
-        assertTrue(dependabotText.contains("package-ecosystem: gradle"))
-        assertTrue(dependabotText.contains("package-ecosystem: github-actions"))
+        assertFalse(
+            "Dependabot version-update configuration must be removed/disabled to preserve a single main development branch",
+            dependabot.exists(),
+        )
     }
 
     @Test
