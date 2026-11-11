@@ -89,8 +89,11 @@ extensions.configure<ApplicationExtension> {
     }
 
     lint {
-        checkReleaseBuilds = false
-        abortOnError = false
+        // Release validation must execute lint and fail on lint errors. Existing warnings are
+        // tracked in TEST_RESULTS.md; this does not turn the warning backlog into new errors.
+        checkReleaseBuilds = true
+        abortOnError = true
+        warningsAsErrors = false
     }
 
     testOptions {
