@@ -924,6 +924,7 @@ internal fun SettingsScreen(
                                     pendingRuntimeConfirmation = RuntimeConfirmation.Activate(
                                         id = runtime.id,
                                         label = "${runtime.repo} ${runtime.tag}",
+                                        sha256 = runtime.sha256,
                                     )
                                 },
                                 enabled = !runtimeState.working,
@@ -1093,7 +1094,7 @@ internal fun SettingsScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             text = when (confirmation) {
-                                is RuntimeConfirmation.Activate -> confirmation.label
+                                is RuntimeConfirmation.Activate -> "${confirmation.label}\nSHA-256: ${confirmation.sha256}"
                                 is RuntimeConfirmation.Install -> confirmation.repo
                             },
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
@@ -1797,7 +1798,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 
 
 private sealed interface RuntimeConfirmation {
-    data class Activate(val id: String, val label: String) : RuntimeConfirmation
+    data class Activate(val id: String, val label: String, val sha256: String) : RuntimeConfirmation
     data class Install(val repo: String) : RuntimeConfirmation
 }
 

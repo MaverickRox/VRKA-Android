@@ -37,11 +37,25 @@ data class YtDlpRuntimeState(
  * successfully; a locally computed checksum is treated as integrity metadata, never
  * as proof of publisher authenticity.
  */
-class YtDlpRuntimeManager(
+class YtDlpRuntimeManager internal constructor(
     context: Context,
     private val scope: CoroutineScope,
     private val transport: SecureComponentUpdater.HttpTransport = SecureComponentUpdater.DefaultHttpTransport(),
+    private val versionProbe: ((File) -> String?)? = null,
+    private val binaryApplier: ((File) -> Result<Unit>)? = null,
 ) {
+    constructor(
+        context: Context,
+        scope: CoroutineScope,
+        transport: SecureComponentUpdater.HttpTransport = SecureComponentUpdater.DefaultHttpTransport(),
+    ) : this(
+        context = context,
+        scope = scope,
+        transport = transport,
+        versionProbe = null,
+        binaryApplier = null,
+    )
+
     private val context = context.applicationContext
     private val store = YtDlpRuntimeStore(File(this.context.filesDir, STORE_FILE))
     private val customRoot = File(this.context.filesDir, RUNTIME_DIR)
@@ -66,7 +80,7 @@ class YtDlpRuntimeManager(
         val snapshot = _state.value.snapshot
         val runtime = snapshot.activeRuntime() ?: return stockBinary()
         val binary = binaryFor(runtime.id)
-        return if (binary.isFile) binary else stockBinary()
+        return if (binary.isFile && recordedRuntimeMatches(runtime, binary)) binary else stockBinary()
     }
 
     fun isCustomActive(): Boolean = _state.value.snapshot.activeRuntime() != null
@@ -197,7 +211,9 @@ class YtDlpRuntimeManager(
             saveSnapshot(updated, "")
             publishWorking(true, "Verifying activation")
             val activation = runCatching {
-                YoutubeDL.getInstance().init(context)
+                if (binaryApplier == null) {
+                    YoutubeDL.getInstance().init(context)
+                }
                 applyBinary(binaryFor(id)).getOrThrow()
             }
             if (activation.isFailure) {
@@ -317,6 +333,7 @@ class YtDlpRuntimeManager(
      * means the candidate must not be installed.
      */
     internal fun probeVersion(binary: File): String? {
+        versionProbe?.let { return it(binary) }
         val python = File(context.applicationInfo.nativeLibraryDir, "libpython.so")
         if (!python.isFile) {
             Log.w(TAG, "Bundled python missing; cannot verify custom runtime")
@@ -447,11 +464,14 @@ class YtDlpRuntimeManager(
         return actual.equals(runtime.sha256, ignoreCase = true)
     }
 
-    private fun applyBinary(binary: File): Result<Unit> = runCatching {
-        if (!binary.isFile) error("Runtime binary is missing.")
-        val field = YoutubeDL::class.java.getDeclaredField("ytdlpPath")
-        field.isAccessible = true
-        field.set(null, binary)
+    private fun applyBinary(binary: File): Result<Unit> {
+        binaryApplier?.let { return it(binary) }
+        return runCatching {
+            if (!binary.isFile) error("Runtime binary is missing.")
+            val field = YoutubeDL::class.java.getDeclaredField("ytdlpPath")
+            field.isAccessible = true
+            field.set(null, binary)
+        }
     }
 
     private fun synchronizedActivation(block: () -> Result<Unit>): Result<Unit> {

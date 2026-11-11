@@ -724,4 +724,99 @@ class ReleaseManifestVerifierTest {
         }
         assertTrue(err.message!!.contains("Mandatory issuer fingerprint subpacket missing"))
     }
+
+    @Test
+    fun testKeyRotationTransitionProtocolBetweenK1AndK2() {
+        val k1 = testKey
+        val k2 = TestPgpKeys.generate()
+        val k1Verifier = TestPgpKeys.verifierFor(k1)
+        val k2Verifier = TestPgpKeys.verifierFor(k2)
+
+        val transitionManifest = testManifestJson
+            .replace("\"metadata_revision\": 1", "\"metadata_revision\": 5")
+            .replace("\"release_tag\": \"v5.1.0\"", "\"release_tag\": \"v5.1.3\"")
+            .replace("\"version_name\": \"5.1.0\"", "\"version_name\": \"5.1.3\"")
+            .replace("\"version_code\": 50100", "\"version_code\": 50103")
+            .replace("VRKA-Android-v5.1.0.apk", "VRKA-Android-v5.1.3.apk")
+        val transitionBytes = transitionManifest.toByteArray()
+        val transitionSigK1 = TestPgpKeys.sign(transitionBytes, k1)
+        val transitionEpoch = ReleaseManifestVerifier.parseIso8601("2026-11-01T00:00:00Z")!! + 1_000L
+
+        val verifiedTransition = k1Verifier.verifyAndParseManifest(
+            manifestBytes = transitionBytes,
+            signatureBytes = transitionSigK1,
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50102L,
+            currentStoredRevision = 4L,
+            expectedReleaseTag = "v5.1.3",
+            currentTimeMillis = transitionEpoch,
+            publicKey = k1.publicKey,
+        )
+        assertEquals(5L, verifiedTransition.metadataRevision)
+
+        val nextManifest = testManifestJson
+            .replace("\"metadata_revision\": 1", "\"metadata_revision\": 6")
+            .replace("\"release_tag\": \"v5.1.0\"", "\"release_tag\": \"v5.1.4\"")
+            .replace("\"version_name\": \"5.1.0\"", "\"version_name\": \"5.1.4\"")
+            .replace("\"version_code\": 50100", "\"version_code\": 50104")
+            .replace("VRKA-Android-v5.1.0.apk", "VRKA-Android-v5.1.4.apk")
+        val nextBytes = nextManifest.toByteArray()
+        val nextSigK2 = TestPgpKeys.sign(nextBytes, k2)
+
+        // Pre-transition client pinned to K1 rejects unsolicited K2 signatures.
+        assertThrows(ManifestValidationException::class.java) {
+            k1Verifier.verifyAndParseManifest(
+                manifestBytes = nextBytes,
+                signatureBytes = nextSigK2,
+                currentInstalledPackage = "com.mvrk.vrka",
+                currentInstalledVersionCode = 50103L,
+                currentStoredRevision = 5L,
+                expectedReleaseTag = "v5.1.4",
+                currentTimeMillis = transitionEpoch,
+                publicKey = k1.publicKey,
+            )
+        }
+
+        // Post-transition client pinned to K2 accepts K2-signed revision 6.
+        val verifiedNext = k2Verifier.verifyAndParseManifest(
+            manifestBytes = nextBytes,
+            signatureBytes = nextSigK2,
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50103L,
+            currentStoredRevision = 5L,
+            expectedReleaseTag = "v5.1.4",
+            currentTimeMillis = transitionEpoch,
+            publicKey = k2.publicKey,
+        )
+        assertEquals(6L, verifiedNext.metadataRevision)
+
+        // Post-transition client rejects old K1 signatures and rejects rollback to revision 5 even if signed by K2.
+        val rev7SigK1 = TestPgpKeys.sign(nextBytes.decodeToString().replace("\"metadata_revision\": 6", "\"metadata_revision\": 7").toByteArray(), k1)
+        assertThrows(ManifestValidationException::class.java) {
+            k2Verifier.verifyAndParseManifest(
+                manifestBytes = nextBytes.decodeToString().replace("\"metadata_revision\": 6", "\"metadata_revision\": 7").toByteArray(),
+                signatureBytes = rev7SigK1,
+                currentInstalledPackage = "com.mvrk.vrka",
+                currentInstalledVersionCode = 50104L,
+                currentStoredRevision = 6L,
+                expectedReleaseTag = "v5.1.4",
+                currentTimeMillis = transitionEpoch,
+                publicKey = k2.publicKey,
+            )
+        }
+        val rollbackSigK2 = TestPgpKeys.sign(transitionBytes, k2)
+        val rollbackErr = assertThrows(ManifestValidationException::class.java) {
+            k2Verifier.verifyAndParseManifest(
+                manifestBytes = transitionBytes,
+                signatureBytes = rollbackSigK2,
+                currentInstalledPackage = "com.mvrk.vrka",
+                currentInstalledVersionCode = 50104L,
+                currentStoredRevision = 6L,
+                expectedReleaseTag = "v5.1.3",
+                currentTimeMillis = transitionEpoch,
+                publicKey = k2.publicKey,
+            )
+        }
+        assertTrue(rollbackErr.message!!.contains("rollback detected"))
+    }
 }

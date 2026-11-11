@@ -78,9 +78,10 @@ across a changed APK signing identity without the Android signing lineage or a f
 ## Verification and limitations
 
 Existing verifier tests reject signatures from a different key, reject weak digest algorithms,
-require the pinned issuer fingerprint, and enforce expiration and rollback rules. Those checks are
-the current security boundary; they are not proof that a future rotation has been exercised.
-No production key was rotated, no trust anchor was changed, and no key material was accessed in
-this task. Historical acceptance documents may describe a specific offline private-key path or
-permissions; those statements were not independently reverified during this maintenance task and
-must not be treated as current custody evidence.
+require the pinned issuer fingerprint, enforce expiration and rollback rules, and exercise
+a hermetic `K1 -> K2` key-rotation transition fixture in `ReleaseManifestVerifierTest`.
+Those checks verify the verifier state machine without production key material; they do not imply
+that a production rotation occurred. No production key was rotated, no trust anchor was changed,
+and no key material was accessed in this task. Historical acceptance documents may describe a
+specific offline private-key path or permissions; those statements were not independently reverified
+during this maintenance task and must not be treated as current custody evidence.

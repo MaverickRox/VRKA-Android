@@ -72,6 +72,41 @@ internal object CustomCommandPolicy {
         "accept", "accept-language", "origin", "referer", "user-agent", "x-requested-with",
     )
 
+    private val blockedFlags = setOf(
+        "--netrc",
+        "--no-check-certificates",
+        "--prefer-insecure",
+        "--write-pages",
+        "--enable-file-urls",
+    )
+
+    private val blockedOptionsWithValues = blockedOptions - blockedFlags
+
+    fun isBlockedOption(optionLower: String): Boolean =
+        optionLower in blockedOptions ||
+            optionLower == "-o" ||
+            optionLower == "-p" ||
+            (optionLower.startsWith("-o") && optionLower.length > 2) ||
+            optionLower.startsWith("--exec") ||
+            optionLower.startsWith("--external-downloader") ||
+            optionLower.startsWith("--downloader")
+
+    fun isBlockedValueOption(optionLower: String): Boolean =
+        optionLower in blockedOptionsWithValues ||
+            optionLower == "-o" ||
+            optionLower == "-p" ||
+            optionLower.startsWith("--exec") ||
+            optionLower.startsWith("--external-downloader") ||
+            optionLower.startsWith("--downloader")
+
+    fun containsUnsafeTemplateHeader(argument: String): Boolean {
+        val headerName = argument.substringBefore(':').trim()
+        return headerName.isBlank() || headerName.lowercase(Locale.ROOT) !in safeCustomHeaderNames
+    }
+
+    fun isHeaderOption(optionLower: String): Boolean =
+        optionLower in setOf("--add-header", "--add-headers", "-h")
+
     fun validateTemplate(name: String, arguments: List<String>): String? {
         if (name.trim().isEmpty()) return "Give this template a name."
         if (name.length > 80) return "Template names must be 80 characters or fewer."
@@ -87,9 +122,7 @@ internal object CustomCommandPolicy {
             }
             if (expectsValue) {
                 if (argument.startsWith('-')) return "Option values cannot begin with another option."
-                if (expectedOption in setOf("--add-header", "--add-headers", "-h") &&
-                    containsUnsafeTemplateHeader(argument)
-                ) {
+                if (isHeaderOption(expectedOption) && containsUnsafeTemplateHeader(argument)) {
                     return "Authorization and credential-like custom headers cannot be used in templates because yt-dlp cannot safely scope them across redirects."
                 }
                 expectsValue = false
@@ -100,15 +133,12 @@ internal object CustomCommandPolicy {
                 return "Templates may contain yt-dlp options and their values, but no extra positional URLs or arguments."
             }
             val option = argument.substringBefore('=').lowercase(Locale.ROOT)
-            if (option in blockedOptions || option == "-o" || option == "-p" ||
-                option.startsWith("-o") && option.length > 2 || option.startsWith("--exec") ||
-                option.startsWith("--external-downloader") || option.startsWith("--downloader")
-            ) {
+            if (isBlockedOption(option)) {
                 return "This template option is managed by VRKA or can execute another command: $option"
             }
             expectsValue = '=' !in argument && option in valueOptions
             expectedOption = if (expectsValue) option else ""
-            if (option in setOf("--add-header", "--add-headers", "-h") && '=' in argument &&
+            if (isHeaderOption(option) && '=' in argument &&
                 containsUnsafeTemplateHeader(argument.substringAfter('='))
             ) {
                 return "Authorization and credential-like custom headers cannot be used in templates because yt-dlp cannot safely scope them across redirects."
@@ -119,11 +149,6 @@ internal object CustomCommandPolicy {
         }
         if (expectsValue) return "The final template option is missing its value."
         return null
-    }
-
-    private fun containsUnsafeTemplateHeader(argument: String): Boolean {
-        val headerName = argument.substringBefore(':').trim()
-        return headerName.isBlank() || headerName.lowercase(Locale.ROOT) !in safeCustomHeaderNames
     }
 
     /** Parses a human-edited argument line. This handles quoting only; it never invokes a shell. */

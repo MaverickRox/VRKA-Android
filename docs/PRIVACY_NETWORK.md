@@ -46,8 +46,8 @@ update checks" switch. Manual checks are initiated from Settings.
 
 ## Source references
 
-`AppUpdateManager`, `AppUpdateDownloadWorker`, `ComponentUpdateManager`,
-`SecureComponentUpdater`, `CustomRuntimeSource`, `VrkaDownloadManager`, `OutputPublisher`,
-`MediaHttpTransport`, `GeckoRuntimeManager`, and `DiagnosticStore` are the relevant source
-classes. Network host allowlists and URL validation are enforced in code; this document does not
-claim that third-party sites or GitHub handle data identically.
+`AppUpdateManager`, `AppUpdateDownloadWorker`, `ComponentUpdateManager`, `ComponentUpdateWorker`,
+`SecureComponentUpdater`, `YtDlpRuntimeManager`, `CustomRuntimeSource`, `VrkaDownloadManager`,
+`OutputPublisher`, `MediaHttpTransport`, `GeckoRuntimeManager`, and `DiagnosticStore` are the
+relevant source classes. Network host allowlists and URL validation are enforced in code; this
+document does not claim that third-party sites or GitHub handle data identically.

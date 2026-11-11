@@ -418,6 +418,50 @@ class DownloadRequestFactoryTest {
     }
 
     @Test
+    fun customArgumentsEnforceCaseInsensitivePolicyAndIsolateUrlArgv() {
+        val req = built(
+            DownloadRequest(
+                url = "$URL?next=--exec%20id",
+                mode = MediaMode.VIDEO,
+                customArguments = listOf(
+                    "--EXEC", "touch /sdcard/pwn",
+                    "--Downloader=curl",
+                    "--Config", "/tmp/yt.conf",
+                    "--Proxy", "http://proxy.invalid:8080",
+                    "--Netrc",
+                    "--No-Check-Certificates",
+                    "--add-header", "Cookie:secret=1",
+                    "--add-header=Authorization:Bearer topsecret",
+                    "--add-header", "X-Untrusted: blocked",
+                    "-HCookie:attached=1",
+                    "--bad\nflag",
+                    "--add-header", "X-Requested-With: VRKA",
+                    "--limit-rate", "2M",
+                    "--no-cache-dir",
+                ),
+            ),
+        )
+        val cmd = req.buildCommand()
+        assertFalse(cmd.any { it.equals("--exec", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("pwn") })
+        assertFalse(cmd.any { it.contains("downloader", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("--config", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("/tmp/yt.conf") })
+        assertFalse(cmd.any { it.contains("--proxy", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("proxy.invalid") })
+        assertFalse(cmd.any { it.equals("--netrc", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("check-certificates", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("secret=1") || it.contains("topsecret") || it.contains("attached=1") || it.contains("X-Untrusted") })
+        assertFalse(cmd.any { it.contains("bad\nflag") })
+        assertTrue(cmd.contains("--add-header"))
+        assertTrue(cmd.contains("X-Requested-With: VRKA"))
+        assertTrue(cmd.contains("--limit-rate"))
+        assertTrue(cmd.contains("2M"))
+        assertTrue(cmd.contains("--no-cache-dir"))
+        assertTrue(cmd.contains("$URL?next=--exec%20id"))
+    }
+
+    @Test
     fun wavAudioModeOmitsEmbedThumbnailEvenIfRequested() {
         val wavRequest = built(
             DownloadRequest(

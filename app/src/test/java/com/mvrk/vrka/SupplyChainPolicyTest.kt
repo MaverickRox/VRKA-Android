@@ -56,19 +56,41 @@ class SupplyChainPolicyTest {
         val metadataText = metadata.readText(Charsets.UTF_8)
         assertTrue(metadataText.contains("<verify-metadata>false</verify-metadata>"))
         assertTrue(metadataText.contains("<sha256 value="))
+        assertFalse("Verification metadata must not bypass keys", metadataText.contains("<ignored-keys"))
+        assertFalse("Verification metadata must not bypass via trusted-key wildcards", metadataText.contains("<trusted-key"))
+        assertFalse("Verification metadata must not reference mavenLocal", metadataText.lowercase().contains("mavenlocal"))
+        assertFalse("Lockfile must not reference mavenLocal", lockText.lowercase().contains("mavenlocal"))
     }
 
     @Test
     fun githubActionsArePinnedToImmutableCommits() {
-        val workflow = text(".github/workflows/ci.yml")
-        val uses = Regex("""uses:\s*([^\s#]+)""").findAll(workflow).map { it.groupValues[1] }.toList()
-        assertTrue("No workflow actions found", uses.isNotEmpty())
-        uses.forEach { action ->
-            val ref = action.substringAfter('@', "")
-            assertTrue("Action must be pinned to a 40-character commit: $action", Regex("""^[0-9a-f]{40}$""").matches(ref))
+        val workflowsDir = File(root(), ".github/workflows")
+        val workflowFiles = workflowsDir.listFiles { file ->
+            file.isFile && (file.name.endsWith(".yml") || file.name.endsWith(".yaml"))
+        }?.toList().orEmpty()
+        assertTrue("No workflow files found", workflowFiles.isNotEmpty())
+        workflowFiles.forEach { wfFile ->
+            val content = wfFile.readText(Charsets.UTF_8)
+            val uses = Regex("""uses:\s*([^\s#]+)""").findAll(content).map { it.groupValues[1] }.toList()
+            assertTrue("No actions found in ${wfFile.name}", uses.isNotEmpty())
+            uses.forEach { action ->
+                val ref = action.substringAfter('@', "")
+                assertTrue(
+                    "Action in ${wfFile.name} must be pinned to a 40-character commit: $action",
+                    Regex("""^[0-9a-f]{40}$""").matches(ref),
+                )
+            }
         }
+        val workflow = text(".github/workflows/ci.yml")
         assertTrue(workflow.contains("lintRelease"))
         assertTrue(workflow.contains("dependency-review"))
+        assertTrue(workflow.contains("app/build/outputs/mapping/devRelease/mapping.txt"))
+        assertTrue(workflow.contains("app/build/outputs/mapping/devRelease/mapping.sha256"))
+        val dependabot = File(root(), ".github/dependabot.yml")
+        assertTrue("Dependabot configuration must be committed", dependabot.isFile)
+        val dependabotText = dependabot.readText(Charsets.UTF_8)
+        assertTrue(dependabotText.contains("package-ecosystem: gradle"))
+        assertTrue(dependabotText.contains("package-ecosystem: github-actions"))
     }
 
     @Test
@@ -112,6 +134,8 @@ class SupplyChainPolicyTest {
         val inventory = JSONObject(text("docs/native-binaries.json"))
         val components = inventory.getJSONArray("components")
         val build = text("app/build.gradle.kts")
+        val lockText = text("app/gradle.lockfile")
+        val verificationMetadata = text("gradle/verification-metadata.xml")
         var checkedAssets = 0
         for (index in 0 until components.length()) {
             val component = components.getJSONObject(index)
@@ -133,11 +157,20 @@ class SupplyChainPolicyTest {
             }
             component.optString("maven").takeIf { it.isNotBlank() }?.let { maven ->
                 val version = maven.substringAfterLast(':')
-                assertTrue("Native dependency version not pinned in build: $maven", build.contains(version))
+                assertTrue("Native dependency missing from gradle.lockfile: $maven", lockText.contains(maven))
+                if (component.optString("dependencyScope", "direct") == "direct") {
+                    assertTrue("Direct native dependency version not pinned in build: $maven", build.contains(version))
+                }
+                if (component.optString("kind") == "prebuilt Android AAR") {
+                    val expectedHash = component.getString("sha256")
+                    assertTrue("Prebuilt AAR SHA-256 missing in verification-metadata.xml: $maven", verificationMetadata.contains(expectedHash))
+                }
             }
         }
-        assertTrue("Native inventory must hash bundled assets", checkedAssets >= 4)
-        assertTrue(text("docs/NATIVE_BINARY_INVENTORY.md").contains("not built reproducibly"))
+        assertTrue("Native inventory must hash all bundled native/trust-anchor/browser assets", checkedAssets >= 7)
+        val inventoryDocs = text("docs/NATIVE_BINARY_INVENTORY.md")
+        assertTrue(inventoryDocs.contains("not built reproducibly"))
+        assertTrue(inventoryDocs.contains("app/src/main/res/raw/ytdlp"))
     }
 
     @Test
@@ -158,5 +191,37 @@ class SupplyChainPolicyTest {
         val strings = text("app/src/main/res/values/strings.xml")
         assertTrue(strings.contains("runtime_untrusted_warning"))
         assertTrue(strings.contains("does not sandbox"))
+    }
+
+    @Test
+    fun releaseBuildConfigAndSigningIsolationAreMaintained() {
+        val build = text("app/build.gradle.kts")
+        assertTrue(build.contains("checkReleaseBuilds = true"))
+        assertTrue(build.contains("abortOnError = true"))
+        assertTrue(build.contains("isMinifyEnabled = true"))
+        assertTrue(build.contains("isShrinkResources = true"))
+        assertTrue(build.contains("val productionSigningRequested"))
+        assertTrue(build.contains("val signingProperties = if (productionSigningRequested)"))
+    }
+
+    @Test
+    fun architectureDocumentationMatchesRoomAuthority() {
+        val architecture = text("CURRENT_PRODUCTION_ARCHITECTURE.md")
+        assertTrue(architecture.contains("VrkaDatabase"))
+        assertFalse(architecture.contains("JobStore (JSON Storage)"))
+        assertFalse(architecture.contains("VRKA-Android-v5.1.0.manifest.json"))
+    }
+
+    @Test
+    fun customCommandAndRuntimeHardeningInvariants() {
+        val requestFactory = text("app/src/main/java/com/mvrk/vrka/DownloadRequestFactory.kt")
+        assertTrue(requestFactory.contains("CustomCommandPolicy.isBlockedOption"))
+        assertTrue(requestFactory.contains("CustomCommandPolicy.containsUnsafeTemplateHeader"))
+
+        val runtimeManager = text("app/src/main/java/com/mvrk/vrka/runtime/YtDlpRuntimeManager.kt")
+        assertTrue(runtimeManager.contains("recordedRuntimeMatches(runtime, binary)"))
+
+        val settingsScreen = text("app/src/main/java/com/mvrk/vrka/SettingsScreen.kt")
+        assertTrue(settingsScreen.contains("SHA-256: \${confirmation.sha256}"))
     }
 }

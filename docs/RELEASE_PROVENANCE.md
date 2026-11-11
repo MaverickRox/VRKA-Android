@@ -57,9 +57,12 @@ record) covering at least:
 - build timestamp;
 - signing-certificate fingerprint and manifest revision/hash.
 
-Attestation publication must not require exposing signing secrets to pull-request builds. Mapping
-files remain private release artifacts associated with the same source commit and version; they
-must not be attached to a public release by default.
+Attestation publication must not require exposing signing secrets to pull-request builds.
+Production `app/build/outputs/mapping/release/mapping.txt` and its SHA-256 digest must be archived
+in private maintainer storage indexed by `{versionName, versionCode, sourceCommit, apkSha256}`
+for crash deobfuscation; mapping files must not be attached to a public release by default. CI
+continuously checks and retains non-secret `devRelease` `mapping.txt` + `mapping.sha256` artifacts
+for 7 days.
 
 ## Verification commands
 

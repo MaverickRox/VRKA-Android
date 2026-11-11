@@ -7,19 +7,26 @@ evidence below remains historical and unchanged.
 
 | Check | Command | Result |
 |---|---|---|
-| Full JVM suite (with dependency locks and verification metadata) | `.\gradlew.bat --no-daemon --no-configuration-cache testDebugUnitTest lintDebug lintRelease compileDebugAndroidTestKotlin assembleDebug assembleDebugAndroidTest assembleDevRelease` | PASS: 835 tests in 79 suites; 0 failures, 0 errors, 0 skipped |
-| Supply-chain policy suite | `--tests com.mvrk.vrka.SupplyChainPolicyTest` | PASS: repository policy, lock/verification metadata, pinned Actions, documentation versions, provenance, native inventory hashes, privacy documentation |
+| Full JVM suite (with dependency locks and verification metadata) | `.\gradlew.bat --no-daemon --no-configuration-cache --dependency-verification=strict testDebugUnitTest lintDebug lintRelease compileDebugAndroidTestKotlin assembleDebug assembleDebugAndroidTest assembleDevRelease` | PASS: 847 tests in 80 suites; 0 failures, 0 errors, 0 skipped |
+| Supply-chain policy suite | `--tests com.mvrk.vrka.SupplyChainPolicyTest` (in full run) | PASS: 10 tests; repository policy, lock/verification metadata cleanliness, pinned Actions & Dependabot, doc/architecture consistency, provenance, LF native inventory & AAR hashes, build-hardening invariants |
+| Custom runtime manager suite | `--tests com.mvrk.vrka.runtime.YtDlpRuntimeManagerTest` (in full run) | PASS: 6 tests; probe/size-mismatch rejection, tampered/missing fallback to stock, unverified/tampered activation refusal, active-runtime removal guard, update rollback |
+| Custom command policy & request factory suites | `--tests com.mvrk.vrka.CustomCommandTemplatesTest`, `--tests com.mvrk.vrka.DownloadRequestFactoryTest` (in full run) | PASS: 7 + 23 tests; escaping/quote errors, case-insensitive blocked flags/headers, URL argv isolation |
+| Release manifest verifier suite | `--tests com.mvrk.vrka.update.security.ReleaseManifestVerifierTest` (in full run) | PASS: 28 tests; published v5.1.1/v5.1.2/v5.1.3 detached signatures and hermetic `K1 -> K2` key-rotation transition fixture |
 | Debug lint | `lintDebug` in the same run | PASS: 0 errors; 301 warnings, 4 hints |
 | Release lint | `lintRelease` in the same run | PASS: 0 errors; 300 warnings, 4 hints |
-| Dependency locking | `app/gradle.lockfile` | Generated with `--write-locks`; release/debug/devRelease/unit-test/androidTest/KSP/lint configurations covered |
-| Dependency verification | `gradle/verification-metadata.xml` | SHA-256 metadata generated from trusted repositories after mavenLocal removal; verification enabled |
+| Development release R8 mapping | `assembleDevRelease` in the same run | PASS: non-empty `app/build/outputs/mapping/devRelease/mapping.txt` (`81,658,899` bytes, SHA-256 `776c39359ae6bf41cce8401dfd4b7335e4092e1e0269db516653203a2fb45e7f`); no signing secrets present |
+| Dependency locking & diff hygiene | `app/gradle.lockfile` + `git diff --check` | PASS: `git diff --exit-code -- app/gradle.lockfile` exited `0`; `git diff --check` exited `0` |
+| Dependency verification | `gradle/verification-metadata.xml` | SHA-256 metadata generated from trusted repositories after mavenLocal removal; `--dependency-verification=strict` enforced |
 | Release/debug/androidTest compilation | same run | PASS |
 | Debug, androidTest, and development release APKs | same run | PASS without production signing |
-| API 36 provider instrumentation | `.\gradlew.bat --no-daemon connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.mvrk.vrka.SafPublicationIntegrationTest,com.mvrk.vrka.PublicationStorageIntegrationTest'` | PASS: 12 tests |
+| API 36 provider instrumentation | Executed by CI `provider-tests` job (not re-run locally on physical devices; 12 prior v5.1.3 release-time tests recorded below) | See CI workflow run on `main` |
 
 The supply-chain policy test also verifies that `mavenLocal()` is absent from production
-resolution, every `uses:` action is pinned to a 40-character commit, release lint is part of CI,
-and the native inventory hashes match the checked-in assets.
+resolution, every `uses:` action across `.github/workflows` is pinned to a 40-character commit,
+`dependabot.yml`, release lint, and CI `devRelease` R8 mapping retention are configured, release
+minification/lint/signing-isolation flags remain intact, `CURRENT_PRODUCTION_ARCHITECTURE.md` matches
+Room authority, and native/trust-anchor inventory hashes match the checked-in LF assets and Gradle
+verification metadata.
 
 ---
 

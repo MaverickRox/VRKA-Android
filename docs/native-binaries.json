@@ -1,14 +1,33 @@
 {
   "schema": "vrka-native-inventory/v1",
   "generatedFor": "5.1.3",
-  "note": "Native binaries are delivered through third-party Android AARs or bundled browser assets. SHA-256 values are artifact hashes from Gradle verification metadata; they establish integrity of the exact artifact, not a reproducible build.",
+  "note": "Native binaries are delivered through prebuilt Android AARs, bundled browser assets, and the bundled stock yt-dlp zipapp/public key resources. SHA-256 values for Maven artifacts come from gradle/verification-metadata.xml; SHA-256 values for checked-in files are LF canonical file digests. These establish artifact integrity against pinned inputs, not a reproducible from-source native build.",
   "components": [
     {
       "name": "Mozilla GeckoView",
       "kind": "prebuilt Android AAR",
+      "dependencyScope": "direct",
       "maven": "org.mozilla.geckoview:geckoview-arm64-v8a:159.0.20261022150525",
       "artifact": "geckoview-arm64-v8a-159.0.20261022150525.aar",
       "sha256": "fe774fc331941c8d9bab342426286ca168420de0a1d763eead64bb64191925a8",
+      "nativeLibraries": [
+        "libclearkey.so",
+        "libcrashhelper.so",
+        "libcrashtools.so",
+        "libfreebl3.so",
+        "libgkcodecs.so",
+        "liblgpllibs.so",
+        "libmozavcodec.so",
+        "libmozavutil.so",
+        "libmozglue.so",
+        "libnss3.so",
+        "libplugin-container.so",
+        "libsoftokn3.so",
+        "libxul.so"
+      ],
+      "bundledAssets": [
+        "assets/omni.ja"
+      ],
       "upstream": "https://wiki.mozilla.org/Mobile/GeckoView",
       "sourceUrl": "https://hg.mozilla.org/mozilla-central/",
       "license": "MPL-2.0",
@@ -17,30 +36,100 @@
       "vulnerabilityMonitoring": "Mozilla security advisories and Dependabot"
     },
     {
-      "name": "yt-dlp Android library (includes bundled yt-dlp runtime)",
+      "name": "yt-dlp Android library (Python and QuickJS native runtimes)",
       "kind": "prebuilt Android AAR",
+      "dependencyScope": "direct",
       "maven": "io.github.junkfood02.youtubedl-android:library:0.18.1",
       "artifact": "library-0.18.1.aar",
       "sha256": "579b5fb480892b1abc2b218c2089699d52759cc8d7ba256bf876453f0365faef",
+      "nativeLibraries": [
+        "libpython.so",
+        "libpython.zip.so",
+        "libqjs.so"
+      ],
       "upstream": "https://github.com/yausername/youtubedl-android",
       "sourceUrl": "https://github.com/yausername/youtubedl-android",
       "license": "GPL-3.0 (wrapper); yt-dlp Unlicense",
       "origin": "Maven Central",
-      "update": "pinned; stock runtime may be updated by the signed component updater",
+      "update": "pinned; stock yt-dlp zipapp resource may be updated by the signed component updater",
       "vulnerabilityMonitoring": "Dependabot and upstream release monitoring"
     },
     {
       "name": "FFmpeg Android library",
       "kind": "prebuilt Android AAR",
+      "dependencyScope": "direct",
       "maven": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
       "artifact": "ffmpeg-0.18.1.aar",
       "sha256": "0a87ffa6cf912b0fe76c1a99b9107f543ee2f247935fae2c71f0822eb7bc5f49",
+      "nativeLibraries": [
+        "libffmpeg.so",
+        "libffmpeg.zip.so",
+        "libffprobe.so"
+      ],
       "upstream": "https://ffmpeg.org/",
       "sourceUrl": "https://github.com/yausername/youtubedl-android",
       "license": "LGPL/GPL components; see upstream notices",
       "origin": "Maven Central",
       "update": "pinned; no automatic native binary replacement",
       "vulnerabilityMonitoring": "Dependabot and FFmpeg security advisories"
+    },
+    {
+      "name": "AndroidX Graphics Path",
+      "kind": "prebuilt Android AAR",
+      "dependencyScope": "transitive",
+      "maven": "androidx.graphics:graphics-path:1.0.1",
+      "artifact": "graphics-path-1.0.1.aar",
+      "sha256": "8ca4032b6d79b351f0b59ad4b580eddbb9423e1652f7c958830687f1eee2ec03",
+      "nativeLibraries": [
+        "libandroidx.graphics.path.so"
+      ],
+      "upstream": "https://developer.android.com/jetpack/androidx/releases/graphics",
+      "sourceUrl": "https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:graphics/graphics-path/",
+      "license": "Apache-2.0",
+      "origin": "Google Maven repository",
+      "update": "pinned via transitive lockfile and Gradle verification metadata",
+      "vulnerabilityMonitoring": "Dependabot and Android Security Bulletins"
+    },
+    {
+      "name": "AndroidX DataStore Core",
+      "kind": "prebuilt Android AAR",
+      "dependencyScope": "transitive",
+      "maven": "androidx.datastore:datastore-core-android:1.2.1",
+      "artifact": "datastore-core.aar",
+      "sha256": "435edad7bcb1fbb1a2a46de7be4d6daf299479b3328ebf757ebdfe02810cbdd8",
+      "nativeLibraries": [
+        "libdatastore_shared_counter.so"
+      ],
+      "upstream": "https://developer.android.com/jetpack/androidx/releases/datastore",
+      "sourceUrl": "https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:datastore/datastore-core/",
+      "license": "Apache-2.0",
+      "origin": "Google Maven repository",
+      "update": "pinned via transitive lockfile and Gradle verification metadata",
+      "vulnerabilityMonitoring": "Dependabot and Android Security Bulletins"
+    },
+    {
+      "name": "Stock yt-dlp zipapp binary",
+      "kind": "bundled Python zipapp resource",
+      "asset": "app/src/main/res/raw/ytdlp",
+      "sha256": "1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6",
+      "upstream": "https://github.com/yt-dlp/yt-dlp",
+      "sourceUrl": "https://github.com/yt-dlp/yt-dlp",
+      "license": "Unlicense",
+      "origin": "upstream yt-dlp zipapp resource overrides AAR res/raw/ytdlp",
+      "update": "stock asset updated only through signed component updater or reviewed app release",
+      "vulnerabilityMonitoring": "Dependabot cannot track this resource; upstream yt-dlp release monitoring"
+    },
+    {
+      "name": "Pinned upstream yt-dlp OpenPGP public key",
+      "kind": "trust anchor resource",
+      "asset": "app/src/main/res/raw/ytdlp_pubkey.asc",
+      "sha256": "45d6b415928b5f3e228b461fa9e6d7eb56a824931c785ece00279a06c7a6d6e5",
+      "upstream": "https://github.com/yt-dlp/yt-dlp",
+      "sourceUrl": "https://github.com/yt-dlp/yt-dlp",
+      "license": "N/A",
+      "origin": "repository resource used by SecureComponentUpdater",
+      "update": "manual reviewed resource update",
+      "vulnerabilityMonitoring": "upstream yt-dlp release signing notices"
     },
     {
       "name": "uBlock Origin Firefox extension",
@@ -64,9 +153,9 @@
         "app/src/main/assets/extensions/media-detector/content.js"
       ],
       "sha256": {
-        "manifest.json": "0a4ac7e5087d03221ebe955ef1aa35470b7bad9660f144ba459a69f2ba16716b",
-        "background.js": "fed31270cab1b77b8a5ec8d3b41772d3b70fb00a99e3e567ede0e8bbc9b7a99f",
-        "content.js": "aedb3bdb53cb80fa7b783456e7682d3a21ec3c4231279991e90f31570cdbcaf8"
+        "manifest.json": "28f54f070b172e03f42f67a800b705c6ee0587c637299cf067120b65c775bcd9",
+        "background.js": "7258de30f778fc55d99da9ef0bec545f6fd8d9ecd78def229968552995fa1023",
+        "content.js": "f91959c16d57ba5727129b04e1c6889ee108ec9aa23a2da282d336f280d66d7f"
       },
       "upstream": "VRKA Android repository",
       "sourceUrl": "https://github.com/MaverickRox/VRKA-Android",
@@ -78,10 +167,10 @@
       "name": "Pinned release OpenPGP public key",
       "kind": "trust anchor resource",
       "asset": "app/src/main/res/raw/vrka_release_pubkey.asc",
-      "sha256": "7f2a6ef42a4f66289e31c4fefff44b7ba294f9d0c696ace1f20602401641f38a",
+      "sha256": "ec795e3f2bcdc883481036e42b423b5e4f0d12056bf59e30f4ddf4c3b4300ba7",
       "upstream": "VRKA release identity",
       "license": "N/A",
-      "origin": "repository resource",
+      "origin": "repository resource (LF-normalized; root VRKA-Release-Public-Key.asc release asset has separate formatting hash in SHA256SUMS)",
       "update": "requires a signed trust-anchor transition; see KEY_MANAGEMENT.md"
     }
   ]
