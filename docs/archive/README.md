@@ -13,7 +13,6 @@ For current documentation, start at [docs/README.md](../README.md) or the root [
 - `DESKTOP_PARITY.md` — Bounded Windows v5.0 build-007 parity comparison
 - `FINAL_ENGINEERING_REPORT_VRKA_5.0.md` — v5.0 engineering closeout report
 - `PHYSICAL_VALIDATION_REPORT.md` — Initial v5.0 OnePlus 11 validation report
-- `REFERENCE_NAVBAR_STUDY.md` — Early Floating Capsule navigation bar reference study
 
 ### Legacy v5.1.0 Audit & Hardening Snapshots (`v5.1.0/`)
 - `v5.1.0/V5.1.0_DOWNLOAD_AND_NAVBAR_HARDENING.md`

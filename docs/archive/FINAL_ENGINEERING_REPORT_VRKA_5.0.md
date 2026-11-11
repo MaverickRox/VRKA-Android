@@ -21,7 +21,7 @@ Git history was used to inspect the v4.5.3 Settings and component/update impleme
 
 ## D. Navigation and SpotiFLAC-Mobile reference
 
-The inspected SpotiFLAC-Mobile `main_shell.dart` keeps a dedicated floating bottom bar in a safe-area layout, synchronizes it with its `PageView`, and disables costly blur on low-end devices. VRKA adapted the separate glass surface and page-synchronization ideas to Compose and its existing backdrop renderer. It uses measured slot widths and explicit insets, not Flutter widgets or dependencies. See [REFERENCE_NAVBAR_STUDY.md](REFERENCE_NAVBAR_STUDY.md).
+The inspected SpotiFLAC-Mobile `main_shell.dart` keeps a dedicated floating bottom bar in a safe-area layout, synchronizes it with its `PageView`, and disables costly blur on low-end devices. VRKA adapted the separate glass surface and page-synchronization ideas to Compose and its existing backdrop renderer. It uses measured slot widths and explicit insets, not Flutter widgets or dependencies (superseded later by `VrkaNavPillMotion.kt`).
 
 ## E. Active production path
 
