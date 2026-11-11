@@ -557,6 +557,41 @@ class ReleaseManifestVerifierTest {
     }
 
     @Test
+    fun publishedV514ManifestDetachedSignatureVerifiesWithPinnedPublicKey() {
+        val manifestFile = listOf(
+            File("VRKA-Android-v5.1.4.manifest.json"),
+            File("../VRKA-Android-v5.1.4.manifest.json"),
+            File("../../VRKA-Android-v5.1.4.manifest.json"),
+        ).firstOrNull { it.exists() }
+        assertNotNull("The v5.1.4 manifest must be present in the repository", manifestFile)
+        val signatureFile = File(manifestFile!!.path + ".asc")
+        assertTrue("The detached signature must be present", signatureFile.exists())
+
+        val manifestBytes = manifestFile.readBytes()
+        val manifestObj = ReleaseManifest.fromJson(String(manifestBytes))
+        val issuedEpoch = ReleaseManifestVerifier.parseIso8601(manifestObj.issuedAt)
+            ?: error("The v5.1.4 manifest has an invalid issued_at")
+
+        val parsed = pinnedVerifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = signatureFile.readBytes(),
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50103L,
+            currentStoredRevision = 6L,
+            expectedReleaseTag = "v5.1.4",
+            currentTimeMillis = issuedEpoch + 1_000L,
+            publicKey = pinnedPublicKey,
+        )
+
+        assertEquals("5.1.4", parsed.versionName)
+        assertEquals(50104L, parsed.versionCode)
+        assertEquals(7L, parsed.metadataRevision)
+        assertEquals("6717da543df98fca33cdce78f8bc098edf6cef60", parsed.sourceCommit)
+        assertEquals(157_431_395L, parsed.apk.sizeBytes)
+        assertEquals("5535291ff60c89852f1b2b960379a3b2637576e833ab3951759522110bba5d97", parsed.apk.sha256)
+    }
+
+    @Test
     fun testValidV511ToV512UpgradeAcceptedByManifestVerifier() {
         val manifestFile = listOf(
             File("VRKA-Android-v5.1.2.manifest.json"),

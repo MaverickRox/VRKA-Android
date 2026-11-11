@@ -1,4 +1,32 @@
-# v5.1.3 Release Provenance
+# v5.1.4 Release Provenance
+
+## Canonical v5.1.4 objects
+
+| Object | Value |
+|---|---|
+| Release tag | `v5.1.4` |
+| Annotated tag target | `6717da543df98fca33cdce78f8bc098edf6cef60` (direct `tag == source_commit`) |
+| APK build source commit (`C1`) | `6717da543df98fca33cdce78f8bc098edf6cef60` |
+| Release evidence commit (`C2`) | Parent is `6717da543df98fca33cdce78f8bc098edf6cef60`; records signed manifest, checksums, and evidence after `C1` CI pass and APK build |
+| Source commit CI validation run | https://github.com/MaverickRox/VRKA-Android/actions/runs/42988201135 (`Unit tests, lint and development build` + `Real MediaStore and SAF provider tests (API 36)`) |
+| Tag message | `VRKA Android v5.1.4 production release` |
+| Version | `5.1.4` / `50104` |
+| APK | `VRKA-Android-v5.1.4.apk` |
+| APK size | `157431395` bytes |
+| APK SHA-256 | `5535291ff60c89852f1b2b960379a3b2637576e833ab3951759522110bba5d97` |
+| Manifest | `VRKA-Android-v5.1.4.manifest.json` (`metadata_revision` `7`) |
+| Manifest SHA-256 | `3b8cbf09cd3e836fe655714ebde7486d727f4988cb98734ce045a7d8ceb5d18e` |
+| Signature | `VRKA-Android-v5.1.4.manifest.json.asc` |
+| Signature SHA-256 | `088c131eb2412736d4dabd6fab0a44bb3812a088a1b783c678d51bbdb6ea7a25` |
+| Release public key asset | `VRKA-Release-Public-Key.asc`; SHA-256 `7f2a6ef42a4f66289e31c4fefff44b7ba294f9d0c696ace1f20602401641f38a` |
+| Checksums | `SHA256SUMS`; SHA-256 `ce78a365f64c7b51c43e67c113666b0dc59f8a13d7b5de5b55594b30fa89089a` |
+| Release R8 mapping backup (private) | `81,677,479` bytes; SHA-256 `1a745660c1bd6af6e99344ca53c5f5bbfd47080418c560fff48e29a411f7c38a` (archived off-repo, never uploaded) |
+
+For `v5.1.4`, CI (`42988201135`) ran and passed on the exact source commit `6717da543df98fca33cdce78f8bc098edf6cef60` before the production APK was built cleanly from `6717da543df98fca33cdce78f8bc098edf6cef60`, and the annotated `v5.1.4` tag points directly at `6717da543df98fca33cdce78f8bc098edf6cef60`. No GitHub-hosted artifact provenance attestation exists for the locally signed production APK (`F:\vrka-release.p12` remains offline on the maintainer workstation).
+
+---
+
+# Historical: v5.1.3 Release Provenance
 
 ## Canonical objects
 

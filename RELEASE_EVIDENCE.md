@@ -1,4 +1,49 @@
-# VRKA Android 5.1.3 — Release Evidence
+# VRKA Android 5.1.4 — Release Evidence
+
+- **Verification date:** 2026-11-11
+- **Source version:** `5.1.4` (`versionCode` 50104)
+- **APK build source commit (`C1`) / tag target:** `6717da543df98fca33cdce78f8bc098edf6cef60`
+- **Source commit CI run:** https://github.com/MaverickRox/VRKA-Android/actions/runs/42988201135 (`Unit tests, lint and development build`: pass in `11m41s`; `Real MediaStore and SAF provider tests (API 36)`: pass in `6m7s`)
+- **Release page:** https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.4
+- **Provenance:** Annotated tag `v5.1.4` targets the exact APK build source commit `6717da543df98fca33cdce78f8bc098edf6cef60`; this commit records the signed manifest, checksums, and release evidence after `C1` CI validation passed. See [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md).
+
+## Automated checks (`v5.1.4`)
+
+| Check | Command or evidence | Result |
+| --- | --- | --- |
+| Full JVM unit suite & strict build | `testDebugUnitTest lintDebug lintRelease compileDebugAndroidTestKotlin compileReleaseKotlin assembleDebug assembleDebugAndroidTest assembleDevRelease --dependency-verification=strict` | PASS: `849` tests / `80` suites (`0` failures, `0` errors, `0` skipped); `lintDebug` `0` errors (`301` warnings); `lintRelease` `0` errors (`300` warnings); `devRelease` mapping `81,677,479` bytes (`1a745660c1bd6af6e99344ca53c5f5bbfd47080418c560fff48e29a411f7c38a`) |
+| GitHub Actions CI (`C1`) | `Android CI` run `42988201135` on `6717da543df98fca33cdce78f8bc098edf6cef60` | PASS: `Unit tests, lint and development build` (`11m41s`) and `Real MediaStore and SAF provider tests (API 36)` (`6m7s`) |
+| Production release build (`C1`) | `assembleRelease --dependency-verification=strict` on clean `6717da543df98fca33cdce78f8bc098edf6cef60` | PASS: `157,431,395` bytes; `mapping.txt` archived outside repo (`1a745660c1bd6af6e99344ca53c5f5bbfd47080418c560fff48e29a411f7c38a`) |
+| APK signature & packaging verification | `apksigner verify --verbose --print-certs`, `zipalign -c -v 4`, `aapt2 dump badging` | PASS: APK Signature Scheme v2 only; RSA 4096; `com.mvrk.vrka` `5.1.4` (`50104`); `minSdkVersion` `26`, `targetSdkVersion` `36`, `arm64-v8a`; non-debuggable; aligned (`4` bytes) |
+| Detached OpenPGP & manifest check | `gpg --verify` + `publishedV514ManifestDetachedSignatureVerifiesWithPinnedPublicKey` | PASS: revision `7`, code `50104`, key `71165A658B3A8612AC2568C6D519380BEBA1B9F7` (`0xD519380BEBA1B9F7`) |
+| Live asset re-download & API 36 upgrade | Post-publication re-download verification and API 36 emulator `v5.1.3` -> `v5.1.4` live updater + direct upgrade checks | Pending publication in post-publish verification commit (`C3`) |
+
+## Production release artifact (`v5.1.4`)
+
+- **APK filename:** `VRKA-Android-v5.1.4.apk` (`app/build/outputs/apk/release/app-release.apk`)
+- **Size:** `157,431,395` bytes (`157431395`)
+- **SHA-256:** `5535291ff60c89852f1b2b960379a3b2637576e833ab3951759522110bba5d97`
+- **Package / version:** `com.mvrk.vrka`, version name `5.1.4`, version code `50104`
+- **SDK / ABI:** `minSdkVersion` `26`, `targetSdkVersion` `36`, `arm64-v8a` only, non-debuggable
+- **Signer:** `CN=VRKA, OU=MVRK, O=MVRK, L=Private, ST=Private, C=IN` (RSA 4096-bit)
+- **Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
+- **Certificate SHA-1:** `7758980F74A503684BF1A187994E447823D19D7C`
+- **APK signing:** APK Signature Scheme v2 verified (`v1`/`v3` absent); ZIP alignment verified (`zipalign -c -v 4`).
+
+## Signed updater metadata (`v5.1.4`)
+
+- **Manifest:** `VRKA-Android-v5.1.4.manifest.json` (`metadata_revision` `7`)
+- **Source commit:** `6717da543df98fca33cdce78f8bc098edf6cef60`
+- **Validity:** issued `2026-11-11T08:50:07Z`; expires `2027-11-11T08:50:07Z`
+- **Manifest SHA-256:** `3b8cbf09cd3e836fe655714ebde7486d727f4988cb98734ce045a7d8ceb5d18e`
+- **Detached signature:** `VRKA-Android-v5.1.4.manifest.json.asc`; SHA-256 `088c131eb2412736d4dabd6fab0a44bb3812a088a1b783c678d51bbdb6ea7a25`
+- **OpenPGP signer:** RSA 4096-bit key fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7` (`0xD519380BEBA1B9F7`)
+- **Public key asset:** `VRKA-Release-Public-Key.asc`; SHA-256 `7f2a6ef42a4f66289e31c4fefff44b7ba294f9d0c696ace1f20602401641f38a`
+- **Checksums (`SHA256SUMS`):** SHA-256 `ce78a365f64c7b51c43e67c113666b0dc59f8a13d7b5de5b55594b30fa89089a` (historical `v5.1.3`..`v4.0.3` lines preserved unchanged)
+
+---
+
+# Historical: VRKA Android 5.1.3 — Release Evidence
 
 - **Verification date:** 2026-11-10
 - **Source version:** `5.1.3` (`versionCode` 50103)

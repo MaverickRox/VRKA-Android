@@ -122,10 +122,12 @@ class SupplyChainPolicyTest {
         assertTrue(provenance.contains("c9f58d3a97d728315b51fc92f43b5f54b88ae4ad9c25b3b22ea0cd8338549ddf"))
         assertTrue(provenance.contains("does not exist"))
         assertTrue(provenance.contains("metadata-after-build"))
-        assertTrue(
-            text("app/src/test/java/com/mvrk/vrka/update/security/ReleaseManifestVerifierTest.kt")
-                .contains("testWrongKeySignatureRejected"),
-        )
+        assertTrue(provenance.contains("6717da543df98fca33cdce78f8bc098edf6cef60"))
+        assertTrue(provenance.contains("5535291ff60c89852f1b2b960379a3b2637576e833ab3951759522110bba5d97"))
+        assertTrue(provenance.contains("3b8cbf09cd3e836fe655714ebde7486d727f4988cb98734ce045a7d8ceb5d18e"))
+        val verifierTests = text("app/src/test/java/com/mvrk/vrka/update/security/ReleaseManifestVerifierTest.kt")
+        assertTrue(verifierTests.contains("testWrongKeySignatureRejected"))
+        assertTrue(verifierTests.contains("publishedV514ManifestDetachedSignatureVerifiesWithPinnedPublicKey"))
         assertTrue(text("docs/KEY_MANAGEMENT.md").contains("No rotation is performed in this task"))
     }
 
