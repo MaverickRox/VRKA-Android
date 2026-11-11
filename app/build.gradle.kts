@@ -221,7 +221,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
     testImplementation("xpp3:xpp3:1.1.4c")
     testImplementation("xmlpull:xmlpull:1.1.3.1")
     testImplementation("org.robolectric:robolectric:4.17")
