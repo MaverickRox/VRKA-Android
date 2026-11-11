@@ -17,8 +17,19 @@ metadata, or production signing material.
   and the v5.0.2 one-time upgrade bridge.
 - Clarified the no-analytics claim as a narrower source-verifiable statement and documented all
   application-controlled network destinations.
-- Added custom-runtime checksum re-verification and an explicit untrusted-runtime warning showing
-  origin, version, and SHA-256; preserved safe argv validation and return-to-stock behavior.
+- Added custom-runtime checksum re-verification (`activeBinary()` fail-closed fallback to stock),
+  explicit untrusted-runtime confirmation showing origin, version, and SHA-256, and unit tests
+  covering install/activation/update tamper and rollback handling (`YtDlpRuntimeManagerTest`).
+- Shared `CustomCommandPolicy` validation and filtering with `DownloadRequestFactory` for
+  case-insensitive blocked flags, allowlisted custom headers, control-character stripping, and
+  argument escaping coverage.
+- Normalized checked-in extension and OpenPGP key assets to LF in `.gitattributes`, updated
+  `docs/native-binaries.json` and `docs/NATIVE_BINARY_INVENTORY.md` to canonical LF hashes plus
+  stock `res/raw/ytdlp`, `res/raw/ytdlp_pubkey.asc`, and transitive AAR native `.so` inventory.
+- Added CI `devRelease` R8 `mapping.txt` + `mapping.sha256` verification/retention and concrete
+  private production mapping archival guidance, reconciled `CURRENT_PRODUCTION_ARCHITECTURE.md` to
+  Room (`VrkaDatabase`), updated `docs/PRIVACY_NETWORK.md`, and added a hermetic `K1 -> K2`
+  key-rotation transition test fixture (`ReleaseManifestVerifierTest`).
 
 ## [5.1.3] - 2026-11-10
 

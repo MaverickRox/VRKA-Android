@@ -10,7 +10,10 @@
 - Actions are pinned to full commit SHAs. Dependabot updates the pins through reviewable pull
   requests; comments retain the human-readable major version.
 - Concurrency cancellation prevents duplicate runs on the same ref.
-- Test and provider reports are uploaded only on failure, with a seven-day retention period.
+- Test, lint, and provider reports are uploaded on failure, with a seven-day retention period.
+- `devRelease` R8 mapping output (`mapping.txt` and `mapping.sha256`) is verified non-empty and
+  retained as a workflow artifact for seven days; `devRelease` uses the debug keystore and
+  contains no production signing credentials.
 
 ## Validation gates
 
@@ -21,7 +24,8 @@ The validation job runs, in order:
 3. `lintRelease` (release lint must fail the job on errors)
 4. `compileDebugAndroidTestKotlin`
 5. `assembleDebug`, `assembleDebugAndroidTest`, `assembleDevRelease`
-6. A check that dependency lockfiles were not rewritten
+6. Verification that `app/build/outputs/mapping/devRelease/mapping.txt` is non-empty and hashed
+7. A check that dependency lockfiles were not rewritten
 
 Gradle uses the committed lockfile and `gradle/verification-metadata.xml`; missing or mismatched
 artifacts fail dependency resolution. Provider instrumentation runs in a separate API 36 emulator
@@ -29,10 +33,23 @@ job.
 
 ## Mapping files and retained build data
 
-Production release builds are performed outside normal CI with signing credentials. If R8 mapping
-files are retained, keep them in private storage associated with the exact source commit and
-version; do not upload them as public release assets. They are not required to build the app and
-must never contain signing secrets. v5.1.3 has no published mapping file.
+CI validates R8 shrinking and mapping generation continuously on `devRelease` (`isMinifyEnabled =
+true`, `isShrinkResources = true` inherited from `release`) and retains `mapping.txt` +
+`mapping.sha256` for 7 days.
+
+Production `release` builds are performed outside normal CI with explicit signing credentials and
+are never triggered by pull requests. For each production release build, archive the generated
+`app/build/outputs/mapping/release/mapping.txt` alongside `mapping.sha256` in access-controlled
+private release storage indexed by `{versionName, versionCode, sourceCommit, apkSha256}`:
+
+```powershell
+Get-FileHash .\app\build\outputs\mapping\release\mapping.txt -Algorithm SHA256
+# Archive mapping.txt + mapping.sha256 + build metadata JSON in private custody alongside release notes;
+# never attach mapping.txt to public GitHub release assets or release tags.
+```
+
+Mapping files must never contain signing credentials (verified against `devRelease` outputs) and are
+retained solely for private crash-stack deobfuscation. v5.1.3 has no published mapping file.
 
 ## Improvement boundaries
 

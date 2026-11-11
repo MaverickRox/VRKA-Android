@@ -2,6 +2,7 @@ package com.mvrk.vrka
 
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import java.io.File
+import java.util.Locale
 
 internal object DownloadRequestFactory {
     private const val outputMarker = "__VRKA_OUTPUT__"
@@ -327,33 +328,56 @@ internal object DownloadRequestFactory {
             "--recode-video",
             "--impersonate",
         )
-        val dangerousOptionsWithValues = setOf(
-            "-o", "--output", "--paths", "--exec", "--exec-before-download",
-            "--external-downloader", "--external-downloader-args", "--config-location",
-            "--config-locations", "--plugin-dirs", "--load-info-json", "--batch-file",
-            "--ffmpeg-location", "--print-to-file",
-        )
         val flags = setOf("-x", "--extract-audio")
+        val args = request.customArguments
         val result = mutableListOf<String>()
-        var skipNext = false
-        request.customArguments.forEach { argument ->
-            if (skipNext) {
-                skipNext = false
-            } else if (argument in dangerousOptionsWithValues) {
-                skipNext = true
-            } else if (dangerousOptionsWithValues.any { argument.startsWith("$it=") } ||
-                argument.startsWith("--exec") || argument.startsWith("--external-downloader")
-            ) {
-                Unit
-            } else if (argument in optionsWithValues) {
-                skipNext = true
-            } else if (argument in flags ||
-                optionsWithValues.any { argument.startsWith("$it=") } ||
-                argument.contains("impersonate", ignoreCase = true)
-            ) {
-                Unit
-            } else {
-                result += argument
+        var index = 0
+        while (index < args.size) {
+            val argument = args[index]
+            if (argument.isEmpty() || argument.any { it == '\u0000' || it == '\r' || it == '\n' }) {
+                index++
+                continue
+            }
+            val hasEquals = '=' in argument
+            val optionLower = argument.substringBefore('=').lowercase(Locale.ROOT)
+            val isAttachedShortHeader = optionLower.startsWith("-h") && optionLower.length > 2
+            when {
+                isAttachedShortHeader -> index++
+                CustomCommandPolicy.isBlockedOption(optionLower) || optionLower.contains("impersonate") -> {
+                    if (!hasEquals && (CustomCommandPolicy.isBlockedValueOption(optionLower) || optionLower == "--impersonate")) {
+                        index += 2
+                    } else {
+                        index++
+                    }
+                }
+                optionLower in optionsWithValues -> {
+                    index += if (hasEquals) 1 else 2
+                }
+                optionLower in flags -> index++
+                CustomCommandPolicy.isHeaderOption(optionLower) -> {
+                    if (hasEquals) {
+                        if (!CustomCommandPolicy.containsUnsafeTemplateHeader(argument.substringAfter('='))) {
+                            result += argument
+                        }
+                        index++
+                    } else {
+                        val next = args.getOrNull(index + 1)
+                        if (next != null &&
+                            next.none { it == '\u0000' || it == '\r' || it == '\n' } &&
+                            !CustomCommandPolicy.containsUnsafeTemplateHeader(next)
+                        ) {
+                            result += argument
+                            result += next
+                            index += 2
+                        } else {
+                            index += if (next != null && !next.startsWith('-')) 2 else 1
+                        }
+                    }
+                }
+                else -> {
+                    result += argument
+                    index++
+                }
             }
         }
         return result

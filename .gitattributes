@@ -3,3 +3,6 @@
 /VRKA-Android-*.manifest.json -text
 /SHA256SUMS -text
 /VRKA-Android-*.manifest.json.asc -text
+/app/src/main/assets/extensions/media-detector/** -text
+/app/src/main/res/raw/vrka_release_pubkey.asc -text
+/app/src/main/res/raw/ytdlp_pubkey.asc -text

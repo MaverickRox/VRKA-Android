@@ -73,15 +73,15 @@ VRKA Android 5.1.3 retains complete interface localization across **14 distinct 
         ┌──────────────────┴──────────────────┐
         ▼                                     ▼
 ┌──────────────────────────┐      ┌──────────────────────────┐
-│  JobStore (JSON Storage) │      │ Foreground DownloadService│
-│  State & Progress Sync   │      │ Notification & Workers   │
+│ Room (`VrkaDatabase`) &  │      │ Foreground DownloadService│
+│ `StateFlow` Cache Sync   │      │ Notification & Workers   │
 └──────────────────────────┘      └──────────────────────────┘
 ```
 
 ### 3.1 Normal Download Flow
 1. **Intake & Request Construction**:
    - The user inputs a URL directly or shares a link via the Android Share Sheet.
-   - `VrkaDownloadManager` creates a job entry in `JobStore`.
+   - `VrkaDownloadManager` persists a durable job entry in Room (`VrkaDatabase`) via `RoomStorageRepository` and updates the UI `StateFlow` cache after commit.
    - `DownloadRequestFactory` constructs argument lists (`argv`) for `yt-dlp` without invoking a shell.
    - HTTP headers (`Referer`, `Origin`, custom headers) are validated against RFC 7230 token specifications and CRLF injection rejection. Sensitive tokens and cookies are redacted (`[REDACTED]`) from logs, crash reports, and UI state.
 2. **Extraction & Transfer**:
@@ -92,7 +92,7 @@ VRKA Android 5.1.3 retains complete interface localization across **14 distinct 
    - If H.264 Compatibility Mode is active and the video codec is not H.264, `FFmpeg` transcodes video via `libx264` while copying audio/subtitle tracks.
 4. **Validation & MediaStore Export**:
    - Staged files are verified: non-zero byte size, valid container headers, and expected format.
-   - `OutputPublisher` publishes the final file to the user's destination directory (`Downloads/VRKA` or user-selected SAF tree) and updates `JobStore` (where completed records serve as download history).
+   - `OutputPublisher` publishes the final file to the user's destination directory (`Downloads/VRKA` or user-selected SAF tree), and commits the terminal `DONE` record, ordered outputs, reconciliation, and staging cleanup task atomically in Room (with `StateFlow` cache refreshed after commit).
 
 ---
 
@@ -179,8 +179,8 @@ VRKA Android 5.1.3 retains the independent, cryptographically authenticated self
 │  ├── 1. Query Latest Release (24h Automatic Gate / Settings Manual Check)│
 │  │                                                                       │
 │  ├── 2. Download Machine-Readable Manifest & Detached Signature:         │
-│  │      • VRKA-Android-v5.1.0.manifest.json                              │
-│  │      • VRKA-Android-v5.1.0.manifest.json.asc                          │
+│  │      • VRKA-Android-vX.Y.Z.manifest.json                              │
+│  │      • VRKA-Android-vX.Y.Z.manifest.json.asc                          │
 │  │                                                                       │
 │  ├── 3. Cryptographic Verification (ReleaseManifestVerifier):            │
 │  │      • Pinned 4096-bit RSA OpenPGP Key (0xD519380BEBA1B9F7)           │

@@ -53,9 +53,25 @@ jobs:
           # No production signing credentials are configured in CI. The devRelease variant
           # uses the auto-generated debug keystore; the production release build is not run.
 
+      - name: Verify devRelease R8 mapping output
+        run: |
+          test -s app/build/outputs/mapping/devRelease/mapping.txt
+          sha256sum app/build/outputs/mapping/devRelease/mapping.txt > app/build/outputs/mapping/devRelease/mapping.sha256
+          cat app/build/outputs/mapping/devRelease/mapping.sha256
+
       - name: Verify dependency locks were not rewritten
         run: |
           git diff --exit-code -- app/gradle.lockfile gradle.lockfile
+
+      - name: Upload devRelease R8 mapping artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: devrelease-r8-mapping
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            app/build/outputs/mapping/devRelease/mapping.txt
+            app/build/outputs/mapping/devRelease/mapping.sha256
 
       - name: Upload test and lint reports on failure
         if: failure()
@@ -68,6 +84,8 @@ jobs:
             app/build/reports/tests/
             app/build/reports/lint-results-debug.html
             app/build/reports/lint-results-debug.xml
+            app/build/reports/lint-results-release.html
+            app/build/reports/lint-results-release.xml
             app/build/test-results/
 
   provider-tests:
