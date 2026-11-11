@@ -13,7 +13,8 @@
   <p>
     <img src="https://img.shields.io/badge/Android-8.0%2B%20(API%2026--36)-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android 8.0+ (API 26-36)" />
     <img src="https://img.shields.io/badge/ABI-arm64--v8a-7B61FF?style=flat-square" alt="arm64-v8a" />
-    <img src="https://img.shields.io/badge/Languages-14%20(RTL%20Arabic)-0A7EA4?style=flat-square" alt="14 Languages" />
+    <img src="https://img.shields.io/badge/Languages-14-0A7EA4?style=flat-square" alt="14 supported languages" />
+    <img src="https://img.shields.io/github/downloads/MaverickRox/VRKA-Android/total?style=flat-square&label=Downloads&color=2EA043" alt="GitHub total downloads" />
     <img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square" alt="GPL-3.0" />
   </p>
 </div>
