@@ -9,8 +9,10 @@ metadata, or production signing material.
 
 - Removed unrestricted `mavenLocal()` from production dependency resolution, added a content filter
   for Mozilla Maven, and committed dependency lockfiles plus SHA-256 verification metadata.
-- Added pinned GitHub Actions, a dependency-review workflow, Dependabot update monitoring, explicit
-  strict dependency verification in CI, release lint enforcement, and lockfile stability checks.
+- Added pinned GitHub Actions, a pull-request dependency-review workflow, explicit strict
+  dependency verification in CI, release lint enforcement, and lockfile stability checks;
+  restored the single permanent `main` development branch policy by disabling automated
+  Dependabot version/security-update PRs while keeping GitHub Dependabot vulnerability alerts enabled.
 - Added source-grounded release provenance, signing-key custody/rotation, native binary inventory,
   dependency management, CI security, and privacy/network documentation.
 - Corrected current-release documentation to v5.1.3 while preserving the v5.1.2 historical record

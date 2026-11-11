@@ -32,8 +32,8 @@
       "sourceUrl": "https://hg.mozilla.org/mozilla-central/",
       "license": "MPL-2.0",
       "origin": "Mozilla Maven repository",
-      "update": "version is pinned in app/build.gradle.kts; Dependabot/manual review",
-      "vulnerabilityMonitoring": "Mozilla security advisories and Dependabot"
+      "update": "version is pinned in app/build.gradle.kts; manual review on main",
+      "vulnerabilityMonitoring": "Mozilla security advisories and GitHub Dependabot vulnerability alerts"
     },
     {
       "name": "yt-dlp Android library (Python and QuickJS native runtimes)",
@@ -52,7 +52,7 @@
       "license": "GPL-3.0 (wrapper); yt-dlp Unlicense",
       "origin": "Maven Central",
       "update": "pinned; stock yt-dlp zipapp resource may be updated by the signed component updater",
-      "vulnerabilityMonitoring": "Dependabot and upstream release monitoring"
+      "vulnerabilityMonitoring": "GitHub Dependabot vulnerability alerts and upstream release monitoring"
     },
     {
       "name": "FFmpeg Android library",
@@ -71,7 +71,7 @@
       "license": "LGPL/GPL components; see upstream notices",
       "origin": "Maven Central",
       "update": "pinned; no automatic native binary replacement",
-      "vulnerabilityMonitoring": "Dependabot and FFmpeg security advisories"
+      "vulnerabilityMonitoring": "GitHub Dependabot vulnerability alerts and FFmpeg security advisories"
     },
     {
       "name": "AndroidX Graphics Path",
@@ -88,7 +88,7 @@
       "license": "Apache-2.0",
       "origin": "Google Maven repository",
       "update": "pinned via transitive lockfile and Gradle verification metadata",
-      "vulnerabilityMonitoring": "Dependabot and Android Security Bulletins"
+      "vulnerabilityMonitoring": "GitHub Dependabot vulnerability alerts and Android Security Bulletins"
     },
     {
       "name": "AndroidX DataStore Core",
@@ -105,7 +105,7 @@
       "license": "Apache-2.0",
       "origin": "Google Maven repository",
       "update": "pinned via transitive lockfile and Gradle verification metadata",
-      "vulnerabilityMonitoring": "Dependabot and Android Security Bulletins"
+      "vulnerabilityMonitoring": "GitHub Dependabot vulnerability alerts and Android Security Bulletins"
     },
     {
       "name": "Stock yt-dlp zipapp binary",
@@ -117,7 +117,7 @@
       "license": "Unlicense",
       "origin": "upstream yt-dlp zipapp resource overrides AAR res/raw/ytdlp",
       "update": "stock asset updated only through signed component updater or reviewed app release",
-      "vulnerabilityMonitoring": "Dependabot cannot track this resource; upstream yt-dlp release monitoring"
+      "vulnerabilityMonitoring": "GitHub Dependabot alerts do not track this checked-in resource; manual upstream yt-dlp release monitoring"
     },
     {
       "name": "Pinned upstream yt-dlp OpenPGP public key",
@@ -142,7 +142,7 @@
       "license": "GPL-3.0",
       "origin": "signed upstream Firefox XPI",
       "update": "component updater with release signature/checksum controls",
-      "vulnerabilityMonitoring": "Dependabot cannot track this asset; monitor upstream releases"
+      "vulnerabilityMonitoring": "GitHub Dependabot alerts do not track this bundled XPI; monitor upstream releases manually"
     },
     {
       "name": "VRKA Media Detector WebExtension",

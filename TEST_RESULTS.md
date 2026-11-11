@@ -8,7 +8,7 @@ evidence below remains historical and unchanged.
 | Check | Command | Result |
 |---|---|---|
 | Full JVM suite (with dependency locks and verification metadata) | `.\gradlew.bat --no-daemon --no-configuration-cache --dependency-verification=strict testDebugUnitTest lintDebug lintRelease compileDebugAndroidTestKotlin assembleDebug assembleDebugAndroidTest assembleDevRelease` | PASS: 847 tests in 80 suites; 0 failures, 0 errors, 0 skipped |
-| Supply-chain policy suite | `--tests com.mvrk.vrka.SupplyChainPolicyTest` (in full run) | PASS: 10 tests; repository policy, lock/verification metadata cleanliness, pinned Actions & Dependabot, doc/architecture consistency, provenance, LF native inventory & AAR hashes, build-hardening invariants |
+| Supply-chain policy suite | `--tests com.mvrk.vrka.SupplyChainPolicyTest` (in full run) | PASS: 10 tests; repository policy, lock/verification metadata cleanliness, pinned Actions & single-main-branch policy (`.github/dependabot.yml` removed), doc/architecture consistency, provenance, LF native inventory & AAR hashes, build-hardening invariants |
 | Custom runtime manager suite | `--tests com.mvrk.vrka.runtime.YtDlpRuntimeManagerTest` (in full run) | PASS: 6 tests; probe/size-mismatch rejection, tampered/missing fallback to stock, unverified/tampered activation refusal, active-runtime removal guard, update rollback |
 | Custom command policy & request factory suites | `--tests com.mvrk.vrka.CustomCommandTemplatesTest`, `--tests com.mvrk.vrka.DownloadRequestFactoryTest` (in full run) | PASS: 7 + 23 tests; escaping/quote errors, case-insensitive blocked flags/headers, URL argv isolation |
 | Release manifest verifier suite | `--tests com.mvrk.vrka.update.security.ReleaseManifestVerifierTest` (in full run) | PASS: 28 tests; published v5.1.1/v5.1.2/v5.1.3 detached signatures and hermetic `K1 -> K2` key-rotation transition fixture |
@@ -23,10 +23,10 @@ evidence below remains historical and unchanged.
 
 The supply-chain policy test also verifies that `mavenLocal()` is absent from production
 resolution, every `uses:` action across `.github/workflows` is pinned to a 40-character commit,
-`dependabot.yml`, release lint, and CI `devRelease` R8 mapping retention are configured, release
-minification/lint/signing-isolation flags remain intact, `CURRENT_PRODUCTION_ARCHITECTURE.md` matches
-Room authority, and native/trust-anchor inventory hashes match the checked-in LF assets and Gradle
-verification metadata.
+`.github/dependabot.yml` remains absent under the single-main-branch policy, release lint and CI
+`devRelease` R8 mapping retention are configured, release minification/lint/signing-isolation flags
+remain intact, `CURRENT_PRODUCTION_ARCHITECTURE.md` matches Room authority, and native/trust-anchor
+inventory hashes match the checked-in LF assets and Gradle verification metadata.
 
 ---
 

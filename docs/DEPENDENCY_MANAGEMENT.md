@@ -23,9 +23,9 @@ configurations used by CI.
 
 To intentionally update a dependency:
 
-1. Change the version in `app/build.gradle.kts` (or a Dependabot PR).
+1. Change the version in `app/build.gradle.kts` or `.github/workflows/ci.yml`.
 2. Run `.\gradlew.bat --write-locks testDebugUnitTest lintDebug lintRelease compileReleaseKotlin compileDebugAndroidTestKotlin assembleDebug assembleDebugAndroidTest assembleDevRelease`.
-3. Review the dependency and lockfile diff, then commit both together.
+3. Review the dependency and lockfile diff, then commit directly to `main` (or review via temporary PR if desired).
 4. Never hand-edit `app/gradle.lockfile`.
 
 CI runs the locked graph and then verifies that the lockfile was not rewritten.
@@ -56,9 +56,10 @@ a local Maven repository or an unreviewed cache.
 
 ## Automated monitoring
 
-`.github/dependabot.yml` requests weekly Gradle and GitHub Actions updates. Dependabot changes are
-ordinary reviewable pull requests; security updates remain separate from unrelated feature work.
-Pull requests also run GitHub dependency review.
+Automatic Dependabot version-update (`.github/dependabot.yml`) and security-update PR creation is
+intentionally disabled so the repository retains a single permanent `main` development branch.
+GitHub Dependabot vulnerability alerts remain enabled for maintainer triage and manual locked
+updates on `main`. External pull requests still run GitHub dependency review.
 
 ## Limitations
 

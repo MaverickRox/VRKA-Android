@@ -7,8 +7,9 @@
   `pull-requests: read`. Workflows do not receive write tokens or signing secrets.
 - Production signing is not performed in CI. The `release` task family requires explicit
   signing properties and is never invoked by pull-request workflows.
-- Actions are pinned to full commit SHAs. Dependabot updates the pins through reviewable pull
-  requests; comments retain the human-readable major version.
+- Actions are pinned to full commit SHAs (updated manually on `main` when reviewed; comments retain
+  the human-readable major version). Automatic Dependabot PR creation is disabled to preserve a
+  single permanent `main` development branch, while Dependabot vulnerability alerts remain enabled.
 - Concurrency cancellation prevents duplicate runs on the same ref.
 - Test, lint, and provider reports are uploaded on failure, with a seven-day retention period.
 - `devRelease` R8 mapping output (`mapping.txt` and `mapping.sha256`) is verified non-empty and
@@ -56,5 +57,5 @@ retained solely for private crash-stack deobfuscation. v5.1.3 has no published m
 - CI does not rebuild the published APK and does not verify a reproducible native build.
 - No GitHub artifact attestation exists for v5.1.3; future releases should generate one as
   described in [RELEASE_PROVENANCE.md](RELEASE_PROVENANCE.md).
-- Dependency review and Dependabot reduce supply-chain risk but do not replace review of
-  repository ownership, native artifact provenance, or signing-key custody.
+- Dependency review and Dependabot vulnerability alerts reduce supply-chain risk but do not replace
+  review of repository ownership, native artifact provenance, or signing-key custody.

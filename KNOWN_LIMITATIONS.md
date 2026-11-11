@@ -22,7 +22,8 @@
 >
 > **Supply-chain and release limitations.** Dependency checksums verify the committed metadata,
 > not the intent of every publisher. Native dependencies are prebuilt AARs and are not reproducibly
-> built in this repository. uBlock Origin is a bundled upstream asset not tracked by Dependabot.
+> built in this repository. uBlock Origin is a bundled upstream asset not covered by Dependabot alerts
+> (automated Dependabot PR generation is disabled under the single-branch policy while vulnerability alerts remain enabled).
 > v5.1.3 has no CI-generated build attestation; the published artifact and tag are unchanged by
 > this maintenance work. Private signing-key custody, offline status, backup, and hardware
 > protection remain unverified until the maintainer records evidence. A future OpenPGP or APK
