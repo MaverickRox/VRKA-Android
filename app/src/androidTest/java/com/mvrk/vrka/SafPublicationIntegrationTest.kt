@@ -170,24 +170,50 @@ class SafPublicationIntegrationTest {
     }
 
     @Test
-    fun unsupportedRenameDoesNotProducePublishedOutput() {
+    fun unsupportedRenameWithDeleteSupport_fallsBackToIntendedNameWithoutPendingLeak() {
         TestDocumentsProvider.renameMode = TestSafRenameMode.UNSUPPORTED
-        val jobId = "saf-unsupported-${System.nanoTime()}"
-        val staging = stage(jobId, "unsupported.mp4", ByteArray(1024))
+        val jobId = "saf-unsupported-fallback-${System.nanoTime()}"
+        val bytes = ByteArray(1024) { (it % 127).toByte() }
+        val staging = stage(jobId, "unsupported.mp4", bytes)
         val publisher = newPublisher()
 
-        runCatching {
+        val published = publisher.publishAll(
+            files = listOf(staging to "unsupported.mp4"),
+            destinationTreeUri = TestDocumentsProvider.TREE_URI.toString(),
+            jobId = jobId,
+        ).single()
+
+        val entry = publisher.activeJournal.entriesForJob(jobId).single()
+        assertEquals(PublicationTransactionStatus.COMPLETED, entry.status)
+        assertEquals(entry.intendedFilename, TestDocumentsProvider.findByName(entry.intendedFilename)?.name)
+        assertEquals(entry.providerUri, published.uri.toString())
+        assertTrue(
+            "No .vrka_pending_ stub may remain after fallback",
+            TestDocumentsProvider.docsSnapshot().none { it.name.startsWith(".vrka_pending_") },
+        )
+        assertTrue(TestDocumentsProvider.findByName(entry.intendedFilename)!!.file.readBytes().contentEquals(bytes))
+    }
+
+    @Test
+    fun missingDeleteCapabilityIsRejectedFailClosedBeforeStreaming() {
+        TestDocumentsProvider.omitDeleteFlag = true
+        val jobId = "saf-nodelete-${System.nanoTime()}"
+        val staging = stage(jobId, "nodelete.mp4", ByteArray(1024))
+        val publisher = newPublisher()
+
+        val failure = runCatching {
             publisher.publishAll(
-                files = listOf(staging to "unsupported.mp4"),
+                files = listOf(staging to "nodelete.mp4"),
                 destinationTreeUri = TestDocumentsProvider.TREE_URI.toString(),
                 jobId = jobId,
             )
-        }.onSuccess { error("Publication must fail when the provider cannot rename") }
+        }.exceptionOrNull()
 
-        val entry = publisher.activeJournal.entriesForJob(jobId).single()
-        assertNotEquals(PublicationTransactionStatus.COMPLETED, entry.status)
-        assertFalse(entry.intendedFilename.contains("[vrka-") && TestDocumentsProvider.findByName(entry.intendedFilename) != null)
-        assertTrue("The unfinished pending document is cleaned up exactly", TestDocumentsProvider.docsSnapshot().isEmpty())
+        assertTrue("Provider without delete support must fail closed", failure is IllegalStateException)
+        assertTrue(
+            "No bytes may be streamed when delete capability is absent",
+            TestDocumentsProvider.docsSnapshot().all { it.file.length() == 0L },
+        )
     }
 
     @Test
@@ -344,7 +370,7 @@ class SafPublicationIntegrationTest {
                 expectedSizeBytes = bytes.size.toLong(),
                 providerType = PublicationProviderType.SAF,
                 destinationIdentity = TestDocumentsProvider.TREE_URI.toString(),
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
+                publicationPhase = PublicationPhase.INTENT,
                 attemptNumber = 1,
                 attemptId = JobJsonCodec.attemptIdFor(jobId, 1),
                 batchId = "batch-$transactionId",

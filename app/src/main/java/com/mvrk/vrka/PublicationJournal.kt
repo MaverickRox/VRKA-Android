@@ -11,30 +11,105 @@ internal enum class PublicationProviderType {
     SAF,
 }
 
+internal data class LegacyPhaseNormalization(
+    val phase: PublicationPhase,
+    val recoveryRequired: Boolean = false,
+    val errorDetail: String? = null,
+    val markCleanupPending: Boolean = false,
+    val stagingCleanupPending: Boolean = false,
+)
+
 internal enum class PublicationPhase {
-    STAGING,
-    READY,
-    PREPARED,
-    INTENT_RECORDED,
-    CREATE_REQUESTED,
-    PROVIDER_OBJECT_CREATED,
+    INTENT,
     CREATED,
-    COPYING,
-    DATA_COPIED,
     COPIED,
-    OUTPUT_VALIDATED,
-    VERIFIED,
-    FINALIZE_REQUESTED,
     FINALIZED,
-    PUBLISHED,
-    COMMITTED_RECONCILED,
-    STAGING_CLEANUP_PENDING,
-    CLOSED,
     CLEANUP_PENDING,
-    RECOVERY_REQUIRED,
-    PERMISSION_REQUIRED,
-    ABORTED,
-    RECORDED,
+    ABORTED;
+
+    companion object {
+        /**
+         * Exhaustively maps all 23 pre-Phase-3 publication phases (plus the 6 canonical names)
+         * onto the 6 canonical phases and orthogonal recovery/cleanup flags.
+         */
+        fun normalizeLegacyPhase(
+            rawPhase: String?,
+            providerUri: String?,
+            copiedBytes: Long,
+            expectedSizeBytes: Long,
+            verificationLevel: String,
+            status: String? = null,
+        ): LegacyPhaseNormalization? {
+            val raw = rawPhase?.takeIf { it.isNotBlank() && it != "null" } ?: return null
+            return when (raw) {
+                "STAGING",
+                "READY",
+                "PREPARED",
+                "INTENT_RECORDED",
+                "CREATE_REQUESTED",
+                "INTENT",
+                -> LegacyPhaseNormalization(INTENT)
+
+                "PROVIDER_OBJECT_CREATED",
+                "CREATED",
+                "COPYING",
+                -> LegacyPhaseNormalization(CREATED)
+
+                "DATA_COPIED",
+                "COPIED",
+                "OUTPUT_VALIDATED",
+                "VERIFIED",
+                "FINALIZE_REQUESTED",
+                -> LegacyPhaseNormalization(COPIED)
+
+                "FINALIZED",
+                "PUBLISHED",
+                "RECORDED",
+                "COMMITTED_RECONCILED",
+                "CLOSED",
+                -> LegacyPhaseNormalization(FINALIZED)
+
+                "STAGING_CLEANUP_PENDING",
+                -> LegacyPhaseNormalization(FINALIZED, stagingCleanupPending = true)
+
+                "CLEANUP_PENDING",
+                -> LegacyPhaseNormalization(CLEANUP_PENDING, markCleanupPending = true)
+
+                "RECOVERY_REQUIRED",
+                -> {
+                    val structuralPhase = when {
+                        !providerUri.isNullOrBlank() &&
+                            copiedBytes > 0L &&
+                            copiedBytes == expectedSizeBytes &&
+                            verificationLevel.isNotBlank() -> COPIED
+                        !providerUri.isNullOrBlank() -> CREATED
+                        else -> INTENT
+                    }
+                    LegacyPhaseNormalization(structuralPhase, recoveryRequired = true)
+                }
+
+                "PERMISSION_REQUIRED",
+                -> {
+                    val structuralPhase = when {
+                        status == PublicationTransactionStatus.CLEANUP_PENDING.name -> CLEANUP_PENDING
+                        !providerUri.isNullOrBlank() -> CREATED
+                        else -> INTENT
+                    }
+                    LegacyPhaseNormalization(
+                        phase = structuralPhase,
+                        recoveryRequired = true,
+                        errorDetail = "PERMISSION_REQUIRED",
+                        markCleanupPending = structuralPhase == CLEANUP_PENDING,
+                    )
+                }
+
+                "ABORTED",
+                -> LegacyPhaseNormalization(ABORTED)
+
+                else -> null
+            }
+        }
+    }
 }
 
 internal enum class PublicationTransactionStatus {
@@ -95,6 +170,8 @@ internal data class PublicationEntry(
     val providerDocumentId: String? = null,
     val providerCapabilitiesJson: String? = null,
     val legacyAmbiguous: Boolean = false,
+    val recoveryRequired: Boolean = false,
+    val stagingCleanupPending: Boolean = false,
 )
 
 /**
@@ -123,7 +200,7 @@ internal class PublicationJournal(
         val entries = loadEntries().toMutableList()
         val updatedBatch = batch.map { entry ->
             entry.copy(
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
+                publicationPhase = PublicationPhase.INTENT,
                 status = PublicationTransactionStatus.PENDING,
                 updatedAt = System.currentTimeMillis(),
             )
@@ -139,7 +216,7 @@ internal class PublicationJournal(
         mutateEntry(transactionId) {
             it.copy(
                 providerUri = providerUri,
-                publicationPhase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+                publicationPhase = PublicationPhase.CREATED,
                 status = PublicationTransactionStatus.IN_PROGRESS,
                 updatedAt = System.currentTimeMillis(),
             )
@@ -159,7 +236,7 @@ internal class PublicationJournal(
         mutateEntry(transactionId) {
             it.copy(
                 copiedBytes = copiedBytes,
-                publicationPhase = PublicationPhase.DATA_COPIED,
+                publicationPhase = PublicationPhase.COPIED,
                 status = PublicationTransactionStatus.IN_PROGRESS,
                 updatedAt = System.currentTimeMillis(),
             )
@@ -169,7 +246,7 @@ internal class PublicationJournal(
     override fun updateValidated(transactionId: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
-                publicationPhase = PublicationPhase.OUTPUT_VALIDATED,
+                publicationPhase = PublicationPhase.COPIED,
                 updatedAt = System.currentTimeMillis(),
             )
         }
@@ -184,6 +261,21 @@ internal class PublicationJournal(
             it.copy(
                 verificationLevel = verificationLevel,
                 observedSha256 = observedSha256 ?: it.observedSha256,
+                publicationPhase = if (it.publicationPhase == PublicationPhase.FINALIZED) {
+                    PublicationPhase.FINALIZED
+                } else {
+                    PublicationPhase.COPIED
+                },
+                updatedAt = System.currentTimeMillis(),
+            )
+        }
+    }
+
+    override fun updateIntendedFilename(transactionId: String, intendedFilename: String): Unit = synchronized(lock) {
+        if (intendedFilename.isBlank()) return@synchronized
+        mutateEntry(transactionId) {
+            it.copy(
+                intendedFilename = intendedFilename,
                 updatedAt = System.currentTimeMillis(),
             )
         }
@@ -207,7 +299,7 @@ internal class PublicationJournal(
     override fun updateRecorded(transactionId: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
-                publicationPhase = PublicationPhase.RECORDED,
+                publicationPhase = PublicationPhase.FINALIZED,
                 status = PublicationTransactionStatus.COMPLETED,
                 updatedAt = System.currentTimeMillis(),
             )
@@ -242,6 +334,7 @@ internal class PublicationJournal(
     override fun markCleanupPending(transactionId: String, error: String?): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
+                publicationPhase = PublicationPhase.CLEANUP_PENDING,
                 status = PublicationTransactionStatus.CLEANUP_PENDING,
                 errorMessage = error ?: it.errorMessage,
                 updatedAt = System.currentTimeMillis(),
@@ -252,6 +345,7 @@ internal class PublicationJournal(
     override fun updateDeleted(transactionId: String): Unit = synchronized(lock) {
         mutateEntry(transactionId) {
             it.copy(
+                publicationPhase = PublicationPhase.ABORTED,
                 status = PublicationTransactionStatus.INTERRUPTED,
                 providerUri = null,
                 updatedAt = System.currentTimeMillis(),
@@ -274,11 +368,6 @@ internal class PublicationJournal(
             if (entries[i].status == PublicationTransactionStatus.CLEANUP_PENDING) continue
             entries[i] = entries[i].copy(
                 status = PublicationTransactionStatus.RECONCILED,
-                publicationPhase = if (entries[i].publicationPhase == PublicationPhase.FINALIZED) {
-                    PublicationPhase.RECORDED
-                } else {
-                    entries[i].publicationPhase
-                },
                 updatedAt = System.currentTimeMillis(),
             )
             changed = true
@@ -648,9 +737,7 @@ internal class PublicationJournal(
             }
         }
 
-        val publicationPhase = PublicationPhase.values()
-            .firstOrNull { it.name == stringField(obj, "publicationPhase") }
-            ?: return invalid("invalid publicationPhase")
+        val rawPhase = stringField(obj, "publicationPhase")
         val status = PublicationTransactionStatus.values()
             .firstOrNull { it.name == stringField(obj, "status") }
             ?: return invalid("invalid status")
@@ -667,6 +754,19 @@ internal class PublicationJournal(
         val copiedBytes = number(obj, "copiedBytes")?.toLong() ?: return invalid("missing copiedBytes")
         if (copiedBytes < 0L) return invalid("negative copiedBytes")
 
+        val verificationLevel = stringField(obj, "verificationLevel")
+            ?.takeIf { it.length <= MAX_DETAIL_CHARS }
+            .orEmpty()
+        val normalizedPhase = PublicationPhase.normalizeLegacyPhase(
+            rawPhase = rawPhase,
+            providerUri = providerUri,
+            copiedBytes = copiedBytes,
+            expectedSizeBytes = expectedSizeBytes,
+            verificationLevel = verificationLevel,
+            status = status.name,
+        ) ?: return invalid("invalid publicationPhase")
+        val publicationPhase = normalizedPhase.phase
+
         val now = System.currentTimeMillis()
         val createdAt = number(obj, "createdAt")?.toLong() ?: return invalid("missing createdAt")
         val updatedAt = number(obj, "updatedAt")?.toLong() ?: return invalid("missing updatedAt")
@@ -676,8 +776,9 @@ internal class PublicationJournal(
         }
         if (updatedAt < createdAt) return invalid("updatedAt precedes createdAt")
 
-        when (publicationPhase) {
-            PublicationPhase.INTENT_RECORDED -> {
+        when {
+            normalizedPhase.recoveryRequired -> Unit
+            publicationPhase == PublicationPhase.INTENT -> {
                 if (providerUri != null) return invalid("intent record has a provider URI")
                 if (copiedBytes != 0L) return invalid("intent record has copied bytes")
                 if (status != PublicationTransactionStatus.PENDING &&
@@ -688,25 +789,31 @@ internal class PublicationJournal(
                     return invalid("intent record has an inconsistent status")
                 }
             }
-            PublicationPhase.PROVIDER_OBJECT_CREATED -> {
-                if (copiedBytes != 0L) return invalid("provider-created record has copied bytes")
+            publicationPhase == PublicationPhase.CREATED -> {
+                if (rawPhase == "PROVIDER_OBJECT_CREATED" && copiedBytes != 0L) {
+                    return invalid("provider-created record has copied bytes")
+                }
+                if (copiedBytes > expectedSizeBytes) {
+                    return invalid("copied bytes exceed the expected size")
+                }
             }
-            PublicationPhase.DATA_COPIED -> {
+            publicationPhase == PublicationPhase.COPIED -> {
                 if (copiedBytes > expectedSizeBytes) return invalid("copied bytes exceed the expected size")
-            }
-            PublicationPhase.OUTPUT_VALIDATED,
-            PublicationPhase.FINALIZED,
-            PublicationPhase.RECORDED,
-            -> {
-                if (copiedBytes != expectedSizeBytes) {
+                if ((rawPhase == "OUTPUT_VALIDATED" || rawPhase == "VERIFIED") && copiedBytes != expectedSizeBytes) {
                     return invalid("validated record byte count does not match the expected size")
+                }
+            }
+            publicationPhase == PublicationPhase.FINALIZED -> {
+                if (copiedBytes != expectedSizeBytes) {
+                    return invalid("finalized record byte count does not match the expected size")
                 }
             }
             else -> Unit
         }
 
         val pendingProviderObject = status == PublicationTransactionStatus.CLEANUP_PENDING
-        val uriRequired = publicationPhase != PublicationPhase.INTENT_RECORDED &&
+        val uriRequired = publicationPhase != PublicationPhase.INTENT &&
+            publicationPhase != PublicationPhase.ABORTED &&
             status != PublicationTransactionStatus.INTERRUPTED &&
             status != PublicationTransactionStatus.RECONCILED
         if (uriRequired && providerUri == null) return invalid("missing providerUri for ${status.name}")
@@ -715,22 +822,19 @@ internal class PublicationJournal(
         }
         when (status) {
             PublicationTransactionStatus.PENDING -> {
-                if (publicationPhase != PublicationPhase.INTENT_RECORDED) {
+                if (publicationPhase != PublicationPhase.INTENT && !normalizedPhase.recoveryRequired) {
                     return invalid("pending record has advanced phase")
                 }
             }
             PublicationTransactionStatus.IN_PROGRESS -> {
-                if (publicationPhase == PublicationPhase.INTENT_RECORDED ||
-                    publicationPhase == PublicationPhase.FINALIZED ||
-                    publicationPhase == PublicationPhase.RECORDED
+                if (!normalizedPhase.recoveryRequired &&
+                    (publicationPhase == PublicationPhase.INTENT || publicationPhase == PublicationPhase.FINALIZED)
                 ) {
                     return invalid("in-progress record has inconsistent phase")
                 }
             }
             PublicationTransactionStatus.COMPLETED -> {
-                if (publicationPhase != PublicationPhase.FINALIZED &&
-                    publicationPhase != PublicationPhase.RECORDED
-                ) {
+                if (publicationPhase != PublicationPhase.FINALIZED) {
                     return invalid("completed record is not finalized")
                 }
             }
@@ -740,7 +844,7 @@ internal class PublicationJournal(
             PublicationTransactionStatus.CLEANUP_PENDING,
             -> Unit
         }
-        if (publicationPhase == PublicationPhase.RECORDED &&
+        if (rawPhase == "RECORDED" &&
             status != PublicationTransactionStatus.COMPLETED &&
             status != PublicationTransactionStatus.RECONCILED
         ) {
@@ -779,9 +883,6 @@ internal class PublicationJournal(
             } else {
                 null
             }
-        val verificationLevel = stringField(obj, "verificationLevel")
-            ?.takeIf { it.length <= MAX_DETAIL_CHARS }
-            .orEmpty()
         val providerDocumentId = stringField(obj, "providerDocumentId")
             ?.takeIf { it.length <= MAX_TRANSACTION_ID_CHARS }
         val providerCapabilitiesJson = stringField(obj, "providerCapabilitiesJson")
@@ -804,7 +905,7 @@ internal class PublicationJournal(
                 status = status,
                 createdAt = createdAt,
                 updatedAt = updatedAt,
-                errorMessage = errorMessage,
+                errorMessage = errorMessage ?: normalizedPhase.errorDetail,
                 attemptNumber = attemptNumber,
                 attemptId = attemptId,
                 batchId = batchId,
@@ -813,6 +914,8 @@ internal class PublicationJournal(
                 verificationLevel = verificationLevel,
                 providerDocumentId = providerDocumentId,
                 providerCapabilitiesJson = providerCapabilitiesJson,
+                recoveryRequired = normalizedPhase.recoveryRequired,
+                stagingCleanupPending = normalizedPhase.stagingCleanupPending,
             ),
         )
     }

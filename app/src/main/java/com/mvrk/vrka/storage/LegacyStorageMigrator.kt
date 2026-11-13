@@ -362,16 +362,29 @@ internal class LegacyStorageMigrator(
                 preserved++
                 continue
             }
-            val phase = PublicationPhase.values().firstOrNull {
-                it.name == obj.optString("publicationPhase")
-            }
+            val rawPhase = obj.optString("publicationPhase")
             val status = PublicationTransactionStatus.values().firstOrNull {
                 it.name == obj.optString("status")
             }
             val providerType = PublicationProviderType.values().firstOrNull {
                 it.name == obj.optString("providerType")
             }
-            if (phase == null || status == null || providerType == null) {
+            val rawUri = obj.optString("providerUri").takeIf { it.isNotBlank() && it != "null" }
+            val rawCopiedBytes = obj.optLong("copiedBytes", 0L).coerceAtLeast(0L)
+            val rawExpectedBytes = obj.optLong("expectedSizeBytes", 0L).coerceAtLeast(0L)
+            val rawVerification = when (status) {
+                PublicationTransactionStatus.RECONCILED -> "LEGACY_RECONCILED_TOMBSTONE"
+                else -> "LEGACY_UNVERIFIED"
+            }
+            val normalizedPhase = PublicationPhase.normalizeLegacyPhase(
+                rawPhase = rawPhase,
+                providerUri = rawUri,
+                copiedBytes = rawCopiedBytes,
+                expectedSizeBytes = rawExpectedBytes,
+                verificationLevel = rawVerification,
+                status = status?.name,
+            )
+            if (normalizedPhase == null || status == null || providerType == null) {
                 addRecord(
                     key,
                     index,
@@ -385,11 +398,7 @@ internal class LegacyStorageMigrator(
                 ?: ".vrka_pending_${transactionId}_$intended"
             val destination = obj.optString("destinationIdentity").takeIf { it.isNotBlank() }
                 ?: if (providerType == PublicationProviderType.SAF) "" else "Downloads/VRKA"
-            val verification = when (status) {
-                PublicationTransactionStatus.RECONCILED -> "LEGACY_RECONCILED_TOMBSTONE"
-                PublicationTransactionStatus.COMPLETED -> "LEGACY_UNVERIFIED"
-                else -> "LEGACY_UNVERIFIED"
-            }
+            val verification = rawVerification
             val rawAttemptNumber = obj.optInt("attemptNumber", 0)
                 .takeIf { it in 1..1_000_000 }
             // The source journal is legacy evidence, not a trusted owner. Storage gets synthetic
@@ -409,22 +418,29 @@ internal class LegacyStorageMigrator(
                 intendedFilename = intended,
                 pendingFilename = pending,
                 stagingPath = obj.optString("stagingPath"),
-                expectedSizeBytes = obj.optLong("expectedSizeBytes", 0L).coerceAtLeast(0L),
+                expectedSizeBytes = rawExpectedBytes,
                 providerType = providerType,
                 destinationIdentity = destination,
-                publicationPhase = phase,
-                providerUri = obj.optString("providerUri").takeIf { it.isNotBlank() && it != "null" },
-                copiedBytes = obj.optLong("copiedBytes", 0L).coerceAtLeast(0L),
-                status = status,
+                publicationPhase = normalizedPhase.phase,
+                providerUri = rawUri,
+                copiedBytes = rawCopiedBytes,
+                status = if (normalizedPhase.markCleanupPending) {
+                    PublicationTransactionStatus.CLEANUP_PENDING
+                } else {
+                    status
+                },
                 createdAt = obj.optLong("createdAt", clock()).takeIf { it > 0 } ?: clock(),
                 updatedAt = obj.optLong("updatedAt", clock()).takeIf { it > 0 } ?: clock(),
-                errorMessage = obj.optString("errorMessage").takeIf { it.isNotBlank() && it != "null" },
+                errorMessage = obj.optString("errorMessage").takeIf { it.isNotBlank() && it != "null" }
+                    ?: normalizedPhase.errorDetail,
                 attemptNumber = rawAttemptNumber ?: 1,
                 attemptId = "",
                 batchId = "",
                 verificationLevel = verification,
                 expectedSha256 = null,
                 legacyAmbiguous = legacyAmbiguous,
+                recoveryRequired = normalizedPhase.recoveryRequired,
+                stagingCleanupPending = normalizedPhase.stagingCleanupPending,
             )
         }
 

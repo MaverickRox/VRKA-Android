@@ -185,7 +185,7 @@ class RoomPublicationOrchestrationTest {
             expectedSizeBytes = 10L,
             providerType = com.mvrk.vrka.PublicationProviderType.MEDIA_STORE,
             destinationIdentity = "Downloads/VRKA",
-            publicationPhase = com.mvrk.vrka.PublicationPhase.PROVIDER_OBJECT_CREATED,
+            publicationPhase = com.mvrk.vrka.PublicationPhase.CREATED,
             attemptNumber = 1,
             attemptId = JobJsonCodec.attemptIdFor(job.id, 1),
             batchId = "batch-incomplete",

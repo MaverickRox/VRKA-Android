@@ -42,7 +42,7 @@ internal class RoomPublicationStore(
         it.copy(
             providerUri = providerUri,
             providerDocumentId = providerUri.substringAfterLast('/').takeIf { it.isNotBlank() },
-            publicationPhase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            publicationPhase = PublicationPhase.CREATED,
             status = PublicationTransactionStatus.IN_PROGRESS,
         )
     }
@@ -57,14 +57,14 @@ internal class RoomPublicationStore(
     override fun updateDataCopied(transactionId: String, copiedBytes: Long) = mutate(transactionId) {
         it.copy(
             copiedBytes = copiedBytes,
-            publicationPhase = PublicationPhase.DATA_COPIED,
+            publicationPhase = PublicationPhase.COPIED,
             status = PublicationTransactionStatus.IN_PROGRESS,
         )
     }
 
     override fun updateValidated(transactionId: String) = mutate(transactionId) {
         it.copy(
-            publicationPhase = PublicationPhase.OUTPUT_VALIDATED,
+            publicationPhase = PublicationPhase.COPIED,
             verificationLevel = if (it.verificationLevel.isBlank()) "SIZE_VERIFIED" else it.verificationLevel,
         )
     }
@@ -77,8 +77,16 @@ internal class RoomPublicationStore(
         it.copy(
             verificationLevel = verificationLevel,
             observedSha256 = observedSha256 ?: it.observedSha256,
-            publicationPhase = PublicationPhase.OUTPUT_VALIDATED,
+            publicationPhase = if (it.publicationPhase == PublicationPhase.FINALIZED) {
+                PublicationPhase.FINALIZED
+            } else {
+                PublicationPhase.COPIED
+            },
         )
+    }
+
+    override fun updateIntendedFilename(transactionId: String, intendedFilename: String) = mutate(transactionId) {
+        if (intendedFilename.isBlank()) it else it.copy(intendedFilename = intendedFilename)
     }
 
     override fun updateFinalized(transactionId: String, newUri: String?) = mutate(transactionId) {
@@ -91,7 +99,7 @@ internal class RoomPublicationStore(
     }
 
     override fun updateRecorded(transactionId: String) = mutate(transactionId) {
-        it.copy(publicationPhase = PublicationPhase.RECORDED, status = PublicationTransactionStatus.COMPLETED)
+        it.copy(publicationPhase = PublicationPhase.FINALIZED, status = PublicationTransactionStatus.COMPLETED)
     }
 
     override fun markInterrupted(transactionId: String) = mutate(transactionId) {
@@ -108,14 +116,22 @@ internal class RoomPublicationStore(
 
     override fun markCleanupPending(transactionId: String, error: String?) {
         mutate(transactionId) {
-            it.copy(status = PublicationTransactionStatus.CLEANUP_PENDING, errorMessage = error ?: it.errorMessage)
+            it.copy(
+                publicationPhase = PublicationPhase.CLEANUP_PENDING,
+                status = PublicationTransactionStatus.CLEANUP_PENDING,
+                errorMessage = error ?: it.errorMessage,
+            )
         }
         upsertProviderCleanupTask(transactionId)
     }
 
     override fun updateDeleted(transactionId: String) {
         mutate(transactionId) {
-            it.copy(status = PublicationTransactionStatus.INTERRUPTED, providerUri = null)
+            it.copy(
+                publicationPhase = PublicationPhase.ABORTED,
+                status = PublicationTransactionStatus.INTERRUPTED,
+                providerUri = null,
+            )
         }
         blocking {
             database.cleanupTaskDao().deleteByResource(PROVIDER_OBJECT_RESOURCE, transactionId)
@@ -158,11 +174,15 @@ internal class RoomPublicationStore(
                 for (transactionId in transactionIds.toSet()) {
                     val output = database.publicationOutputDao().byId(transactionId) ?: continue
                     if (output.status == PublicationTransactionStatus.CLEANUP_PENDING.name) continue
-                    val phase = if (output.phase == PublicationPhase.FINALIZED.name) {
-                        PublicationPhase.RECORDED.name
-                    } else {
-                        output.phase
-                    }
+                    val normalized = PublicationPhase.normalizeLegacyPhase(
+                        rawPhase = output.phase,
+                        providerUri = output.providerUri,
+                        copiedBytes = output.copiedBytes,
+                        expectedSizeBytes = output.expectedSizeBytes,
+                        verificationLevel = output.verificationLevel,
+                        status = output.status,
+                    )
+                    val phase = normalized?.phase?.name ?: output.phase
                     database.publicationOutputDao().upsert(
                         output.copy(
                             status = PublicationTransactionStatus.RECONCILED.name,
@@ -412,6 +432,14 @@ internal class RoomPublicationStore(
         output: PublicationOutputEntity,
         batch: PublicationBatchEntity?,
     ): PublicationEntry {
+        val normalizedPhase = PublicationPhase.normalizeLegacyPhase(
+            rawPhase = output.phase,
+            providerUri = output.providerUri,
+            copiedBytes = output.copiedBytes,
+            expectedSizeBytes = output.expectedSizeBytes,
+            verificationLevel = output.verificationLevel,
+            status = output.status,
+        ) ?: throw IllegalArgumentException("Unknown persisted phase")
         return PublicationEntry(
             transactionId = output.transactionId,
             jobId = output.jobId,
@@ -423,13 +451,13 @@ internal class RoomPublicationStore(
             expectedSizeBytes = output.expectedSizeBytes,
             providerType = strictEnum(output.providerType, "providerType"),
             destinationIdentity = output.destinationIdentity,
-            publicationPhase = strictEnum(output.phase, "phase"),
+            publicationPhase = normalizedPhase.phase,
             providerUri = output.providerUri,
             copiedBytes = output.copiedBytes,
             status = strictEnum(output.status, "status"),
             createdAt = output.createdAt,
             updatedAt = output.updatedAt,
-            errorMessage = output.errorMessage,
+            errorMessage = output.errorMessage ?: normalizedPhase.errorDetail,
             attemptNumber = output.attemptNumber,
             attemptId = output.attemptId,
             batchId = output.batchId,
@@ -439,6 +467,8 @@ internal class RoomPublicationStore(
             providerDocumentId = output.providerDocumentId,
             providerCapabilitiesJson = output.providerCapabilitiesJson,
             legacyAmbiguous = batch?.legacyAmbiguous ?: true,
+            recoveryRequired = normalizedPhase.recoveryRequired,
+            stagingCleanupPending = normalizedPhase.stagingCleanupPending,
         )
     }
 

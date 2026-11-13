@@ -81,6 +81,11 @@ internal class RoomStorageRepository(
 
     fun cachedJobs(): List<DownloadJob> = _jobs.value
 
+    suspend fun jobById(jobId: String): DownloadJob? = withContext(Dispatchers.IO) {
+        val entity = database.jobDao().byId(jobId) ?: return@withContext null
+        runCatching { JobJsonCodec.decodeJob(entity) }.getOrNull()
+    }
+
     suspend fun activeCount(): Int = withContext(Dispatchers.IO) { database.jobDao().activeCount() }
     suspend fun terminalCount(): Int = withContext(Dispatchers.IO) { database.jobDao().terminalCount() }
     suspend fun terminalJobIds(): List<String> = withContext(Dispatchers.IO) { database.jobDao().terminalIds() }
@@ -126,7 +131,9 @@ internal class RoomStorageRepository(
                             existing?.legacyVerification.orEmpty()
                         }
                         val recoveryRequired = job.recoveryRequired ||
-                            (existing?.recoveryRequired == true && job.state != JobState.DONE)
+                            (existing?.recoveryRequired == true &&
+                                job.attempt == existing.attempt &&
+                                job.state != JobState.DONE)
                         val entity = JobJsonCodec.encodeJob(
                             job = job,
                             currentAttemptId = attemptId,
@@ -198,25 +205,39 @@ internal class RoomStorageRepository(
         result
     }
 
+    suspend fun deleteJobsReturningIds(jobIds: Collection<String>): Set<String> = writeMutex.withLock {
+        val uniqueIds = jobIds.toSet()
+        if (uniqueIds.isEmpty()) return@withLock emptySet()
+        val deleted = database.withTransaction { deleteJobsReturningIdsInTransaction(uniqueIds) }
+        reloadCache()
+        deleted
+    }
+
     private fun deleteJobsInTransaction(jobIds: Collection<String>): Boolean {
-        var allDeleted = true
+        val uniqueIds = jobIds.toSet()
+        return deleteJobsReturningIdsInTransaction(uniqueIds).size == uniqueIds.size
+    }
+
+    private fun deleteJobsReturningIdsInTransaction(jobIds: Collection<String>): Set<String> {
+        val deletedIds = LinkedHashSet<String>()
         for (jobId in jobIds.toSet()) {
             val unresolved = database.publicationOutputDao().unreconciledForJob(jobId)
+                .any { it.status !in NON_BLOCKING_PUBLICATION_STATUSES }
             val providerCleanup = database.cleanupTaskDao().forJob(jobId)
                 .any { it.resourceType != "STAGING" }
-            if (unresolved.isNotEmpty() || providerCleanup) {
-                allDeleted = false
+            if (unresolved || providerCleanup) {
                 continue
             }
             database.publicationOutputDao().deleteForJob(jobId)
             database.publicationBatchDao().deleteForJob(jobId)
             database.attemptDao().deleteForJob(jobId)
             // Cleanup obligations deliberately outlive a History row. Staging tasks are
-            // job-keyed; provider tasks remain protected by their unresolved output rows,
-            // so deletion is refused before this point when one exists.
+            // job-keyed; provider/history deletion tasks remain protected above
+            // while any non-STAGING cleanup obligation exists.
             database.jobDao().delete(jobId)
+            deletedIds += jobId
         }
-        return allDeleted
+        return deletedIds
     }
 
     suspend fun clearTerminal(): Boolean = writeMutex.withLock {
@@ -281,7 +302,7 @@ internal class RoomStorageRepository(
                             it.providerType != batch.providerType ||
                             it.destinationIdentity != batch.destinationIdentity ||
                             it.status !in setOf("COMPLETED", "RECONCILED") ||
-                            it.phase !in setOf("FINALIZED", "RECORDED", "PUBLISHED", "COMMITTED_RECONCILED") ||
+                            it.phase !in FINALIZED_OUTPUT_PHASES ||
                             it.providerUri.isNullOrBlank() ||
                             it.verificationLevel !in setOf("HASH_VERIFIED", "SIZE_VERIFIED")
                     }
@@ -298,7 +319,7 @@ internal class RoomStorageRepository(
                 val terminal = job.copy(
                     state = JobState.DONE.name,
                     detail = detail,
-                    progress = 1f,
+                    progress = 100f,
                     downloadedBytes = downloadedBytes ?: job.downloadedBytes,
                     reportedTotalBytes = reportedTotalBytes ?: job.reportedTotalBytes,
                     reportedTotalIsExact = reportedTotalIsExact,
@@ -317,7 +338,7 @@ internal class RoomStorageRepository(
                     database.publicationOutputDao().upsert(
                         output.copy(
                             status = "RECONCILED",
-                            phase = "COMMITTED_RECONCILED",
+                            phase = "FINALIZED",
                             cleanupState = "STAGING_CLEANUP_PENDING",
                             updatedAt = clock(),
                             version = output.version + 1L,
@@ -404,7 +425,7 @@ internal class RoomStorageRepository(
                             it.providerType != batch.providerType ||
                             it.destinationIdentity != batch.destinationIdentity ||
                             it.status !in setOf("COMPLETED", "RECONCILED") ||
-                            it.phase !in setOf("FINALIZED", "RECORDED", "PUBLISHED", "COMMITTED_RECONCILED") ||
+                            it.phase !in FINALIZED_OUTPUT_PHASES ||
                             it.providerUri.isNullOrBlank() ||
                             it.verificationLevel !in setOf("HASH_VERIFIED", "SIZE_VERIFIED")
                     }
@@ -445,7 +466,7 @@ internal class RoomStorageRepository(
                 }
                 for (transactionId in reconciledTransactionIds) {
                     val output = outputs.first { it.transactionId == transactionId }
-                    val phase = if (output.phase == "FINALIZED") "RECORDED" else output.phase
+                    val phase = if (output.phase in FINALIZED_OUTPUT_PHASES) "FINALIZED" else output.phase
                     database.publicationOutputDao().upsert(
                         output.copy(
                             status = "RECONCILED",
@@ -481,6 +502,14 @@ internal class RoomStorageRepository(
         private val repository: RoomStorageRepository,
         private val delegate: PagingSource<Int, JobEntity>,
     ) : PagingSource<Int, DownloadJob>() {
+        init {
+            delegate.registerInvalidatedCallback { invalidate() }
+            registerInvalidatedCallback { delegate.invalidate() }
+        }
+
+        override val jumpingSupported: Boolean
+            get() = delegate.jumpingSupported
+
         override suspend fun load(params: LoadParams<Int>): LoadResult<Int, DownloadJob> =
             when (val result = delegate.load(params)) {
                 is LoadResult.Page -> LoadResult.Page(
@@ -500,6 +529,26 @@ internal class RoomStorageRepository(
                     page.prevKey?.plus(1) ?: page.nextKey?.minus(1)
                 }
             }
+    }
+
+    private companion object {
+        val FINALIZED_OUTPUT_PHASES = setOf(
+            "FINALIZED",
+            "RECORDED",
+            "PUBLISHED",
+            "COMMITTED_RECONCILED",
+            "STAGING_CLEANUP_PENDING",
+            "CLOSED",
+        )
+        val NON_BLOCKING_PUBLICATION_STATUSES = setOf(
+            "FINALIZED",
+            "CLEANUP_PENDING",
+            "ABORTED",
+            "RECONCILED",
+            "FAILED",
+            "INTERRUPTED",
+            "DELETED",
+        )
     }
 }
 

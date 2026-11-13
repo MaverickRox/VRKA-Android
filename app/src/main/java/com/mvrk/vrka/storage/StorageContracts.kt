@@ -43,6 +43,9 @@ internal interface PublicationStore {
     /** Records provider readback evidence; no-op for the legacy JSON journal. */
     fun updateVerification(transactionId: String, verificationLevel: String, observedSha256: String?) = Unit
 
+    /** Adopts a provider-deduplicated display name (e.g. "Title (1).mp4") without altering transaction ownership. */
+    fun updateIntendedFilename(transactionId: String, intendedFilename: String) = Unit
+
     fun updateFinalized(transactionId: String, newUri: String? = null)
 
     fun updateRecorded(transactionId: String)
@@ -100,4 +103,17 @@ internal interface CleanupStore {
     fun resetDeadLetter(taskId: String): Boolean = false
 
     fun isProviderCleanupDeadLetter(transactionId: String): Boolean = false
+
+    fun pendingHistoryDeletions(): List<CleanupTaskSummary> = emptyList()
+
+    fun markHistoryDeletionPending(
+        jobId: String,
+        uriText: String,
+        error: String,
+        recordFailure: Boolean = true,
+    ) {}
+
+    fun clearHistoryDeletion(jobId: String, uriText: String) {}
+
+    fun clearHistoryDeletionsForJob(jobId: String) {}
 }

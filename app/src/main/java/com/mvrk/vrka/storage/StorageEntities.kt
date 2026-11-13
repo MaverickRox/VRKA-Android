@@ -12,6 +12,7 @@ import androidx.room.PrimaryKey
         Index("state"),
         Index("updated_at"),
         Index("recovery_required"),
+        Index("playlist_group_id"),
     ],
 )
 data class JobEntity(
@@ -48,6 +49,7 @@ data class JobEntity(
     @ColumnInfo(name = "terminal_at") val terminalAt: Long?,
     @ColumnInfo(name = "commit_sequence") val commitSequence: Long,
     val version: Long,
+    @ColumnInfo(name = "playlist_group_id") val playlistGroupId: String? = null,
 )
 
 @Entity(

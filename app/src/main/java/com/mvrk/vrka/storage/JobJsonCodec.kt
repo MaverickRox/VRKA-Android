@@ -47,6 +47,8 @@ internal object JobJsonCodec {
             JSONObject(request.customHeaders.filterKeys { !HeaderValidation.isSensitiveHeader(it) }),
         )
         .put("destinationTreeUri", request.destinationTreeUri)
+        .put("playlistGroupId", request.playlistGroupId)
+        .put("playlistItemId", request.playlistItemId)
         .toString()
 
     fun decodeRequest(text: String): DownloadRequest {
@@ -95,6 +97,8 @@ internal object JobJsonCodec {
             origin = json.optString("origin"),
             customHeaders = customHeaders,
             destinationTreeUri = if (json.isNull("destinationTreeUri")) null else json.optString("destinationTreeUri").takeIf { it.isNotBlank() },
+            playlistGroupId = if (json.isNull("playlistGroupId")) null else json.optString("playlistGroupId").takeIf { it.isNotBlank() && it != "null" },
+            playlistItemId = if (json.isNull("playlistItemId")) null else json.optString("playlistItemId").takeIf { it.isNotBlank() && it != "null" },
         )
     }
 
@@ -140,42 +144,47 @@ internal object JobJsonCodec {
         terminalAt = terminalAt,
         commitSequence = commitSequence,
         version = version,
+        playlistGroupId = job.playlistGroupId ?: job.request.playlistGroupId,
     )
 
-    fun decodeJob(entity: JobEntity): DownloadJob = DownloadJob(
-        id = entity.id,
-        request = decodeRequest(entity.requestJson),
-        state = requiredEnum(entity.state, "state"),
-        title = entity.title,
-        detail = entity.detail,
-        progress = entity.progress.takeIf { it.isFinite() } ?: 0f,
-        speed = entity.speed,
-        etaSeconds = entity.etaSeconds,
-        estimatedTotalBytes = entity.estimatedTotalBytes,
-        estimatedSizeAccuracy = requiredEnum(entity.estimatedSizeAccuracy, "estimatedSizeAccuracy"),
-        downloadedBytes = entity.downloadedBytes,
-        reportedTotalBytes = entity.reportedTotalBytes,
-        reportedTotalIsExact = entity.reportedTotalIsExact,
-        activeStream = optionalNullableEnum<ActiveStream>(entity.activeStream, "activeStream"),
-        playlistItemIndex = entity.playlistItemIndex,
-        playlistItemCount = entity.playlistItemCount,
-        actualFinalFileBytes = entity.actualFinalFileBytes,
-        createdAt = entity.createdAt,
-        updatedAt = entity.updatedAt,
-        outputUris = runCatching {
-            val array = JSONArray(entity.outputUrisJson)
-            buildList { for (index in 0 until array.length()) add(array.getString(index)) }
-        }.getOrElse { throw IllegalArgumentException("Invalid output URI data", it) },
-        error = entity.error,
-        attempt = entity.attempt,
-        actualResolution = entity.actualResolution,
-        runtimeName = entity.runtimeName,
-        runtimeVersion = entity.runtimeVersion,
-        subtitleStatus = requiredEnum(entity.subtitleStatus, "subtitleStatus"),
-        publishStarted = entity.publishStarted,
-        recoveryRequired = entity.recoveryRequired,
-        legacyVerification = entity.legacyVerification,
-    )
+    fun decodeJob(entity: JobEntity): DownloadJob {
+        val request = decodeRequest(entity.requestJson)
+        return DownloadJob(
+            id = entity.id,
+            request = request,
+            state = requiredEnum(entity.state, "state"),
+            title = entity.title,
+            detail = entity.detail,
+            progress = entity.progress.takeIf { it.isFinite() } ?: 0f,
+            speed = entity.speed,
+            etaSeconds = entity.etaSeconds,
+            estimatedTotalBytes = entity.estimatedTotalBytes,
+            estimatedSizeAccuracy = requiredEnum(entity.estimatedSizeAccuracy, "estimatedSizeAccuracy"),
+            downloadedBytes = entity.downloadedBytes,
+            reportedTotalBytes = entity.reportedTotalBytes,
+            reportedTotalIsExact = entity.reportedTotalIsExact,
+            activeStream = optionalNullableEnum<ActiveStream>(entity.activeStream, "activeStream"),
+            playlistItemIndex = entity.playlistItemIndex,
+            playlistItemCount = entity.playlistItemCount,
+            actualFinalFileBytes = entity.actualFinalFileBytes,
+            createdAt = entity.createdAt,
+            updatedAt = entity.updatedAt,
+            outputUris = runCatching {
+                val array = JSONArray(entity.outputUrisJson)
+                buildList { for (index in 0 until array.length()) add(array.getString(index)) }
+            }.getOrElse { throw IllegalArgumentException("Invalid output URI data", it) },
+            error = entity.error,
+            attempt = entity.attempt,
+            actualResolution = entity.actualResolution,
+            runtimeName = entity.runtimeName,
+            runtimeVersion = entity.runtimeVersion,
+            subtitleStatus = requiredEnum(entity.subtitleStatus, "subtitleStatus"),
+            publishStarted = entity.publishStarted,
+            recoveryRequired = entity.recoveryRequired,
+            legacyVerification = entity.legacyVerification,
+            playlistGroupId = entity.playlistGroupId ?: request.playlistGroupId,
+        )
+    }
 
     fun quarantineJson(entity: JobEntity): String = JSONObject()
         .put("id", entity.id)
