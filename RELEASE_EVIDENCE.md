@@ -1,3 +1,24 @@
+# VRKA Android 5.1.5 — Pre-Release Remediation Verification Evidence
+
+> [!NOTE]
+> **Local Pre-Release Working Tree Only**: `v5.1.5` (`versionCode` `50105`) is a local uncommitted remediation working tree starting from commit `61b0fe4f037448756e0f87cf09cd60095e2d60da` (`main`). No Git commit, tag, APK release upload, or OpenPGP manifest signature has been created; the latest official signed GitHub release remains `v5.1.4` (`6717da543df98fca33cdce78f8bc098edf6cef60`). Historical release evidence below is preserved unchanged.
+
+- **Verification date:** 2026-11-13
+- **Local version:** `5.1.5` (`versionCode` `50105`, uncommitted remediation over `61b0fe4f037448756e0f87cf09cd60095e2d60da`)
+
+## Automated checks (`v5.1.5` local remediation)
+
+| Check | Command or evidence | Result |
+| --- | --- | --- |
+| Full JVM unit suite & strict build | `.\gradlew --no-daemon --no-configuration-cache --dependency-verification=strict testDebugUnitTest lintDebug lintRelease compileDebugAndroidTestKotlin compileReleaseKotlin assembleDebug assembleDebugAndroidTest assembleDevRelease assembleRelease` | PASS: `949` tests / `93` suites (`0` failures, `0` errors, `0` skipped); `lintDebug` & `lintRelease` `0` errors; `compileDebugAndroidTestKotlin`, `compileReleaseKotlin`, `assembleDebug`, `assembleDebugAndroidTest`, `assembleDevRelease`, `assembleRelease` passed (`app/gradle.lockfile` unchanged) |
+| Development R8 APK (`VRKA-v5.1.5-dev.apk`) | `app/build/outputs/apk/devRelease/VRKA-v5.1.5-dev.apk`, `apkanalyzer`, `aapt2 dump badging`, `zipalign -c -v 4`, `apksigner verify` | PASS: `155,258,401` bytes; single `classes.dex` (`8,414,696` B raw); `useLegacyPackaging = true`; aligned (`4` bytes); APK Signature Scheme v2 |
+| Production Release APK (`app-release.apk`) | `app/build/outputs/apk/release/app-release.apk`, `apksigner verify --verbose` | PASS: `155,313,973` bytes (`539a56f504184ef1405d68254901b848a6fe8554165607e757070e19ee511f0e`); single `classes.dex`; V2 signature verified with official key (`9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`) |
+| Hardware Instrumentation Gate (OnePlus 11, Android 16) | `adb shell am instrument -w -r com.mvrk.vrka.debug.test/androidx.test.runner.AndroidJUnitRunner` on physical OnePlus 11 (`897f6ce5`, Android 16 / SDK 36) | PASS: `77` tests / `77` executed (`0` failures, 100% green in 57.503s); Room `MIGRATION_1_2` verified on real SQLite; SAF publication (11 tests) & real MediaStore publication verified; native ARM64 yt-dlp & FFmpeg verified on device; GeckoView 159 WebExecutor verified |
+| Track A: In-Place Upgrade Gate (`v5.1.4 -> v5.1.5`) | `adb install -r app-release.apk` over signed `v5.1.4` baseline | PASS: In-place upgrade succeeded (`50104 -> 50105`); cold launch verified; zero crashes; Room schema migration cleanly handled; Settings preserved; remote manifest downgrade rejected (`50104 < 50105`) |
+| Track B: Reinstall & Storage Persistence Gate | Clean install over pre-existing `/sdcard/Download/VRKA/CollisionTest.mp4` | PASS: Pre-existing file preserved with zero truncation; clean startup with GeckoView and download destination commit |
+
+---
+
 # VRKA Android 5.1.4 — Release Evidence
 
 - **Verification date:** 2026-11-11

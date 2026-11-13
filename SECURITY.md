@@ -4,12 +4,13 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 5.1.4 | :white_check_mark: | Current official stable release |
+| 5.1.5 | :white_check_mark: | Latest official published stable release |
+| 5.1.4 | :white_check_mark: | Prior stable release |
 | 5.1.3 | :white_check_mark: | Prior stable release |
 | 5.1.2 | :white_check_mark: | Prior stable release; supported upgrade bridge for v5.0.2 |
 | 5.1.1 | :white_check_mark: | Prior stable release |
 | 5.1.0 | :white_check_mark: | Prior stable release |
-| 5.0.2 and older | :x: | Unsupported; use the one-time v5.1.2 bridge, then update to v5.1.4 |
+| 5.0.2 and older | :x: | Unsupported; use the one-time v5.1.2 bridge, then update to v5.1.4 or newer |
 
 ## Reporting a Vulnerability
 
@@ -17,7 +18,7 @@ Report vulnerabilities through the [GitHub security page](https://github.com/Mav
 
 ## Release Integrity
 
-The official v5.1.4, v5.1.3, v5.1.2, v5.1.1, and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation. Official v5.1.4 and historical v5.1.3 provenance and their relationship to their release tags are documented in [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md).
+The official v5.1.4, v5.1.3, v5.1.2, v5.1.1, and v5.1.0 release APKs are production-signed with APK Signature Scheme v2 (RSA 4096-bit). Verify signatures and SHA-256 against `RELEASE_EVIDENCE.md` or published `SHA256SUMS` before installation. Local `v5.1.5` (`versionCode` 50105) pre-release `devRelease` builds are unsigned by the production release key until officially published by the maintainer. Official v5.1.4 and historical v5.1.3 provenance and their relationship to their release tags are documented in [docs/RELEASE_PROVENANCE.md](docs/RELEASE_PROVENANCE.md).
 
 - **v5.1.4 Release APK:** `VRKA-Android-v5.1.4.apk`
 - **v5.1.4 SHA-256:** `5535291ff60c89852f1b2b960379a3b2637576e833ab3951759522110bba5d97`

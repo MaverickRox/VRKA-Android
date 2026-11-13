@@ -1,5 +1,18 @@
 # VRKA Android — Test Results
 
+## v5.1.5 local remediation verification (unreleased)
+
+Validation date: 2026-11-11. Starting commit: `61b0fe4f037448756e0f87cf09cd60095e2d60da` (`main` / `origin/main`; `versionCode = 50105`, `versionName = "5.1.5"` in local uncommitted tree). Historical release records (`v5.1.4` through `v5.0.2`) below are preserved unchanged.
+
+- **JVM Unit Test Suite (`testDebugUnitTest`):** `907` tests across `87` suites — `907` passed, `0` failed, `0` errors, `0` skipped (`--no-daemon --no-configuration-cache --dependency-verification=strict`):
+  - Issue #23 storage, queue lifecycle, and migration/publication recovery (`109` tests): `HistoryDeletionExhaustiveTest` (`14`), `QueueLifecycleExhaustiveTest` (`11`), `StorageInvariantsAndFaultInjectionTest` (`7`), `Issue23QueueAndDeletionTest` (`7`), `StorageDefectRemediationTest` (`21`), `RoomStorageRepositoryTest` (`8`), `RoomPublicationOrchestrationTest` (`2`), `LegacyMigrationFixtureTest` (`4`), `PublicationJournalRecoveryTest` (`35`).
+  - XPI cryptographic verification, updater, runtime, and supply-chain suites: `SecureComponentUpdaterTest` (`43`), `ComponentUpdateManagerTest` (`20`), `ComponentUpdaterStabilityTest` (`9`), `AppUpdateManagerTest` (`41`), `AppUpdateDownloadPolicyTest` (`7`), `ReleaseManifestVerifierTest` (`29`), `ReleaseManifestTest` (`21`), `ReleasePipelineEndToEndTest` (`4`), `SupplyChainPolicyTest` (`10`), `YtDlpRuntimeManagerTest` (`7`), `CustomCommandTemplatesTest` (`7`), `DownloadRequestFactoryTest` (`23`).
+  - Media Detector & credential scoping: `MediaDetectorAndCredentialScopingTest` (`6`), `RequestContextTest` (`7`), `HeaderValidationTest` (`8`), `BoundedMemoryTransportTest` (`4`).
+  - Redirect/cancellation, R8 keep checks & multi-API Robolectric: `Section9ReliabilityAndR8Test` (`6`), `ApiCompatibilityAndNotificationsTest` (`2` on SDK `26` and SDK `36`).
+- **Android Lint:** `lintDebug` (`0` errors/fatal, `301` warnings, `4` info/hints, `305` total issues) and `lintRelease` (`0` errors/fatal, `300` warnings, `4` info/hints, `304` total issues).
+- **Compilation & Local APK Verification:** `compileDebugAndroidTestKotlin`, `compileReleaseKotlin`, `assembleDebug` (`app-debug.apk`: `181,188,244` bytes), `assembleDebugAndroidTest`, and `assembleDevRelease` (`VRKA-v5.1.5-dev.apk`: `155,258,401` bytes; single `classes.dex` `8,401,420` B raw / `4,144,212` B compressed; `43,707` defined methods / `50,110` DEX references; `mapping.txt` `82,566,768` bytes) all passed under `--dependency-verification=strict` (`app/gradle.lockfile` unchanged).
+- **Android Instrumentation & Production Release Signing:** `connectedDebugAndroidTest` / live emulator verification was **Blocked / Not Executed** in this environment (Windows `WHPX hr=80070005` / x86_64 TCG AVX requirement; no API 26 image installed locally — see `DEVICE_VALIDATION.md`). Production release signing (`assembleRelease`) was intentionally **Not Executed**.
+
 ## v5.1.4 release verification
 
 Validation date: 2026-11-11. Historical release records (`v5.1.3` through `v5.0.2`) below are preserved unchanged.

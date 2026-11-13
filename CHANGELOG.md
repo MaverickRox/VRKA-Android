@@ -2,6 +2,21 @@
 
 Notable changes for **VRKA Android** (`com.mvrk.vrka`). For full checksums, OpenPGP manifests, and test logs, see [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
 
+## [5.1.5] - 2026-11-13
+
+Production release adding child-job playlist expansion, composite playlist selection dialogs, hardened MediaStore publication and recovery, in-app updater compatibility for current versions, Download page PNG wordmark branding, Android 16 User-Initiated Data Transfer (UIDT) notifications, and Issue #23 queue and deletion remediation (`versionCode 50105`, `com.mvrk.vrka`).
+
+- **Playlist child-job expansion & concurrency:** YouTube and multi-item playlists expand atomically into independent child jobs (`isPlaylist=false`) with bounded concurrency (up to 4 parallel workers), unique job IDs, independent progress/history tracking, and graceful handling of aggregate size estimations.
+- **Composite YouTube playlist-selection dialog:** Automatically detects composite YouTube URLs containing both video and playlist parameters upon pasting or input, presenting a dialog with "Entire Playlist" (enters expansion path) and "This Video Only" (strips playlist context). Suppressed when the Advanced playlist setting is already enabled.
+- **Hardened MediaStore publication & recovery:** Direct insertion with `IS_PENDING=1` finalized to `0` without fragile `DISPLAY_NAME` renames. Retains returned MediaStore URIs as permanent file identities, prevents deleting verified media on transient publication errors, and maintains fail-closed staging recovery.
+- **In-app updater equal/older manifest compatibility:** When an installed app is at or newer than a valid release manifest (`versionCode <= installedVersionCode`), the updater cleanly reports "You are already using the latest version" instead of a confusing downgrade error, while preserving strict anti-downgrade protections.
+- **Android 16 UIDT & notification isolation:** Implements User-Initiated Data Transfer (`RUN_USER_INITIATED_JOBS` and `DownloadTransferJobService`) on API 36, ensuring concurrent downloads maintain independent progress and distinct completion notifications that resolve to published media.
+- **Download page header branding:** Replaced text-based VRKA branding at the top-left of the Download page with the official transparent PNG wordmark, preserving natural 3:1 aspect ratio and vibrant purple rendering in both light and dark themes.
+- **uBlock Origin XPI cryptographic verification (`XpiSignatureVerifier`):** Verifies bundled and downloaded `uBlock Origin` `.xpi` archives offline via PKCS#7 RSA signatures, pinned Mozilla Add-ons CA SPKI SHA-256, manifest digest coverage (`manifest.mf`/`mozilla.sf`), ZIP entry path/duplicate guards, and pinned SHA-256 checksums before installation.
+- **Issue #23 storage & queue fixes (`VrkaDownloadManager` / Room):** Prevents multi-item queue stalling by isolating terminal completion ownership, ensuring cleanup obligations and queue dispatch proceed reliably across queued items and History deletions.
+- **Media Detector & credential scoping hardening:** Removes unneeded `"webRequestBlocking"` permission from `media-detector/manifest.json`, bounds candidate storage with tab/origin isolation and header redaction, and strips credentials across cross-origin HTTP redirects and HTTPS->HTTP downgrades.
+- **R8 / ProGuard rule narrowing (`app/proguard-rules.pro`):** Replaces blanket `com.yausername.**`, `org.bouncycastle.**`, `androidx.work.**`, and `commons-compress` zip keeps with targeted Jackson `@JsonProperty`, `ZipExtraField` 0-arg, JCA provider/digest/RSA/DRBG SPI, Room, and WorkManager rules.
+
 ## [5.1.4] - 2026-11-11
 
 Security hardening, safer custom `yt-dlp` handling, stricter updates, and cleaner docs (`versionCode 50104`, direct upgrade from `v5.1.3`/`v5.1.2`).

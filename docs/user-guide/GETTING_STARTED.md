@@ -11,7 +11,7 @@
 Official releases are published only at:
 [https://github.com/MaverickRox/VRKA-Android/releases](https://github.com/MaverickRox/VRKA-Android/releases)
 
-Before installing a manually downloaded APK, compare its SHA-256 digest against the release `SHA256SUMS` file or [RELEASE_EVIDENCE.md](../../RELEASE_EVIDENCE.md):
+Before installing a manually downloaded official release APK (latest published: `v5.1.4`; local pre-release source: `v5.1.5`), compare its SHA-256 digest against the release `SHA256SUMS` file or [RELEASE_EVIDENCE.md](../../RELEASE_EVIDENCE.md):
 
 **Windows (PowerShell):**
 ```powershell
@@ -23,19 +23,19 @@ Before installing a manually downloaded APK, compare its SHA-256 digest against 
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-All official production releases share package ID `com.mvrk.vrka` and the same RSA-4096 signing certificate (`9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`).
+All official production releases share package ID `com.mvrk.vrka` and the same RSA-4096 signing certificate (`9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`). Local `devRelease` pre-release APKs built from uncommitted `v5.1.5` source do not carry the production release signature.
 
 ## 2. Fresh Install or Upgrade
 
-- **Fresh installation:** Open `VRKA-Android-v5.1.4.apk` on your device and allow installation from your file manager or browser when prompted, or run `adb install VRKA-Android-v5.1.4.apk`.
+- **Fresh installation (official GitHub release):** Open the verified release APK (currently `VRKA-Android-v5.1.4.apk`) on your device and allow installation from your file manager or browser when prompted, or run `adb install VRKA-Android-v5.1.4.apk`.
 - **Upgrading from v5.1.3 or v5.1.2 (in-app or manual):**
-  Update directly through **Settings -> Check for Updates** or install `VRKA-Android-v5.1.4.apk` directly over the existing installation without uninstalling. Your Queue, History, Settings, and custom templates are preserved.
-  *(If upgrading from v5.1.2 to v5.1.3/v5.1.4, VRKA automatically migrates legacy JSON storage into Room on first launch.)*
+  Update directly through **Settings -> Check for Updates** or install the newer official release APK directly over the existing installation without uninstalling. Your Queue, History, Settings, and custom templates are preserved.
+  *(If upgrading from v5.1.2 to v5.1.3 or newer, VRKA automatically migrates legacy JSON storage into Room on first launch.)*
 - **Upgrading from v5.0.2 or older (one-time bridge required):**
   Due to a historical filename validation bug inside the old `v5.0.2` client, its in-app updater cannot complete a direct self-update.
   1. Download **`VRKA-Android-v5.1.2.apk`** from the [v5.1.2 release page](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2).
   2. Install it over `v5.0.2` **without uninstalling**.
-  3. Open VRKA once so it finishes migrating, then update normally to `v5.1.4` via the in-app updater or the latest release APK.
+  3. Open VRKA once so it finishes migrating, then update normally to the latest official release via the in-app updater or GitHub Releases.
 
 ## 3. Configure Your Download Folder
 

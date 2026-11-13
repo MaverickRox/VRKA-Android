@@ -4,7 +4,7 @@
 
 ### Updating from v5.0.2 fails with "APK filename does not match the expected release"
 **Cause:** v5.0.2 shipped a client-side staging filename bug that rejects self-downloaded updates.
-**Fix:** Do **not** uninstall VRKA. Download [`VRKA-Android-v5.1.2.apk`](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) manually, install it over v5.0.2, launch VRKA once, and then update to `v5.1.4`. Your History and Settings stay intact.
+**Fix:** Do **not** uninstall VRKA. Download [`VRKA-Android-v5.1.2.apk`](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) manually, install it over v5.0.2, launch VRKA once, and then update to the latest release (`v5.1.4` or newer). Your History and Settings stay intact.
 
 ### App Update check says "Release manifest verification failed" or "Missing mandatory OpenPGP signed manifest assets"
 **Cause:** Either the release asset is missing `.manifest.json` / `.manifest.json.asc`, the device clock is significantly wrong (causing manifest `issued_at` skew or `expires_at` failure), or a network proxy altered the response.

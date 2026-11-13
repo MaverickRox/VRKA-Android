@@ -2,6 +2,7 @@
 
 ## Workflow boundaries
 
+- `.github/workflows/ci.yml` installs Android `platforms;android-37.2` and `build-tools;36.0.0` from the default stable SDK channel (`--channel=3` preview channel flag removed in v5.1.5).
 - `.github/workflows/ci.yml` runs read-only validation on pushes and pull requests.
 - The top-level permission is `contents: read`; the dependency-review job adds only
   `pull-requests: read`. Workflows do not receive write tokens or signing secrets.

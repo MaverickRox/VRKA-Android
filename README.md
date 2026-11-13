@@ -3,7 +3,7 @@
   <h1>VRKA Android</h1>
   <p><b>Native on-device Android media downloader &amp; passive web stream discovery</b></p>
   <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v5.1.4)</b></a> •
+    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Latest Published APK (v5.1.5)</b></a> •
     <a href="docs/README.md"><b>Documentation Hub</b></a> •
     <a href="docs/user-guide/GETTING_STARTED.md"><b>Getting Started</b></a> •
     <a href="CHANGELOG.md"><b>Changelog</b></a> •
@@ -20,10 +20,11 @@
 </div>
 
 > [!IMPORTANT]
-> **Upgrading to VRKA v5.1.4:**
-> - **From v5.1.3 or v5.1.2:** Update directly through **Settings -> Check for Updates** or install `VRKA-Android-v5.1.4.apk` over your existing install without uninstalling. Signing identity is unchanged, so Queue, History, Settings, and templates are preserved (and v5.1.2 JSON data imports automatically into Room on first launch).
-> - **From v5.0.2 or older:** Due to a historical staging filename bug in the old v5.0.2 client, its in-app updater cannot self-execute this upgrade. First install [`VRKA-Android-v5.1.2.apk`](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) manually over v5.0.2 **without uninstalling**, open the app once, then update normally to v5.1.4.
-> - **Current Download Page:** [https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.4](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.4)
+> **VRKA v5.1.5 (`versionCode 50105`) Official Release & Upgrade Guide:**
+> - **Current Release (`v5.1.5`):** Introduces interactive composite playlist choice dialog, bounded child-job concurrency, Room v2 atomic publication journal, robust MediaStore `IS_PENDING` recovery, modern transparent header wordmark, offline PKCS#7/SPKI + SHA-256 XPI signature verification, and full Android 16 UIDT progress notifications.
+> - **Upgrading Official Published Installs (from `v5.1.4`, `v5.1.3`, or `v5.1.2`):** Update directly through **Settings -> Check for Updates** or install `VRKA-Android-v5.1.5.apk` over your existing install without uninstalling. Signing identity is unchanged, so Queue, History, Settings, and custom templates are preserved (and existing data imports seamlessly into Room).
+> - **From v5.0.2 or older:** Due to a historical staging filename bug in the old v5.0.2 client, its in-app updater cannot self-execute this upgrade. First install [`VRKA-Android-v5.1.2.apk`](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) manually over v5.0.2 **without uninstalling**, open the app once, then update normally to `v5.1.5` or newer.
+> - **Prior Official Published Release:** [https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.4](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.4)
 
 ---
 
@@ -57,47 +58,40 @@ VRKA includes no application analytics, advertising, or crash-reporting SDKs, an
 
 ## Screenshots
 
-Verified unframed AMOLED device captures from a physical Android device (v5.1.1 UI baseline; `browser-fallback-v5.1.1.png` captures a queued Browser Fallback stream transfer from `shaka-project.github.io`):
+Verified unframed AMOLED device captures from a physical Android device (OnePlus 11 / API 36, v5.1.5 release):
 
 <div align="center">
 <table>
   <tr>
     <td align="center" width="33%">
-      <img src="docs/screenshots/v5.1.1/download-v5.1.1.png" width="220" alt="Video Download & Resolution Preflight" /><br />
-      <b>Download &amp; Resolution Preflight</b><br />
-      <sub>Quality chips &amp; format estimation</sub>
+      <img src="docs/screenshots/v5.1.5/download-v5.1.5.png" width="220" alt="Video Download & Resolution Preflight (Dark)" /><br />
+      <b>Download &amp; Preflight (Dark)</b><br />
+      <sub>Wordmark branding &amp; format estimation</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/v5.1.1/download-audio-v5.1.1.png" width="220" alt="Audio Extraction Mode" /><br />
-      <b>Audio Extraction</b><br />
-      <sub>MP3 bitrates (128–320 kbps), Opus &amp; WAV</sub>
+      <img src="docs/screenshots/v5.1.5/download-light-v5.1.5.png" width="220" alt="Video Download & Resolution Preflight (Light)" /><br />
+      <b>Download &amp; Preflight (Light)</b><br />
+      <sub>Wordmark transparency in light theme</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/v5.1.1/confirmation-v5.1.1.png" width="220" alt="Pre-Download Size Confirmation" /><br />
-      <b>Authoritative Size Confirmation</b><br />
-      <sub>Matches exact selected transfer selector</sub>
+      <img src="docs/screenshots/v5.1.5/playlist-dialog-v5.1.5.png" width="220" alt="Composite Playlist Selection Dialog" /><br />
+      <b>Playlist Choice Dialog</b><br />
+      <sub>Single video vs entire playlist prompt</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <img src="docs/screenshots/v5.1.1/queue-v5.1.1.png" width="220" alt="Active Download Queue" /><br />
+      <img src="docs/screenshots/v5.1.5/queue-v5.1.5.png" width="220" alt="Active Download Queue" /><br />
       <b>Active Transfer Queue</b><br />
       <sub>Live speed, ETA, progress &amp; concurrency</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/v5.1.1/history-v5.1.1.png" width="220" alt="Completed Download History" /><br />
+      <img src="docs/screenshots/v5.1.5/history-v5.1.5.png" width="220" alt="Completed Download History" /><br />
       <b>Verified History</b><br />
       <sub>Open, Share &amp; Delete published media</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/v5.1.1/browser-fallback-v5.1.1.png" width="220" alt="Queued Browser Fallback Transfer" /><br />
-      <b>Queued Browser Fallback Transfer</b><br />
-      <sub>Selected Shaka HLS candidate queued via yt-dlp</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" colspan="3">
-      <img src="docs/screenshots/v5.1.1/settings-v5.1.1.png" width="220" alt="Settings & Storage Controls" /><br />
+      <img src="docs/screenshots/v5.1.5/settings-v5.1.5.png" width="220" alt="Settings & Storage Controls" /><br />
       <b>Settings &amp; Storage Policies</b><br />
       <sub>Destination, concurrency, runtimes, updates &amp; localization</sub>
     </td>
@@ -195,5 +189,5 @@ Production release signing is strictly isolated (`assembleRelease` fails closed 
 ## Origin, Attribution & License
 
 - **Mobile Edition:** Full-featured Android version of desktop [**VRKA**](https://github.com/MaverickRox/VRKA) by [MaverickRox](https://github.com/MaverickRox).
-- **Third-Party Software & Demo Assets:** Uses `yt-dlp` (Unlicense), Mozilla `GeckoView` (MPL-2.0), `uBlock Origin` (GPL-3.0), `FFmpeg` (LGPL/GPL), `Space Mono` (OFL-1.1), `Mornye` switch component (LGPL-3.0 / GPL-3.0), Blender Foundation Creative Commons Open Movies (*Big Buck Bunny*, *Sintel*, *Tears of Steel*, CC-BY 3.0), and Google *Shaka Player* demo (Apache-2.0). Full attribution is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- **Third-Party Software & Demo Assets:** Uses `yt-dlp` (Unlicense), Mozilla `GeckoView` (MPL-2.0), `uBlock Origin` (GPL-3.0), `FFmpeg` (GPL-3.0-or-later), `Space Mono` (OFL-1.1), `Mornye` switch component (LGPL-3.0 / GPL-3.0), Blender Foundation Creative Commons Open Movies (*Big Buck Bunny*, *Sintel*, *Tears of Steel*, CC-BY 3.0), and Google *Shaka Player* demo (Apache-2.0). Full attribution is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - **License:** Free software under [GNU General Public License v3.0](LICENSE).

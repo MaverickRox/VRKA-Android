@@ -1,5 +1,28 @@
 # Device Validation & Subsystem Verification Record — VRKA Android
 
+## v5.1.5 physical hardware & device instrumentation verification
+
+Validation date: 2026-11-13. Scope: local uncommitted `v5.1.5` remediation tree (`50105` / `"5.1.5"`) starting from commit `61b0fe4f037448756e0f87cf09cd60095e2d60da`.
+
+- **Target Device Hardware:** Physical **OnePlus 11 5G** (`CPH2447`, device `OP594DL1`, serial `897f6ce5`) running official **Android 16** (`SDK 36`, `ro.build.version.release=16`, `ro.build.version.sdk=36`, `ro.product.cpu.abi=arm64-v8a`) connected via USB ADB.
+- **Device Instrumentation Gate (`connectedDebugAndroidTest`):** **PASSED (100% GREEN)**
+  - Instrumentation runner: `com.mvrk.vrka.debug.test/androidx.test.runner.AndroidJUnitRunner` targeting `com.mvrk.vrka.debug`.
+  - **77 tests executed across 15 test suites on hardware, 0 failures, 0 errors** (duration: `57.503s`).
+  - **Room Database Migration (`MIGRATION_1_2`):** Verified on device in `RoomMigrationIntegrationTest`. Created raw SQLite v1 schema with seeded jobs, executed `ALTER TABLE jobs ADD COLUMN playlist_group_id TEXT` and `CREATE INDEX index_jobs_playlist_group_id`, opened via Room database builder, verified job persistence without corruption, verified index existence, and executed playlist group DAO operations.
+  - **Storage Access Framework (SAF) Protocol:** 11 real SAF tests in `SafPublicationIntegrationTest` passed on device (including in-place rename, null return requery, unsupported rename fallback, fail-closed deletion capability, duplicate final name preservation, revoked permission recovery, and durable cleanup tasks).
+  - **MediaStore Integration:** Verified on device via `PublicationStorageIntegrationTest` (`mediaStorePublicationIsFinalizedAndVerifiedByTheRealProvider`).
+  - **Live Native Binary & Subprocess Execution (ARM64):** Executed on hardware in `VrkaDownloadTest` using bundled ARM64 `yt-dlp` and `ffmpeg` binaries (`testDownloadOpusStreamCopyOnDevice`, `testDownloadPipelineOnDevice`) downloading and remuxing live streams from Wikimedia.
+  - **GeckoView 159 WebExecutor Transport:** Verified HTTP header propagation (`Referer`, `Origin`, `X-Test-Trace`) to embedded loopback server on device in `HttpHeaderDeviceTest`.
+- **Track A — In-Place Production Upgrade Gate (`v5.1.4 -> v5.1.5`):**
+  - Baseline install: signed production `v5.1.4` APK (`versionCode=50104`, `versionName=5.1.4`, cert SHA-256 `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`). Launched and initialized baseline state.
+  - Upgrade: `adb install -r app/build/outputs/apk/release/app-release.apk` (`versionCode=50105`, `versionName=5.1.5`, matching production signing key). Upgrade result: `Success`.
+  - Verification: cold launch via `am start -n com.mvrk.vrka/.MainActivity`; logcat confirmed clean initialization (`VRKA-ComponentUpdater` startup check gated, `VrkaNavPerf` committed `DOWNLOAD` screen, `ProfileInstaller` succeeded, zero crashes). Remote updater rejected manifest downgrade (`50104 < installed 50105`).
+- **Track B — Clean Install & Storage Persistence Gate:**
+  - Seeded `/sdcard/Download/VRKA/CollisionTest.mp4`.
+  - Uninstalled `com.mvrk.vrka` (`adb uninstall`), verified `CollisionTest.mp4` persists intact (`33 bytes`, ownership transitioned to system).
+  - Fresh-installed `v5.1.5` release APK (`adb install`).
+  - Cold launched and verified clean initialization without file collision or data loss.
+
 ## v5.1.4 release validation
 
 Pre-release `main` verification on `6717da543df98fca33cdce78f8bc098edf6cef60` (`C1`) and `38e2793685db089e075ae01163d348bba6ea9351` (`C2`) covers the full JVM unit suite (`849` tests in `80` suites on `C1`; `850` tests in `80` suites on `C2` after adding the pinned-key `v5.1.4` manifest verification test), Android lint (`lintDebug` / `lintRelease`), strict dependency verification, `devRelease` R8/minify build (`assembleDevRelease`), and GitHub Actions CI (`Android CI` runs `42988201135` on `C1` and `42990621462` on `C2`, each passing `Unit tests, lint and development build` and `Real MediaStore and SAF provider tests (API 36)`).

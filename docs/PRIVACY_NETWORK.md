@@ -40,14 +40,22 @@ update checks" switch. Manual checks are initiated from Settings.
 - yt-dlp and its site traffic are user-requested media acquisition, not application telemetry.
 - Browser Fallback runs a task-scoped private GeckoView session. It loads the user's selected page
   and website resources; uBlock Origin filters requests locally, and the VRKA Media Detector
-  observes requests locally. Website traffic is governed by the site's own privacy policy.
+  observes requests locally without `webRequestBlocking`.
+- Media Detector header capture (`background.js`) excludes static web assets and ad requests, keeps
+  only bounded per-request state (at most 64 in-flight requests), isolates captured headers and DOM
+  player metadata by tab ID and exact origin, purges entries on completion/error/redirect/tab-close/navigation,
+  and never stores raw non-allowlisted credentials (`Authorization`, `X-*`).
+- Downstream HTTP transfers (`RequestContext`, `OkHttpMediaTransport`, `GeckoWebExecutorTransport`, and
+  `HeaderValidation`) bind sensitive credentials strictly to exact origin (`scheme + host + port`) and
+  strip them permanently across cross-origin HTTP redirects and HTTPS-to-HTTP downgrades.
 - No Discord integration, scrobbling service, lyrics provider, crash reporter, or application
-  backend is present in the v5.1.4 (or historical v5.1.3) source.
+  backend is present in the v5.1.5 source.
 
 ## Source references
 
 `AppUpdateManager`, `AppUpdateDownloadWorker`, `ComponentUpdateManager`, `ComponentUpdateWorker`,
-`SecureComponentUpdater`, `YtDlpRuntimeManager`, `CustomRuntimeSource`, `VrkaDownloadManager`,
-`OutputPublisher`, `MediaHttpTransport`, `GeckoRuntimeManager`, and `DiagnosticStore` are the
-relevant source classes. Network host allowlists and URL validation are enforced in code; this
-document does not claim that third-party sites or GitHub handle data identically.
+`SecureComponentUpdater`, `XpiSignatureVerifier`, `YtDlpRuntimeManager`, `CustomRuntimeSource`,
+`VrkaDownloadManager`, `OutputPublisher`, `RequestContext`, `HeaderValidation`, `MediaHttpTransport`,
+`GeckoWebExecutorTransport`, `GeckoRuntimeManager`, and `DiagnosticStore` are the relevant source
+classes. Network host allowlists and URL validation are enforced in code; this document does not
+claim that third-party sites or GitHub handle data identically.

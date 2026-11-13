@@ -1,6 +1,6 @@
 {
   "schema": "vrka-native-inventory/v1",
-  "generatedFor": "5.1.4",
+  "generatedFor": "5.1.5",
   "note": "Native binaries are delivered through prebuilt Android AARs, bundled browser assets, and the bundled stock yt-dlp zipapp/public key resources. SHA-256 values for Maven artifacts come from gradle/verification-metadata.xml; SHA-256 values for checked-in files are LF canonical file digests. These establish artifact integrity against pinned inputs, not a reproducible from-source native build.",
   "components": [
     {
@@ -49,7 +49,7 @@
       ],
       "upstream": "https://github.com/yausername/youtubedl-android",
       "sourceUrl": "https://github.com/yausername/youtubedl-android",
-      "license": "GPL-3.0 (wrapper); yt-dlp Unlicense",
+      "license": "GPL-3.0 (wrapper); CPython (PSF-2.0); QuickJS (MIT); yt-dlp (Unlicense)",
       "origin": "Maven Central",
       "update": "pinned; stock yt-dlp zipapp resource may be updated by the signed component updater",
       "vulnerabilityMonitoring": "GitHub Dependabot vulnerability alerts and upstream release monitoring"
@@ -61,14 +61,16 @@
       "maven": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
       "artifact": "ffmpeg-0.18.1.aar",
       "sha256": "0a87ffa6cf912b0fe76c1a99b9107f543ee2f247935fae2c71f0822eb7bc5f49",
+      "ffmpegVersion": "7.1.1",
       "nativeLibraries": [
         "libffmpeg.so",
         "libffmpeg.zip.so",
         "libffprobe.so"
       ],
-      "upstream": "https://ffmpeg.org/",
+      "upstream": "https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz",
       "sourceUrl": "https://github.com/yausername/youtubedl-android",
-      "license": "LGPL/GPL components; see upstream notices",
+      "recipeUrl": "https://github.com/termux/termux-packages/tree/master/packages/ffmpeg",
+      "license": "GPL-3.0-or-later (compiled with --enable-gpl --enable-version3; includes LGPL and GPL codecs)",
       "origin": "Maven Central",
       "update": "pinned; no automatic native binary replacement",
       "vulnerabilityMonitoring": "GitHub Dependabot vulnerability alerts and FFmpeg security advisories"
@@ -141,7 +143,7 @@
       "sourceUrl": "https://github.com/gorhill/uBlock",
       "license": "GPL-3.0",
       "origin": "signed upstream Firefox XPI",
-      "update": "component updater with release signature/checksum controls",
+      "update": "component updater enforces pinned version allowlist, XPI structure validation, Mozilla AMO PKCS#7/CMS signature and pinned CA SPKI verification, and expected SHA-256",
       "vulnerabilityMonitoring": "GitHub Dependabot alerts do not track this bundled XPI; monitor upstream releases manually"
     },
     {
@@ -153,13 +155,13 @@
         "app/src/main/assets/extensions/media-detector/content.js"
       ],
       "sha256": {
-        "manifest.json": "28f54f070b172e03f42f67a800b705c6ee0587c637299cf067120b65c775bcd9",
-        "background.js": "7258de30f778fc55d99da9ef0bec545f6fd8d9ecd78def229968552995fa1023",
+        "manifest.json": "319df67ea278e8871fda80ff206159283570d038f81a32e24fb58eab6575ea7a",
+        "background.js": "c2b355a56de0ca862e4845deda24d20fe4e03fdd601ffc3595805b464caea0a5",
         "content.js": "f91959c16d57ba5727129b04e1c6889ee108ec9aa23a2da282d336f280d66d7f"
       },
       "upstream": "VRKA Android repository",
       "sourceUrl": "https://github.com/MaverickRox/VRKA-Android",
-      "license": "Project license",
+      "license": "GPL-3.0",
       "origin": "built from this repository",
       "update": "source review and normal application release"
     },
