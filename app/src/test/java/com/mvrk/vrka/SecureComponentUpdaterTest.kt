@@ -860,88 +860,81 @@ class SecureComponentUpdaterTest {
         assertTrue("Manifest signature must verify successfully using explicit provider", valid)
     }
 
-    private fun createMockXpi(
-        id: String,
-        version: String,
-        minGecko: String = "115.0",
-        hasSignature: Boolean = true,
-    ): ByteArray {
-        val baos = java.io.ByteArrayOutputStream()
-        java.util.zip.ZipOutputStream(baos).use { zos ->
-            zos.putNextEntry(java.util.zip.ZipEntry("manifest.json"))
-            val manifestContent = """
-            {
-              "manifest_version": 2,
-              "name": "Extension",
-              "version": "$version",
-              "browser_specific_settings": {
-                "gecko": {
-                  "id": "$id",
-                  "strict_min_version": "$minGecko"
-                }
-              }
-            }
-            """.trimIndent()
-            zos.write(manifestContent.toByteArray())
-            zos.closeEntry()
+    private val testAuthority by lazy { TestXpiSigner.createTestAuthority() }
 
-            if (hasSignature) {
-                zos.putNextEntry(java.util.zip.ZipEntry("META-INF/mozilla.rsa"))
-                zos.write("sig".toByteArray())
-                zos.closeEntry()
-                zos.putNextEntry(java.util.zip.ZipEntry("META-INF/mozilla.sf"))
-                zos.write("sf".toByteArray())
-                zos.closeEntry()
-                zos.putNextEntry(java.util.zip.ZipEntry("META-INF/manifest.mf"))
-                zos.write("mf".toByteArray())
-                zos.closeEntry()
-            }
-        }
-        return baos.toByteArray()
-    }
+    private fun locateBundledUblockXpi(): File = listOf(
+        File("app/src/main/assets/extensions/ublock.xpi"),
+        File("src/main/assets/extensions/ublock.xpi"),
+        File("../app/src/main/assets/extensions/ublock.xpi"),
+    ).firstOrNull { it.exists() }
+        ?: throw IllegalStateException("Could not locate bundled ublock.xpi asset")
 
     @Test
     fun test31_ValidateXpiArchiveAcceptsExactUblockId() {
-        val updater = SecureComponentUpdater()
+        val updater = SecureComponentUpdater(
+            trustedExtensionCaSpkiSha256 = setOf(testAuthority.caSpkiSha256),
+        )
         val tempXpi = tempFolder.newFile("ublock_test.xpi")
-        tempXpi.writeBytes(createMockXpi(id = SecureComponentUpdater.UBLOCK_EXTENSION_ID, version = "1.74.0"))
+        tempXpi.writeBytes(
+            TestXpiSigner.buildSignedXpi(
+                authority = testAuthority,
+                id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                version = "1.74.0",
+            )
+        )
 
         val manifest = updater.validateXpiArchive(
             xpiFile = tempXpi,
             expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
-            expectedVersion = "1.74.0"
+            expectedVersion = "1.74.0",
         )
         assertEquals(SecureComponentUpdater.UBLOCK_EXTENSION_ID, manifest.id)
         assertEquals("1.74.0", manifest.version)
+        assertTrue(manifest.hasSignatures)
     }
 
     @Test
     fun test32_ValidateXpiArchiveRejectsNonMatchingExtensionId() {
-        val updater = SecureComponentUpdater()
+        val updater = SecureComponentUpdater(
+            trustedExtensionCaSpkiSha256 = setOf(testAuthority.caSpkiSha256),
+        )
         val tempXpi = tempFolder.newFile("invalid_id_test.xpi")
-        tempXpi.writeBytes(createMockXpi(id = "disallowed-extension@example.com", version = "1.74.0"))
+        tempXpi.writeBytes(
+            TestXpiSigner.buildSignedXpi(
+                authority = testAuthority,
+                id = "disallowed-extension@example.com",
+                version = "1.74.0",
+            )
+        )
 
         try {
             updater.validateXpiArchive(
                 xpiFile = tempXpi,
                 expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
-                expectedVersion = "1.74.0"
+                expectedVersion = "1.74.0",
             )
             fail("Must reject non-matching extension ID")
         } catch (e: SecurityException) {
-            assertTrue(e.message!!.contains("Extension ID mismatch"))
+            assertTrue(
+                "Expected signature CN or ID mismatch, got: ${e.message}",
+                e.message!!.contains("Extension ID mismatch") ||
+                    e.message!!.contains("Extension signature validation failed"),
+            )
         }
     }
 
     @Test
     fun test35_ValidateXpiArchiveRejectsMissingMozillaSignature() {
-        val updater = SecureComponentUpdater()
+        val updater = SecureComponentUpdater(
+            trustedExtensionCaSpkiSha256 = setOf(testAuthority.caSpkiSha256),
+        )
         val tempXpi = tempFolder.newFile("unsigned.xpi")
         tempXpi.writeBytes(
-            createMockXpi(
+            TestXpiSigner.buildSignedXpi(
+                authority = testAuthority,
                 id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
                 version = "1.74.0",
-                hasSignature = false
+                includeSignature = false,
             )
         )
 
@@ -949,7 +942,7 @@ class SecureComponentUpdaterTest {
             updater.validateXpiArchive(
                 xpiFile = tempXpi,
                 expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
-                expectedVersion = "1.74.0"
+                expectedVersion = "1.74.0",
             )
             fail("Must reject XPI missing Mozilla signature")
         } catch (e: SecurityException) {
@@ -959,14 +952,16 @@ class SecureComponentUpdaterTest {
 
     @Test
     fun test36_ValidateXpiArchiveDynamicGeckoCompatibility() {
-        val updater = SecureComponentUpdater()
+        val updater = SecureComponentUpdater(
+            trustedExtensionCaSpkiSha256 = setOf(testAuthority.caSpkiSha256),
+        )
         val tempXpi = tempFolder.newFile("incompatible_gecko.xpi")
-        // Require Gecko 999.0 which is greater than installed 153.0
         tempXpi.writeBytes(
-            createMockXpi(
+            TestXpiSigner.buildSignedXpi(
+                authority = testAuthority,
                 id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
                 version = "1.74.0",
-                minGecko = "999.0"
+                minGecko = "999.0",
             )
         )
 
@@ -974,7 +969,7 @@ class SecureComponentUpdaterTest {
             updater.validateXpiArchive(
                 xpiFile = tempXpi,
                 expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
-                expectedVersion = "1.74.0"
+                expectedVersion = "1.74.0",
             )
             fail("Must reject XPI incompatible with installed GeckoView version")
         } catch (e: IllegalStateException) {
@@ -986,7 +981,6 @@ class SecureComponentUpdaterTest {
     fun test37_UpdateExtensionEnforcesAssetNamingRules() = runBlocking {
         val updater = SecureComponentUpdater()
 
-        // 1. uBlock rejecting non-official signed XPI name
         val badUblock = updater.updateExtension(
             componentId = ComponentUpdateManager.ID_UBLOCK,
             candidateVersion = "1.74.0",
@@ -997,8 +991,299 @@ class SecureComponentUpdaterTest {
         assertTrue(badUblock.exceptionOrNull() is SecurityException)
         assertTrue(
             badUblock.exceptionOrNull()!!.message!!.contains("Incompatible asset rejected") ||
-            badUblock.exceptionOrNull()!!.message!!.contains("does not match allowlist")
+                badUblock.exceptionOrNull()!!.message!!.contains("does not match allowlist")
+        )
+    }
+
+    @Test
+    fun test38_RealBundledUblockXpiVerifiesAgainstProductionAmoAnchor() = runBlocking {
+        val bundled = locateBundledUblockXpi()
+        assertEquals(SecureComponentUpdater.BUNDLED_UBLOCK_SHA256, XpiSignatureVerifier.sha256Hex(bundled))
+
+        val targetDir = tempFolder.newFolder("prod_ublock_target")
+        val updater = SecureComponentUpdater(customTargetDir = targetDir)
+        val result = updater.validateXpiArchive(
+            xpiFile = bundled,
+            expectedId = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+            expectedVersion = SecureComponentUpdater.BUNDLED_UBLOCK_VERSION,
+        )
+        assertEquals(SecureComponentUpdater.UBLOCK_EXTENSION_ID, result.id)
+        assertEquals(SecureComponentUpdater.BUNDLED_UBLOCK_VERSION, result.version)
+        assertTrue(result.hasSignatures)
+
+        val updateRes = updater.updateExtension(
+            componentId = ComponentUpdateManager.ID_UBLOCK,
+            candidateVersion = SecureComponentUpdater.BUNDLED_UBLOCK_VERSION,
+            installedVersion = "1.73.0",
+            downloadUrl = "https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.firefox.signed.xpi",
+            expectedSha256 = SecureComponentUpdater.BUNDLED_UBLOCK_SHA256,
+            transport = object : SecureComponentUpdater.HttpTransport {
+                override fun fetchBytes(url: String, maxRedirects: Int): ByteArray = error("unused")
+                override fun downloadToFile(url: String, destination: File, maxRedirects: Int): String {
+                    bundled.copyTo(destination, overwrite = true)
+                    return XpiSignatureVerifier.sha256Hex(destination)
+                }
+            },
+            customExtensionValidator = { SecureComponentUpdater.BUNDLED_UBLOCK_VERSION },
+        )
+        assertTrue("Production update of pinned real XPI must succeed: ${updateRes.exceptionOrNull()}", updateRes.isSuccess)
+    }
+
+    @Test
+    fun test39_UpdateExtensionRejectsUnapprovedVersionAndMissingOrWrongChecksumBeforeDownload() = runBlocking {
+        val targetDir = tempFolder.newFolder("unapproved_ext")
+        var downloadCalled = false
+        val trapTransport = object : SecureComponentUpdater.HttpTransport {
+            override fun fetchBytes(url: String, maxRedirects: Int): ByteArray = error("unused")
+            override fun downloadToFile(url: String, destination: File, maxRedirects: Int): String {
+                downloadCalled = true
+                error("Network download must not run")
+            }
+        }
+        val prodUpdater = SecureComponentUpdater(customTargetDir = targetDir)
+
+        // 1. Candidate version below bundled floor rejected before download
+        val unapproved = prodUpdater.updateExtension(
+            componentId = ComponentUpdateManager.ID_UBLOCK,
+            candidateVersion = "1.73.0",
+            installedVersion = "1.72.0",
+            downloadUrl = "https://github.com/gorhill/uBlock/releases/download/1.73.0/uBlock0_1.73.0.firefox.signed.xpi",
+            expectedSha256 = "0".repeat(64),
+            transport = trapTransport,
+        )
+        assertFalse(downloadCalled)
+        assertTrue(unapproved.isFailure)
+        assertTrue(unapproved.exceptionOrNull()!!.message!!.contains("below bundled floor"))
+
+        // 2. Missing checksum rejected before download
+        val missingSha = prodUpdater.updateExtension(
+            componentId = ComponentUpdateManager.ID_UBLOCK,
+            candidateVersion = "1.74.0",
+            installedVersion = "1.73.0",
+            downloadUrl = "https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.firefox.signed.xpi",
+            expectedSha256 = null,
+            transport = trapTransport,
+        )
+        assertFalse(downloadCalled)
+        assertTrue(missingSha.isFailure)
+        assertTrue(missingSha.exceptionOrNull()!!.message!!.contains("SHA-256 comparison not performed"))
+
+        // 3. Incorrect expected checksum against pinned version rejected before download
+        val wrongSuppliedSha = prodUpdater.updateExtension(
+            componentId = ComponentUpdateManager.ID_UBLOCK,
+            candidateVersion = "1.74.0",
+            installedVersion = "1.73.0",
+            downloadUrl = "https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.firefox.signed.xpi",
+            expectedSha256 = "f".repeat(64),
+            transport = trapTransport,
+        )
+        assertFalse(downloadCalled)
+        assertTrue(wrongSuppliedSha.isFailure)
+        assertTrue(wrongSuppliedSha.exceptionOrNull()!!.message!!.contains("Extension version is not approved"))
+    }
+
+    @Test
+    fun test40_ModifiedWrongVersionMalformedAndForgedXpisAreRejected() = runBlocking {
+        val targetDir = tempFolder.newFolder("xpi_rejections")
+        val updater = SecureComponentUpdater(
+            customTargetDir = targetDir,
+            trustedExtensionCaSpkiSha256 = setOf(testAuthority.caSpkiSha256),
         )
 
+        // Modified entry inside ZIP after signing
+        val modifiedFile = tempFolder.newFile("modified.xpi").apply {
+            writeBytes(
+                TestXpiSigner.buildSignedXpi(
+                    authority = testAuthority,
+                    id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                    version = "1.75.0",
+                    extraEntries = mapOf("background.js" to "console.log('clean');".toByteArray()),
+                    tamperFileContentAfterSigning = "background.js" to "console.log('pwned');".toByteArray(),
+                )
+            )
+        }
+        val modifiedErr = runCatching {
+            updater.validateXpiArchive(modifiedFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.75.0")
+        }.exceptionOrNull()
+        assertTrue(modifiedErr is SecurityException)
+        assertTrue(modifiedErr!!.message!!.contains("Extension signature validation failed"))
+
+        // Wrong-version XPI
+        val wrongVerFile = tempFolder.newFile("wrong_ver.xpi").apply {
+            writeBytes(
+                TestXpiSigner.buildSignedXpi(
+                    authority = testAuthority,
+                    id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                    version = "1.76.0",
+                )
+            )
+        }
+        val wrongVerErr = runCatching {
+            updater.validateXpiArchive(wrongVerFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.75.0")
+        }.exceptionOrNull()
+        assertTrue(wrongVerErr is SecurityException)
+        assertTrue(wrongVerErr!!.message!!.contains("Extension version mismatch"))
+
+        // Malformed archive
+        val malformedFile = tempFolder.newFile("malformed.xpi").apply {
+            writeBytes("not-a-zip-archive".toByteArray())
+        }
+        val malformedErr = runCatching {
+            updater.validateXpiArchive(malformedFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.75.0")
+        }.exceptionOrNull()
+        assertTrue(malformedErr is SecurityException)
+
+        // Forged dummy META-INF entries
+        val forgedMetaFile = tempFolder.newFile("forged_meta.xpi").apply {
+            writeBytes(
+                TestXpiSigner.buildSignedXpi(
+                    authority = testAuthority,
+                    id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                    version = "1.75.0",
+                    fakeUnsignedEntriesOnly = true,
+                )
+            )
+        }
+        val forgedErr = runCatching {
+            updater.validateXpiArchive(forgedMetaFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.75.0")
+        }.exceptionOrNull()
+        assertTrue(forgedErr is SecurityException)
+        assertTrue(forgedErr!!.message!!.contains("Extension signature validation failed"))
+
+        // Extra unverified signature entry under META-INF/
+        val extraSigFile = tempFolder.newFile("extra_sig.xpi").apply {
+            writeBytes(
+                TestXpiSigner.buildSignedXpi(
+                    authority = testAuthority,
+                    id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                    version = "1.75.0",
+                    extraMetaEntry = "META-INF/evil.rsa" to byteArrayOf(1, 2, 3),
+                )
+            )
+        }
+        val extraSigErr = runCatching {
+            updater.validateXpiArchive(extraSigFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.75.0")
+        }.exceptionOrNull()
+        assertTrue(extraSigErr is SecurityException)
+        assertTrue(extraSigErr!!.message!!.contains("unexpected extra signature entry"))
+    }
+
+    @Test
+    fun test41_InvalidSignaturesUntrustedCaAndInterruptedDownloadFailClosed() = runBlocking {
+        // 1. Validly signed by an UNTRUSTED CA rejected by production updater (AMO CA SPKI required)
+        val untrustedSignedBytes = TestXpiSigner.buildSignedXpi(
+            authority = testAuthority,
+            id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+            version = "1.74.0",
+        )
+        val prodUpdater = SecureComponentUpdater()
+        val untrustedFile = tempFolder.newFile("untrusted_ca.xpi").apply { writeBytes(untrustedSignedBytes) }
+        val untrustedErr = runCatching {
+            prodUpdater.validateXpiArchive(untrustedFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.74.0")
+        }.exceptionOrNull()
+        assertTrue(untrustedErr is SecurityException)
+        assertTrue(untrustedErr!!.message!!.contains("not anchored to a trusted CA"))
+
+        val testUpdater = SecureComponentUpdater(
+            customTargetDir = tempFolder.newFolder("sig_checks"),
+            trustedExtensionCaSpkiSha256 = setOf(testAuthority.caSpkiSha256),
+        )
+
+        // 2. Corrupted RSA signature bytes
+        val badSigFile = tempFolder.newFile("bad_sig.xpi").apply {
+            writeBytes(
+                TestXpiSigner.buildSignedXpi(
+                    authority = testAuthority,
+                    id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                    version = "1.75.0",
+                    corruptRsaSignature = true,
+                )
+            )
+        }
+        assertTrue(
+            runCatching {
+                testUpdater.validateXpiArchive(badSigFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.75.0")
+            }.exceptionOrNull() is SecurityException
+        )
+
+        // 3. Mismatched leaf certificate CN (another valid extension's cert)
+        val wrongCnFile = tempFolder.newFile("wrong_cn.xpi").apply {
+            writeBytes(
+                TestXpiSigner.buildSignedXpi(
+                    authority = testAuthority,
+                    id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                    version = "1.75.0",
+                    leafCnOverride = "other-addon@example.org",
+                )
+            )
+        }
+        assertTrue(
+            runCatching {
+                testUpdater.validateXpiArchive(wrongCnFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.75.0")
+            }.exceptionOrNull()!!.message!!.contains("CN mismatch")
+        )
+
+        // 4. Expired leaf signing cert
+        val expiredFile = tempFolder.newFile("expired.xpi").apply {
+            writeBytes(
+                TestXpiSigner.buildSignedXpi(
+                    authority = testAuthority,
+                    id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                    version = "1.75.0",
+                    leafExpired = true,
+                )
+            )
+        }
+        assertTrue(
+            runCatching {
+                testUpdater.validateXpiArchive(expiredFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.75.0")
+            }.exceptionOrNull()!!.message!!.contains("expired")
+        )
+
+        // 5. Missing id-kp-codeSigning EKU
+        val noEkuFile = tempFolder.newFile("no_eku.xpi").apply {
+            writeBytes(
+                TestXpiSigner.buildSignedXpi(
+                    authority = testAuthority,
+                    id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
+                    version = "1.75.0",
+                    omitCodeSigningEku = true,
+                )
+            )
+        }
+        assertTrue(
+            runCatching {
+                testUpdater.validateXpiArchive(noEkuFile, SecureComponentUpdater.UBLOCK_EXTENSION_ID, "1.75.0")
+            }.exceptionOrNull()!!.message!!.contains("id-kp-codeSigning")
+        )
+
+        // 6. Interrupted component download leaves previous XPI intact and cleans staging
+        val activeDir = tempFolder.newFolder("interrupted_active")
+        val existingActive = File(activeDir, "ublock.xpi").apply { writeBytes(untrustedSignedBytes) }
+        val interruptUpdater = SecureComponentUpdater(
+            customTargetDir = activeDir,
+            approvedExtensionVersions = mapOf(
+                ComponentUpdateManager.ID_UBLOCK to mapOf("1.75.0" to "c".repeat(64)),
+            ),
+            trustedExtensionCaSpkiSha256 = setOf(testAuthority.caSpkiSha256),
+        )
+        val interrupted = interruptUpdater.updateExtension(
+            componentId = ComponentUpdateManager.ID_UBLOCK,
+            candidateVersion = "1.75.0",
+            installedVersion = "1.74.0",
+            downloadUrl = "https://github.com/gorhill/uBlock/releases/download/1.75.0/uBlock0_1.75.0.firefox.signed.xpi",
+            expectedSha256 = "c".repeat(64),
+            transport = object : SecureComponentUpdater.HttpTransport {
+                override fun fetchBytes(url: String, maxRedirects: Int): ByteArray = error("unused")
+                override fun downloadToFile(url: String, destination: File, maxRedirects: Int): String {
+                    destination.writeBytes("partial-xpi-bytes".toByteArray())
+                    throw IOException("Connection reset during download")
+                }
+            },
+        )
+        assertTrue(interrupted.isFailure)
+        assertTrue(interrupted.exceptionOrNull() is IOException)
+        assertFalse(File(activeDir, "ublock.download.tmp").exists())
+        assertTrue(existingActive.readBytes().contentEquals(untrustedSignedBytes))
     }
 }

@@ -200,45 +200,20 @@ class ComponentUpdateManagerTest {
         )
     }
 
-    private fun createMockXpi(
+    private val testXpiAuthority by lazy { TestXpiSigner.createTestAuthority() }
+
+    private fun createSignedTestXpi(
         id: String,
         version: String,
         minGecko: String = "115.0",
         hasSignature: Boolean = true,
-    ): ByteArray {
-        val baos = java.io.ByteArrayOutputStream()
-        java.util.zip.ZipOutputStream(baos).use { zos ->
-            zos.putNextEntry(java.util.zip.ZipEntry("manifest.json"))
-            val manifestContent = """
-            {
-              "manifest_version": 2,
-              "name": "Extension",
-              "version": "$version",
-              "browser_specific_settings": {
-                "gecko": {
-                  "id": "$id",
-                  "strict_min_version": "$minGecko"
-                }
-              }
-            }
-            """.trimIndent()
-            zos.write(manifestContent.toByteArray())
-            zos.closeEntry()
-
-            if (hasSignature) {
-                zos.putNextEntry(java.util.zip.ZipEntry("META-INF/mozilla.rsa"))
-                zos.write("sig".toByteArray())
-                zos.closeEntry()
-                zos.putNextEntry(java.util.zip.ZipEntry("META-INF/mozilla.sf"))
-                zos.write("sf".toByteArray())
-                zos.closeEntry()
-                zos.putNextEntry(java.util.zip.ZipEntry("META-INF/manifest.mf"))
-                zos.write("mf".toByteArray())
-                zos.closeEntry()
-            }
-        }
-        return baos.toByteArray()
-    }
+    ): ByteArray = TestXpiSigner.buildSignedXpi(
+        authority = testXpiAuthority,
+        id = id,
+        version = version,
+        minGecko = minGecko,
+        includeSignature = hasSignature,
+    )
 
     // --- UBLOCK TESTS ---
 
@@ -260,16 +235,19 @@ class ComponentUpdateManagerTest {
     @Test
     fun ublockSuccessfulVerifiedUpdate() = kotlinx.coroutines.runBlocking {
         val target = tempDir.newFolder("ublock_active")
-        val payload = createMockXpi(
+        val payload = createSignedTestXpi(
             id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
             version = "1.75.0",
         )
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        val expectedHash = org.bouncycastle.util.encoders.Hex.toHexString(md.digest(payload))
+        val expectedHash = XpiSignatureVerifier.sha256Hex(payload)
 
         val transport = TestTransport(fileContent = payload, fileHash = expectedHash)
         val updater = SecureComponentUpdater(
             customTargetDir = target,
+            approvedExtensionVersions = mapOf(
+                ComponentUpdateManager.ID_UBLOCK to mapOf("1.75.0" to expectedHash),
+            ),
+            trustedExtensionCaSpkiSha256 = setOf(testXpiAuthority.caSpkiSha256),
         )
 
         val result = updater.updateExtension(
@@ -291,19 +269,26 @@ class ComponentUpdateManagerTest {
     @Test
     fun ublockInvalidIntegrityRejection() = kotlinx.coroutines.runBlocking {
         val target = tempDir.newFolder("ublock_integrity")
-        val payload = createMockXpi(
+        val payload = createSignedTestXpi(
             id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
             version = "1.75.0",
         )
-        val transport = TestTransport(fileContent = payload, fileHash = "actualHash")
-        val updater = SecureComponentUpdater(customTargetDir = target)
+        val pinnedExpectedHash = "a".repeat(64)
+        val transport = TestTransport(fileContent = payload, fileHash = "b".repeat(64))
+        val updater = SecureComponentUpdater(
+            customTargetDir = target,
+            approvedExtensionVersions = mapOf(
+                ComponentUpdateManager.ID_UBLOCK to mapOf("1.75.0" to pinnedExpectedHash),
+            ),
+            trustedExtensionCaSpkiSha256 = setOf(testXpiAuthority.caSpkiSha256),
+        )
 
         val result = updater.updateExtension(
             componentId = ComponentUpdateManager.ID_UBLOCK,
             candidateVersion = "1.75.0",
             installedVersion = "1.74.0",
             downloadUrl = "https://github.com/gorhill/uBlock/releases/download/1.75.0/uBlock0_1.75.0.firefox.signed.xpi",
-            expectedSha256 = "expectedDifferentHash",
+            expectedSha256 = pinnedExpectedHash,
             transport = transport,
         )
 
@@ -333,22 +318,25 @@ class ComponentUpdateManagerTest {
     fun ublockFailedInstallationRetainsPreviousVersion() = kotlinx.coroutines.runBlocking {
         val target = tempDir.newFolder("ublock_retained")
         val originalXpi = java.io.File(target, "ublock.xpi")
-        val origPayload = createMockXpi(
+        val origPayload = createSignedTestXpi(
             id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
             version = "1.74.0",
         )
         originalXpi.writeBytes(origPayload)
 
-        val newPayload = createMockXpi(
+        val newPayload = createSignedTestXpi(
             id = SecureComponentUpdater.UBLOCK_EXTENSION_ID,
             version = "1.75.0",
         )
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        val expectedHash = org.bouncycastle.util.encoders.Hex.toHexString(md.digest(newPayload))
+        val expectedHash = XpiSignatureVerifier.sha256Hex(newPayload)
 
         val transport = TestTransport(fileContent = newPayload, fileHash = expectedHash)
         val updater = SecureComponentUpdater(
             customTargetDir = target,
+            approvedExtensionVersions = mapOf(
+                ComponentUpdateManager.ID_UBLOCK to mapOf("1.75.0" to expectedHash),
+            ),
+            trustedExtensionCaSpkiSha256 = setOf(testXpiAuthority.caSpkiSha256),
         )
 
         val result = updater.updateExtension(

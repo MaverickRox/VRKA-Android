@@ -17,6 +17,8 @@ internal object ComponentStatusTransitions {
     fun beginCheck(status: ComponentStatus): ComponentStatus = status.copy(
         latestVersion = null,
         checkState = ComponentCheckState.CHECKING,
+        downloadUrl = null,
+        expectedSha256 = null,
         // A new discovery supersedes a previous terminal install result; otherwise the card
         // would keep showing "Failed"/"Updated" after a successful recheck.
         updateState = if (status.updateState == ComponentUpdateState.UPDATE_SUCCESS ||
@@ -49,6 +51,8 @@ internal object ComponentStatusTransitions {
         channelSwitch: Boolean = false,
         channelLabel: String? = null,
         checkedAt: Long = System.currentTimeMillis(),
+        downloadUrl: String? = null,
+        expectedSha256: String? = null,
     ): ComponentStatus {
         val cleanCandidate = ComponentUpdateManager.cleanVersionString(candidateVersion)
         val cleanInstalled = ComponentUpdateManager.cleanVersionString(status.installedVersion)
@@ -66,6 +70,8 @@ internal object ComponentStatusTransitions {
             },
             error = null,
             lastChecked = checkedAt,
+            downloadUrl = downloadUrl ?: status.downloadUrl,
+            expectedSha256 = expectedSha256 ?: status.expectedSha256,
         )
     }
 
