@@ -148,6 +148,8 @@
     <string name="estimate_approximate">अनुमानित आकार</string>
     <string name="estimate_checking">आकार जाँचा जा रहा है…</string>
     <string name="estimate_exact">सटीक आकार</string>
+    <string name="estimate_playlist_per_item">प्रति आइटम अनुमानित</string>
+    <string name="estimate_playlist_per_item_hint">प्लेलिस्ट आइटम कतार में व्यक्तिगत रूप से अनुमानित और डाउनलोड किए जाएंगे।</string>
     <string name="estimate_skip_future">डाउनलोड से पहले आकार का अनुमान न दिखाएँ</string>
     <string name="estimate_unavailable">आकार उपलब्ध नहीं</string>
     <string name="estimate_unavailable_hint">VRKA इस लिंक के लिए आकार नहीं पढ़ सका। आप पुनः प्रयास कर सकते हैं या फिर भी डाउनलोड कर सकते हैं।</string>

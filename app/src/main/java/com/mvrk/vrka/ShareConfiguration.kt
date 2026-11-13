@@ -75,6 +75,7 @@ object ShareRequestBuilder {
         val subtitleEnabled = preferences.downloadSubtitles && type != ShareMediaType.COMMANDS
         val base = DownloadRequest(
             url = url,
+            isPlaylist = PlaylistRouting.isPurePlaylistUrl(url),
             mode = if (audio) MediaMode.AUDIO else MediaMode.VIDEO,
             quality = preferences.quality,
             audioFormat = preferences.audioFormat,

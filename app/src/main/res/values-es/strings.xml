@@ -148,6 +148,8 @@
     <string name="estimate_approximate">Tamaño aproximado</string>
     <string name="estimate_checking">Comprobando tamaño…</string>
     <string name="estimate_exact">Tamaño exacto</string>
+    <string name="estimate_playlist_per_item">Estimado por elemento</string>
+    <string name="estimate_playlist_per_item_hint">Los elementos de la lista de reproducción se estimarán y descargarán individualmente en la cola.</string>
     <string name="estimate_skip_future">No mostrar estimaciones de tamaño antes de las descargas</string>
     <string name="estimate_unavailable">Tamaño no disponible</string>
     <string name="estimate_unavailable_hint">VRKA no pudo leer un tamaño para este enlace. Puedes reintentar o descargar de todos modos.</string>

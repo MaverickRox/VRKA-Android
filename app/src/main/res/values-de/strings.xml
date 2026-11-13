@@ -148,6 +148,8 @@ Möchten Sie parallele Downloads wirklich aktivieren?</string>
     <string name="estimate_approximate">Ungefähre Größe</string>
     <string name="estimate_checking">Größe wird geprüft…</string>
     <string name="estimate_exact">Genaue Größe</string>
+    <string name="estimate_playlist_per_item">Pro Element geschätzt</string>
+    <string name="estimate_playlist_per_item_hint">Wiedergabelisten-Elemente werden in der Warteschlange einzeln geschätzt und heruntergeladen.</string>
     <string name="estimate_skip_future">Größenschätzungen vor Downloads nicht anzeigen</string>
     <string name="estimate_unavailable">Größe nicht verfügbar</string>
     <string name="estimate_unavailable_hint">VRKA konnte für diesen Link keine Größe ermitteln. Du kannst es erneut versuchen oder trotzdem herunterladen.</string>

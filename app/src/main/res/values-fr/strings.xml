@@ -148,6 +148,8 @@ Voulez-vous vraiment activer les téléchargements simultanés ?</string>
     <string name="estimate_approximate">Taille approximative</string>
     <string name="estimate_checking">Vérification de la taille…</string>
     <string name="estimate_exact">Taille exacte</string>
+    <string name="estimate_playlist_per_item">Estimé par élément</string>
+    <string name="estimate_playlist_per_item_hint">Les éléments de la playlist seront estimés et téléchargés individuellement dans la file d\'attente.</string>
     <string name="estimate_skip_future">Ne pas afficher les estimations de taille avant les téléchargements</string>
     <string name="estimate_unavailable">Taille indisponible</string>
     <string name="estimate_unavailable_hint">VRKA n\'a pas pu lire de taille pour ce lien. Vous pouvez réessayer ou télécharger quand même.</string>

@@ -148,6 +148,8 @@
     <string name="estimate_approximate">近似大小</string>
     <string name="estimate_checking">正在检查大小…</string>
     <string name="estimate_exact">精确大小</string>
+    <string name="estimate_playlist_per_item">按项目预估</string>
+    <string name="estimate_playlist_per_item_hint">播放列表项目将在队列中单独预估和下载。</string>
     <string name="estimate_skip_future">下载前不显示大小估算</string>
     <string name="estimate_unavailable">大小不可用</string>
     <string name="estimate_unavailable_hint">VRKA 无法读取此链接的大小。你可以重试，或仍然下载。</string>

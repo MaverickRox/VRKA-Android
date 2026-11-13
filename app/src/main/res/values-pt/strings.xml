@@ -148,6 +148,8 @@ Tem a certeza de que pretende ativar transferências simultâneas?</string>
     <string name="estimate_approximate">Tamanho aproximado</string>
     <string name="estimate_checking">A verificar o tamanho…</string>
     <string name="estimate_exact">Tamanho exato</string>
+    <string name="estimate_playlist_per_item">Estimado por item</string>
+    <string name="estimate_playlist_per_item_hint">Os itens da playlist serão estimados e transferidos individualmente na fila.</string>
     <string name="estimate_skip_future">Não mostrar estimativas de tamanho antes das transferências</string>
     <string name="estimate_unavailable">Tamanho indisponível</string>
     <string name="estimate_unavailable_hint">O VRKA não conseguiu ler um tamanho para esta ligação. Pode tentar novamente ou transferir mesmo assim.</string>

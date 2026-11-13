@@ -148,6 +148,8 @@
     <string name="estimate_approximate">ಅಂದಾಜು ಗಾತ್ರ</string>
     <string name="estimate_checking">ಗಾತ್ರವನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…</string>
     <string name="estimate_exact">ನಿಖರ ಗಾತ್ರ</string>
+    <string name="estimate_playlist_per_item">ಪ್ರತಿ ಐಟಂಗೆ ಅಂದಾಜು</string>
+    <string name="estimate_playlist_per_item_hint">ಪ್ಲೇಪಟ್ಟಿ ಐಟಂಗಳನ್ನು ಸರತಿಯಲ್ಲಿ ಪ್ರತ್ಯೇಕವಾಗಿ ಅಂದಾಜಿಸಲಾಗುತ್ತದೆ ಮತ್ತು ಡೌನ್‌ಲೋಡ್ ಮಾಡಲಾಗುತ್ತದೆ.</string>
     <string name="estimate_skip_future">ಡೌನ್ಲೋಡ್ಗಳ ಮೊದಲು ಗಾತ್ರದ ಅಂದಾಜುಗಳನ್ನು ತೋರಿಸಬೇಡಿ</string>
     <string name="estimate_unavailable">ಗಾತ್ರ ಲಭ್ಯವಿಲ್ಲ</string>
     <string name="estimate_unavailable_hint">VRKA ಈ ಲಿಂಕ್‌ನ ಗಾತ್ರವನ್ನು ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ನೀವು ಮರುಪ್ರಯತ್ನಿಸಬಹುದು ಅಥವಾ ಹಾಗೆಯೇ ಡೌನ್‌ಲೋಡ್ ಮಾಡಬಹುದು.</string>

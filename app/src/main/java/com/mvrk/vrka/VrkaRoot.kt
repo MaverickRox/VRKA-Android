@@ -1,6 +1,7 @@
 package com.mvrk.vrka
 
 import androidx.compose.ui.res.stringResource
+import java.util.UUID
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -79,7 +80,7 @@ fun VrkaRoot(
     val jobs by manager.jobs.collectAsStateWithLifecycle()
     val storageStatus by manager.storageStatus.collectAsStateWithLifecycle()
     val historyPager = remember(manager) { manager.historyPager() }
-    val historyFlow = historyPager?.flow
+    val historyFlow = remember(historyPager) { historyPager?.flow }
     val pagedHistory = if (historyFlow != null) historyFlow.collectAsLazyPagingItems() else null
     val historyCount = remember(jobs) { jobs.count { it.state.isTerminal } }
     var historyTotal by remember { mutableStateOf(historyCount) }
@@ -125,14 +126,49 @@ fun VrkaRoot(
         manager.componentUpdateManager.performStartupCheckIfNeeded(settings.updatePreference)
     }
 
+    suspend fun executeEnqueue(request: DownloadRequest, estimate: SizeEstimate?) {
+        val isPurePlaylist = PlaylistRouting.isPurePlaylistUrl(request.url)
+        val targetReq = when {
+            isPurePlaylist -> request.copy(isPlaylist = true)
+            !request.isPlaylist && PlaylistRouting.isVideoWithPlaylistContext(request.url) ->
+                request.copy(url = PlaylistRouting.stripPlaylistContext(request.url))
+            else -> request
+        }
+        if (targetReq.isPlaylist) {
+            val items = manager.expandPlaylist(targetReq)
+            if (!items.isNullOrEmpty()) {
+                val playlistGroupId = UUID.randomUUID().toString()
+                val batchItems = items.map { item ->
+                    targetReq.copy(
+                        url = item.url,
+                        isPlaylist = false,
+                        playlistItemIndex = item.playlistItemIndex,
+                        playlistItemCount = item.playlistItemCount,
+                        playlistItemId = item.playlistItemId,
+                        playlistGroupId = playlistGroupId,
+                    ) to item.estimate
+                }
+                when (val result = manager.enqueueBatch(batchItems, playlistGroupId)) {
+                    is BatchEnqueueResult.Rejected -> snackbar.showSnackbar(result.message)
+                    is BatchEnqueueResult.Accepted -> {}
+                }
+                return
+            } else {
+                snackbar.showSnackbar("Unable to load playlist items. Please check network connection.")
+                return
+            }
+        }
+        val result = manager.enqueue(targetReq, estimate)
+        if (result is EnqueueResult.Rejected) {
+            snackbar.showSnackbar(result.message)
+        }
+    }
+
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
         pendingDownload?.let {
-            val result = manager.enqueue(it.request, it.estimate)
-            if (result is EnqueueResult.Rejected) {
-                scope.launch { snackbar.showSnackbar(result.message) }
-            }
+            scope.launch { executeEnqueue(it.request, it.estimate) }
         }
         pendingDownload = null
         pendingAppUpdate?.let(manager.appUpdateManager::downloadAndInstall)
@@ -149,9 +185,8 @@ fun VrkaRoot(
             pendingDownload = PendingDownload(request, estimate)
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            val result = manager.enqueue(request, estimate)
-            if (result is EnqueueResult.Rejected) {
-                scope.launch { snackbar.showSnackbar(result.message) }
+            scope.launch {
+                executeEnqueue(request, estimate)
             }
         }
         scope.launch {
@@ -317,11 +352,50 @@ fun VrkaRoot(
                                     onOpen = manager::openOutput,
                                     onShare = manager::shareOutput,
                                     onDelete = manager::deleteJob,
-                                    onDeleteRecord = manager::deleteHistoryRecord,
-                                    onDeleteWithFile = { scope.launch { manager.deleteJobWithFiles(it) } },
-                                    onDeleteRecords = manager::deleteHistoryRecords,
-                                    onDeleteJobsWithFiles = { scope.launch { manager.deleteJobsWithFiles(it) } },
-                                    onClearAll = { deleteFiles -> scope.launch { manager.clearAllHistory(deleteFiles) } },
+                                    onDeleteRecord = { id ->
+                                        scope.launch {
+                                            val result = manager.deleteHistoryRecordWithResult(id)
+                                            if (result.deletedRecordsCount == 0) {
+                                                snackbar.showSnackbar("History record retained for storage recovery")
+                                            }
+                                        }
+                                    },
+                                    onDeleteWithFile = { id ->
+                                        scope.launch {
+                                            val result = manager.deleteJobWithFiles(id)
+                                            if (result.failedFilesCount > 0 || result.deletedRecordsCount == 0) {
+                                                snackbar.showSnackbar("Could not delete file; History record retained for recovery")
+                                            }
+                                        }
+                                    },
+                                    onDeleteRecords = { ids ->
+                                        scope.launch {
+                                            val result = manager.deleteHistoryRecordsWithResult(ids)
+                                            if (result.deletedRecordsCount < ids.size) {
+                                                snackbar.showSnackbar("Some History records were retained for storage recovery")
+                                            }
+                                        }
+                                    },
+                                    onDeleteJobsWithFiles = { ids ->
+                                        scope.launch {
+                                            val result = manager.deleteJobsWithFiles(ids)
+                                            if (result.failedFilesCount > 0 || result.deletedRecordsCount < ids.size) {
+                                                snackbar.showSnackbar("Some files or records could not be deleted and were retained for recovery")
+                                            }
+                                        }
+                                    },
+                                    onClearAll = { deleteFiles ->
+                                        scope.launch {
+                                            val result = manager.clearAllHistory(deleteFiles)
+                                            if (result.failedFilesCount > 0) {
+                                                snackbar.showSnackbar(
+                                                    "Deleted ${result.deletedRecordsCount} record(s); ${result.failedFilesCount} file(s) retained for recovery",
+                                                )
+                                            } else if (result.deletedRecordsCount == 0 && historyTotal > 0) {
+                                                snackbar.showSnackbar("History records retained for pending storage recovery")
+                                            }
+                                        }
+                                    },
                                     onClear = manager::clearFinished,
                                 )
                             }
