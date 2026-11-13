@@ -180,7 +180,7 @@ class PublicationStorageIntegrationTest {
                 expectedSizeBytes = 2048,
                 providerType = PublicationProviderType.MEDIA_STORE,
                 destinationIdentity = PublicationUriRules.MEDIA_STORE_DESTINATION,
-                publicationPhase = PublicationPhase.INTENT_RECORDED,
+                publicationPhase = PublicationPhase.INTENT,
                 attemptNumber = 1,
                 attemptId = JobJsonCodec.attemptIdFor(jobId, 1),
                 batchId = "batch-$transactionId",

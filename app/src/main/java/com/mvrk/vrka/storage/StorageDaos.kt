@@ -38,6 +38,9 @@ interface JobDao {
     @Query("SELECT * FROM jobs WHERE id = :id")
     fun byId(id: String): JobEntity?
 
+    @Query("SELECT * FROM jobs WHERE playlist_group_id = :groupId ORDER BY playlist_item_index, created_at")
+    fun forPlaylistGroup(groupId: String): List<JobEntity>
+
     @Query("SELECT COALESCE(MAX(commit_sequence), 0) + 1 FROM jobs")
     fun nextCommitSequence(): Long
 

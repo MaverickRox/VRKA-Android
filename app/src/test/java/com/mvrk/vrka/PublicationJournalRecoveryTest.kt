@@ -633,6 +633,11 @@ class PublicationJournalRecoveryTest {
             journal.updateVerification(transactionId, verificationLevel, observedSha256)
         }
 
+        override fun updateIntendedFilename(transactionId: String, intendedFilename: String) {
+            room.updateIntendedFilename(transactionId, intendedFilename)
+            journal.updateIntendedFilename(transactionId, intendedFilename)
+        }
+
         override fun updateFinalized(transactionId: String, newUri: String?) {
             room.updateFinalized(transactionId, newUri)
             journal.updateFinalized(transactionId, newUri)
@@ -769,7 +774,7 @@ class PublicationJournalRecoveryTest {
         expectedSizeBytes = size,
         providerType = providerType,
         destinationIdentity = destination,
-        publicationPhase = PublicationPhase.INTENT_RECORDED,
+        publicationPhase = PublicationPhase.INTENT,
         attemptNumber = 1,
         attemptId = JobJsonCodec.attemptIdFor(jobId, 1),
         batchId = "batch-$txId",
@@ -831,17 +836,14 @@ class PublicationJournalRecoveryTest {
         }
         ops.openOutputStream(uri, "w")!!.use { it.write(ByteArray(writtenSize.toInt())) }
         journal.updateProviderCreated(txId, uri.toString())
-        if (phase == PublicationPhase.PROVIDER_OBJECT_CREATED) {
+        if (phase == PublicationPhase.CREATED) {
             return SeededTransaction(entry.copy(providerUri = uri.toString(), publicationPhase = phase), uri)
         }
         journal.updateDataCopied(txId, size)
-        if (phase == PublicationPhase.DATA_COPIED) {
+        if (phase == PublicationPhase.COPIED) {
             return SeededTransaction(entry.copy(providerUri = uri.toString(), publicationPhase = phase), uri)
         }
         journal.updateValidated(txId)
-        if (phase == PublicationPhase.OUTPUT_VALIDATED) {
-            return SeededTransaction(entry.copy(providerUri = uri.toString(), publicationPhase = phase), uri)
-        }
         if (!finalizeProvider) {
             when (providerType) {
                 PublicationProviderType.MEDIA_STORE -> {
@@ -1136,7 +1138,7 @@ class PublicationJournalRecoveryTest {
             "job-multi",
             "tx-old",
             finalName = "video.mp4",
-            phase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            phase = PublicationPhase.CREATED,
             createdAt = 1_000L,
         )
         val newAttempt = seedTransaction(
@@ -1237,7 +1239,7 @@ class PublicationJournalRecoveryTest {
             "job-complete-copy",
             "tx-complete-copy",
             finalName = "video.mp4",
-            phase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            phase = PublicationPhase.CREATED,
         )
 
         val fresh = harness.restart()
@@ -1261,7 +1263,7 @@ class PublicationJournalRecoveryTest {
             "job-pending",
             "tx-pending",
             finalName = "video.mp4",
-            phase = PublicationPhase.DATA_COPIED,
+            phase = PublicationPhase.COPIED,
         )
 
         val fresh = harness.restart()
@@ -1341,7 +1343,7 @@ class PublicationJournalRecoveryTest {
             "job-zero",
             "tx-zero",
             finalName = "video.mp4",
-            phase = PublicationPhase.DATA_COPIED,
+            phase = PublicationPhase.COPIED,
         )
         ops.updateAffectedRows = 0
 
@@ -1394,7 +1396,7 @@ class PublicationJournalRecoveryTest {
             "job-api28",
             "tx-api28",
             finalName = "video.mp4",
-            phase = PublicationPhase.DATA_COPIED,
+            phase = PublicationPhase.COPIED,
         )
 
         val fresh = harness.restart()
@@ -1421,7 +1423,7 @@ class PublicationJournalRecoveryTest {
             "job-delete",
             "tx-delete",
             finalName = "video.mp4",
-            phase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            phase = PublicationPhase.CREATED,
             writtenSize = 64,
         )
         ops.failDelete = true
@@ -1454,7 +1456,7 @@ class PublicationJournalRecoveryTest {
             harness.stagingRoot,
             "job-throw",
             "tx-throw",
-            phase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            phase = PublicationPhase.CREATED,
             writtenSize = 64,
         )
         ops.throwOnDelete = true
@@ -1485,7 +1487,7 @@ class PublicationJournalRecoveryTest {
             "job-saf",
             "tx-saf",
             providerType = PublicationProviderType.SAF,
-            phase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            phase = PublicationPhase.CREATED,
         )
         ops.permissionRevoked = true
 
@@ -1509,7 +1511,7 @@ class PublicationJournalRecoveryTest {
             "job-lookup",
             "tx-lookup",
             providerType = PublicationProviderType.SAF,
-            phase = PublicationPhase.PROVIDER_OBJECT_CREATED,
+            phase = PublicationPhase.CREATED,
             createProviderObject = false,
         )
         ops.failProviderQuery = true
@@ -1533,7 +1535,7 @@ class PublicationJournalRecoveryTest {
             harness.stagingRoot,
             "job-absent",
             "tx-absent",
-            phase = PublicationPhase.DATA_COPIED,
+            phase = PublicationPhase.COPIED,
             createProviderObject = false,
         )
         // Record a provider URI that no longer exists, as if the object vanished.
@@ -1759,7 +1761,7 @@ class PublicationJournalRecoveryTest {
             expectedSizeBytes = 10,
             providerType = PublicationProviderType.MEDIA_STORE,
             destinationIdentity = "Downloads/VRKA",
-            publicationPhase = PublicationPhase.INTENT_RECORDED,
+            publicationPhase = PublicationPhase.INTENT,
             createdAt = now,
             updatedAt = now,
         )
@@ -2112,6 +2114,48 @@ class PublicationJournalRecoveryTest {
         assertTrue("The retried cleanup must remove the partial provider object", ops.mediaItems.isEmpty())
         assertTrue(fresh.journal.unreconciledEntries().isEmpty())
         assertEquals(JobState.FAILED, storedJob(dir, "job-publish-fail")!!.state)
+    }
+
+    @Test
+    fun verifiedBytesNeverDeletedOnFinalizationFailure_retainedInCopiedAndRecoveredOnStartup() {
+        val dir = tempFolder.newFolder("finalize-fail-preserve")
+        val ops = TestPublicationStorageOps(dir)
+        val job = sampleJob("job-finalize-preserve")
+        val harness = createHarness(dir, ops, initialJobs = listOf(job))
+        val stagingFile = File(dir, "final_video.mp4").apply { writeBytes(ByteArray(1024) { 0x3c }) }
+
+        // Simulate finalization update returning 0 affected rows (e.g. OEM MediaProvider glitch)
+        ops.updateAffectedRows = 0
+        var failed = false
+        try {
+            harness.publisher.publishAll(
+                files = listOf(stagingFile to "final_video.mp4"),
+                destinationTreeUri = null,
+                jobId = "job-finalize-preserve",
+            )
+        } catch (_: IOException) {
+            failed = true
+        }
+        assertTrue("Publication must fail when finalization update affects 0 rows", failed)
+
+        // INVARIANT 1: Verified bytes must NEVER be deleted because finalization failed
+        assertEquals("Completed, verified bytes must remain in storage", 1, ops.mediaItems.size)
+
+        // INVARIANT 2: Transaction is retained in COPIED phase with exact providerUri
+        val entries = harness.journal.entriesForJob("job-finalize-preserve")
+        assertEquals(1, entries.size)
+        val entry = entries.single()
+        assertEquals(PublicationPhase.COPIED, entry.publicationPhase)
+        assertNotNull(entry.providerUri)
+
+        // Recovery on startup: Provider issue resolved, recovery successfully finalizes without redownload
+        ops.updateAffectedRows = null
+        val fresh = harness.restart()
+        fresh.manager.reconcilePublicationJournalOnStartup()
+
+        assertEquals("Job must be promoted to DONE via journal recovery", JobState.DONE, storedJob(dir, "job-finalize-preserve")!!.state)
+        assertEquals("Output file is preserved without data loss or duplication", 1, ops.mediaItems.size)
+        assertTrue("All journal entries reconciled", fresh.journal.unreconciledEntries().isEmpty())
     }
 
     @Test

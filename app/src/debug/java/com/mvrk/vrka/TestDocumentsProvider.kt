@@ -52,6 +52,8 @@ class TestDocumentsProvider : ContentProvider() {
         var failDelete = false
         var permissionRevoked = false
         var omitChildIdentityColumns = false
+        var omitDeleteFlag = false
+        var omitWriteFlag = false
 
         private var nextId = 1000L
         private val docs = LinkedHashMap<String, TestSafDoc>()
@@ -64,6 +66,8 @@ class TestDocumentsProvider : ContentProvider() {
             failDelete = false
             permissionRevoked = false
             omitChildIdentityColumns = false
+            omitDeleteFlag = false
+            omitWriteFlag = false
             docs.values.forEach { it.file.delete() }
             docs.clear()
             nextId = 1000L
@@ -256,8 +260,13 @@ class TestDocumentsProvider : ContentProvider() {
                         DocumentsContract.Document.COLUMN_MIME_TYPE -> doc.mimeType
                         DocumentsContract.Document.COLUMN_SIZE -> doc.file.length()
                         DocumentsContract.Document.COLUMN_FLAGS -> {
-                            var flags = DocumentsContract.Document.FLAG_SUPPORTS_WRITE or
-                                DocumentsContract.Document.FLAG_SUPPORTS_DELETE
+                            var flags = 0
+                            if (!omitWriteFlag || doc.mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                flags = flags or DocumentsContract.Document.FLAG_SUPPORTS_WRITE
+                            }
+                            if (!omitDeleteFlag || doc.mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                flags = flags or DocumentsContract.Document.FLAG_SUPPORTS_DELETE
+                            }
                             if (doc.mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
                                 flags = flags or DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE
                             } else if (renameMode != TestSafRenameMode.UNSUPPORTED) {
