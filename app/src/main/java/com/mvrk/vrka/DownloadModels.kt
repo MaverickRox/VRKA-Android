@@ -1,6 +1,8 @@
 package com.mvrk.vrka
 
+import android.net.Uri
 import androidx.compose.runtime.Immutable
+import java.util.UUID
 
 internal const val INTERRUPTED_DOWNLOAD_ERROR =
     "Download was interrupted when Android stopped VRKA. Tap retry."
@@ -121,10 +123,83 @@ data class DownloadRequest(
     val origin: String = "",
     val customHeaders: Map<String, String> = emptyMap(),
     val destinationTreeUri: String? = null,
+    val playlistGroupId: String? = null,
+    val playlistItemId: String? = null,
+    val playlistItemIndex: Int? = null,
+    val playlistItemCount: Int? = null,
     val resolvedMediaUrl: String? = null,
     val resolvedHeaders: Map<String, String> = emptyMap(),
     val resolvedHeadersOrigin: String = "",
 )
+
+@Immutable
+data class PlaylistItem(
+    val url: String,
+    val title: String,
+    val playlistItemIndex: Int,
+    val playlistItemCount: Int,
+    val playlistItemId: String = UUID.randomUUID().toString(),
+    val estimate: SizeEstimate? = null,
+)
+
+object PlaylistRouting {
+    fun isYouTubeHost(host: String?): Boolean {
+        if (host.isNullOrBlank()) return false
+        val cleanHost = host.lowercase().removePrefix("www.")
+        return cleanHost == "youtube.com" ||
+            cleanHost.endsWith(".youtube.com") ||
+            cleanHost == "youtu.be"
+    }
+
+    fun isPurePlaylistUrl(url: String): Boolean {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+        if (!isYouTubeHost(uri.host)) return false
+        val path = uri.path.orEmpty()
+        val listId = uri.getQueryParameter("list")?.trim()
+        val hasValidList = !listId.isNullOrBlank() && listId.length >= 2
+        val hasVideo = uri.getQueryParameter("v")?.isNotBlank() == true
+        return path.contains("/playlist") && hasValidList && !hasVideo
+    }
+
+    fun isVideoWithPlaylistContext(url: String): Boolean {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+        if (!isYouTubeHost(uri.host)) return false
+        val listId = uri.getQueryParameter("list")?.trim()
+        val hasValidList = !listId.isNullOrBlank() && listId.length >= 2
+        if (!hasValidList) return false
+
+        val host = uri.host?.lowercase().orEmpty().removePrefix("www.")
+        val path = uri.path.orEmpty()
+        val hasVideoParam = uri.getQueryParameter("v")?.isNotBlank() == true
+        val isYoutuBeVideo = host == "youtu.be" && uri.pathSegments.firstOrNull()?.isNotBlank() == true
+        val isShortsVideo = path.contains("/shorts/") && uri.pathSegments.lastOrNull()?.isNotBlank() == true
+        val isEmbedVideo = path.contains("/embed/") && uri.pathSegments.lastOrNull()?.isNotBlank() == true
+
+        return hasVideoParam || isYoutuBeVideo || isShortsVideo || isEmbedVideo
+    }
+
+    fun stripPlaylistContext(url: String): String {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return url
+        if (!isYouTubeHost(uri.host)) return url
+        if (uri.getQueryParameter("list") == null) return url
+        val builder = uri.buildUpon().clearQuery()
+        uri.queryParameterNames.forEach { param ->
+            if (param != "list" && param != "index") {
+                uri.getQueryParameters(param).forEach { value ->
+                    builder.appendQueryParameter(param, value)
+                }
+            }
+        }
+        return builder.build().toString()
+    }
+
+    fun extractPlaylistUrl(url: String): String? {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+        if (!isYouTubeHost(uri.host)) return null
+        val listId = uri.getQueryParameter("list")?.trim()?.takeIf { it.length >= 2 } ?: return null
+        return "https://www.youtube.com/playlist?list=$listId"
+    }
+}
 
 /**
  * A confirmed request paired with the preflight estimate that was visible when the user
@@ -180,6 +255,7 @@ data class DownloadJob(
     // Durable storage metadata. These are not part of the legacy JSON contract.
     val recoveryRequired: Boolean = false,
     val legacyVerification: String = "",
+    val playlistGroupId: String? = null,
 )
 
 @Immutable

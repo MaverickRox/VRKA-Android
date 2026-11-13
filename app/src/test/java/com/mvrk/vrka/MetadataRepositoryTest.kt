@@ -6,6 +6,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -168,6 +169,71 @@ class MetadataRepositoryTest {
         assertEquals(53_000_000L, full.bytes)
         assertEquals(26_500_000L, trimmed.bytes)
         assertTrue(trimmed.kind == SizeEstimateKind.APPROXIMATE)
+    }
+
+    @Test
+    fun testExpectedPlaylistUnavailableEstimateSuppressedFromDiagnostics() {
+        // Expected playlist preflight: flat playlist metadata without multi-stream size tables
+        val expectedPlaylistPreflight = SizePreflight(
+            estimate = SizeEstimate.unavailable("playlist-entry"),
+            startedAtEpochMs = 0,
+            finishedAtEpochMs = 100,
+            durationMs = 100,
+            exitCode = 0,
+            timedOut = false,
+            stderrTail = "",
+            runtimeLabel = "test",
+            formatSelector = "all",
+            stdoutChars = 500,
+            document = """{"_type": "playlist", "entries": [{"id": "v1"}]}""",
+        )
+        val isExpected = expectedPlaylistPreflight.estimate.detail.startsWith("playlist") &&
+            !expectedPlaylistPreflight.timedOut &&
+            (expectedPlaylistPreflight.exitCode == null || expectedPlaylistPreflight.exitCode == 0)
+
+        // Must be identified as expected and suppressed from failure diagnostics
+        assertTrue("Expected playlist preflight without per-item sizes must be classified as expected", isExpected)
+    }
+
+    @Test
+    fun testNegativeControlGenuinePlaylistExtractionFailureNotSuppressed() {
+        // Negative control 1: Process crash / non-zero exit code on playlist URL
+        val processCrashPreflight = SizePreflight(
+            estimate = SizeEstimate.unavailable("process", "yt-dlp produced no metadata JSON"),
+            startedAtEpochMs = 0,
+            finishedAtEpochMs = 500,
+            durationMs = 500,
+            exitCode = 1,
+            timedOut = false,
+            stderrTail = "ERROR: [youtube:tab] Private playlist",
+            runtimeLabel = "test",
+            formatSelector = "all",
+            stdoutChars = 0,
+            document = null,
+        )
+        val isCrashSuppressed = processCrashPreflight.estimate.detail.startsWith("playlist") &&
+            !processCrashPreflight.timedOut &&
+            (processCrashPreflight.exitCode == null || processCrashPreflight.exitCode == 0)
+        assertFalse("Genuine process/extraction failure must NOT be suppressed", isCrashSuppressed)
+
+        // Negative control 2: Preflight timeout on playlist URL
+        val timeoutPreflight = SizePreflight(
+            estimate = SizeEstimate.unavailable("timeout", "preflight timed out after 25000ms"),
+            startedAtEpochMs = 0,
+            finishedAtEpochMs = 25000,
+            durationMs = 25000,
+            exitCode = null,
+            timedOut = true,
+            stderrTail = "",
+            runtimeLabel = "test",
+            formatSelector = "all",
+            stdoutChars = 0,
+            document = null,
+        )
+        val isTimeoutSuppressed = timeoutPreflight.estimate.detail.startsWith("playlist") &&
+            !timeoutPreflight.timedOut &&
+            (timeoutPreflight.exitCode == null || timeoutPreflight.exitCode == 0)
+        assertFalse("Genuine timeout failure must NOT be suppressed", isTimeoutSuppressed)
     }
 
     private fun repository(probes: AtomicInteger, probeDelayMs: Long = 0): MetadataRepository =

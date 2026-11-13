@@ -1,8 +1,11 @@
 package com.mvrk.vrka.engine
 
 import android.util.Log
+import com.mvrk.vrka.DiagnosticStore
+import com.mvrk.vrka.HeaderValidation
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.mozilla.geckoview.GeckoRuntime
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -67,28 +70,87 @@ interface MediaHttpTransport {
  * Production OkHttp media transport using streaming buffers.
  */
 class OkHttpMediaTransport(
-    private val client: OkHttpClient = defaultClient()
+    client: OkHttpClient = defaultClient()
 ) : MediaHttpTransport {
 
+    private val effectiveClient: OkHttpClient =
+        if (client.followRedirects || client.followSslRedirects) {
+            client.newBuilder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
+        } else {
+            client
+        }
+
     override val transportName: String = "OkHttpMediaTransport"
+
+    private fun executeWithOriginScopedRedirects(
+        initialUrl: String,
+        headers: Map<String, String>,
+        isHead: Boolean = false,
+    ): Pair<Response, String> {
+        var currentUrl = initialUrl
+        var activeHeaders = headers
+        var credentialsAllowed = true
+        var useHead = isHead
+
+        for (redirectCount in 0..MAX_REDIRECTS) {
+            val requestBuilder = Request.Builder().url(currentUrl)
+            if (useHead) requestBuilder.head()
+            activeHeaders.forEach { (k, v) -> requestBuilder.addHeader(k, v) }
+
+            val response = effectiveClient.newCall(requestBuilder.build()).execute()
+            val code = response.code
+            if (code in REDIRECT_STATUS_CODES) {
+                val location = response.header("Location")
+                response.close()
+                if (location.isNullOrBlank()) {
+                    throw IOException(
+                        "HTTP $code redirect missing Location for ${DiagnosticStore.sanitizeUrl(currentUrl)}"
+                    )
+                }
+                if (redirectCount == MAX_REDIRECTS) {
+                    throw IOException(
+                        "Exceeded maximum redirect depth ($MAX_REDIRECTS) for ${DiagnosticStore.sanitizeUrl(initialUrl)}"
+                    )
+                }
+                val resolvedNext = HeaderValidation.resolveRedirectUrl(currentUrl, location)
+                    ?: throw SecurityException(
+                        "Rejected invalid or unsafe redirect target from ${DiagnosticStore.sanitizeUrl(currentUrl)}"
+                    )
+                val (nextHeaders, nextCredsAllowed) = HeaderValidation.scopeHeadersForHop(
+                    headers = activeHeaders,
+                    fromUrl = currentUrl,
+                    toUrl = resolvedNext,
+                    credentialsStillAllowed = credentialsAllowed,
+                )
+                activeHeaders = nextHeaders
+                credentialsAllowed = nextCredsAllowed
+                if (code == 303) useHead = false
+                currentUrl = resolvedNext
+                continue
+            }
+            return response to currentUrl
+        }
+        throw IOException("Exceeded maximum redirect depth ($MAX_REDIRECTS)")
+    }
 
     override suspend fun fetchTextBounded(
         url: String,
         headers: Map<String, String>,
         maxBytes: Long
     ): String {
-        val requestBuilder = Request.Builder().url(url)
-        headers.forEach { (k, v) -> requestBuilder.addHeader(k, v) }
-
-        client.newCall(requestBuilder.build()).execute().use { response ->
+        val (response, finalUrl) = executeWithOriginScopedRedirects(url, headers, isHead = false)
+        response.use {
             if (!response.isSuccessful) {
-                throw IOException("HTTP ${response.code} fetching ${com.mvrk.vrka.DiagnosticStore.sanitizeUrl(url)}: ${response.message}")
+                throw IOException("HTTP ${response.code} fetching ${DiagnosticStore.sanitizeUrl(finalUrl)}: ${response.message}")
             }
-            val body = response.body ?: throw IOException("Empty response body from ${com.mvrk.vrka.DiagnosticStore.sanitizeUrl(url)}")
+            val body = response.body ?: throw IOException("Empty response body from ${DiagnosticStore.sanitizeUrl(finalUrl)}")
             val headerCl = response.header("Content-Length")?.toLongOrNull() ?: -1L
             val cl = maxOf(body.contentLength(), headerCl)
             if (cl > maxBytes) {
-                throw OversizedPayloadException("Payload size ($cl bytes) exceeds manifest limit of $maxBytes bytes for ${com.mvrk.vrka.DiagnosticStore.sanitizeUrl(url)}")
+                throw OversizedPayloadException("Payload size ($cl bytes) exceeds manifest limit of $maxBytes bytes for ${DiagnosticStore.sanitizeUrl(finalUrl)}")
             }
 
             val source = body.byteStream()
@@ -101,7 +163,7 @@ class OkHttpMediaTransport(
                 if (read == -1) break
                 totalRead += read
                 if (totalRead > maxBytes) {
-                    throw OversizedPayloadException("Streaming payload exceeded bounded manifest limit of $maxBytes bytes for ${com.mvrk.vrka.DiagnosticStore.sanitizeUrl(url)}")
+                    throw OversizedPayloadException("Streaming payload exceeded bounded manifest limit of $maxBytes bytes for ${DiagnosticStore.sanitizeUrl(finalUrl)}")
                 }
                 baos.write(buffer, 0, read)
             }
@@ -117,14 +179,13 @@ class OkHttpMediaTransport(
         cancellationToken: EngineCancellationToken?
     ): Long {
         destination.parentFile?.mkdirs()
-        val requestBuilder = Request.Builder().url(url)
-        headers.forEach { (k, v) -> requestBuilder.addHeader(k, v) }
+        val (response, finalUrl) = executeWithOriginScopedRedirects(url, headers, isHead = false)
 
-        client.newCall(requestBuilder.build()).execute().use { response ->
+        response.use {
             if (!response.isSuccessful) {
-                throw IOException("HTTP ${response.code} downloading ${com.mvrk.vrka.DiagnosticStore.sanitizeUrl(url)}: ${response.message}")
+                throw IOException("HTTP ${response.code} downloading ${DiagnosticStore.sanitizeUrl(finalUrl)}: ${response.message}")
             }
-            val body = response.body ?: throw IOException("Empty response body from ${com.mvrk.vrka.DiagnosticStore.sanitizeUrl(url)}")
+            val body = response.body ?: throw IOException("Empty response body from ${DiagnosticStore.sanitizeUrl(finalUrl)}")
             val totalBytes = body.contentLength().takeIf { it > 0 }
 
             val source: InputStream = body.byteStream()
@@ -160,10 +221,9 @@ class OkHttpMediaTransport(
         url: String,
         headers: Map<String, String>
     ): TransportHeaderInfo {
-        val requestBuilder = Request.Builder().url(url).head()
-        headers.forEach { (k, v) -> requestBuilder.addHeader(k, v) }
+        val (response, _) = executeWithOriginScopedRedirects(url, headers, isHead = true)
 
-        client.newCall(requestBuilder.build()).execute().use { response ->
+        response.use {
             val headerMap = response.headers.names().associateWith { response.headers[it].orEmpty() }
             return TransportHeaderInfo(
                 statusCode = response.code,
@@ -176,14 +236,16 @@ class OkHttpMediaTransport(
 
     companion object {
         private const val BUFFER_SIZE = 64 * 1024 // 64 KB chunked transfer
+        private const val MAX_REDIRECTS = 5
+        private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
 
         fun defaultClient(): OkHttpClient {
             return OkHttpClient.Builder()
                 .connectTimeout(20, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .followSslRedirects(true)
+                .followRedirects(false)
+                .followSslRedirects(false)
                 .retryOnConnectionFailure(true)
                 .build()
         }

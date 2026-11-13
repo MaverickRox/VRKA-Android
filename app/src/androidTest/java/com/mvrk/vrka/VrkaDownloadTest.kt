@@ -112,6 +112,7 @@ class VrkaDownloadTest {
         val app = ApplicationProvider.getApplicationContext<VrkaApplication>()
         val manager = app.downloads
         val notifications = app.getSystemService(NotificationManager::class.java)
+        assumeTrue("notifications are disabled for this test package", notifications.areNotificationsEnabled())
 
         val testUrl = "https://upload.wikimedia.org/wikipedia/commons/transcoded/c/c0/Big_Buck_Bunny_4K.webm/Big_Buck_Bunny_4K.webm.360p.vp9.webm"
         manager.enqueue(

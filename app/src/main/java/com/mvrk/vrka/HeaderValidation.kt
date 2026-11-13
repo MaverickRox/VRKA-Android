@@ -223,7 +223,49 @@ internal object HeaderValidation {
         return result
     }
 
-    /** Binds credentials to the exact host on which they were observed. */
+    fun isSameOrigin(urlA: String, urlB: String): Boolean {
+        val originA = originOf(urlA) ?: return false
+        val originB = originOf(urlB) ?: return false
+        return originA == originB
+    }
+
+    fun resolveRedirectUrl(currentUrl: String, location: String): String? = runCatching {
+        val trimmed = location.trim()
+        if (trimmed.isEmpty()) return@runCatching null
+        val resolved = java.net.URI(currentUrl).resolve(trimmed)
+        val scheme = resolved.scheme?.lowercase(Locale.ROOT) ?: return@runCatching null
+        if (scheme !in setOf("http", "https") || resolved.rawUserInfo != null) return@runCatching null
+        val host = resolved.host?.lowercase(Locale.ROOT) ?: return@runCatching null
+        if (host.isBlank()) return@runCatching null
+        resolved.toString()
+    }.getOrNull()
+
+    /**
+     * Scopes request headers across an HTTP redirect hop.
+     * Once a redirect leaves the originating origin, sensitive credentials are stripped
+     * and never re-attached on later hops (even if redirected back). Scheme downgrades
+     * from HTTPS to HTTP also strip Referer and Origin.
+     */
+    fun scopeHeadersForHop(
+        headers: Map<String, String>,
+        fromUrl: String,
+        toUrl: String,
+        credentialsStillAllowed: Boolean,
+    ): Pair<Map<String, String>, Boolean> {
+        val stillSameOrigin = credentialsStillAllowed && isSameOrigin(fromUrl, toUrl)
+        val downgradedToHttp = fromUrl.startsWith("https://", ignoreCase = true) &&
+            toUrl.startsWith("http://", ignoreCase = true)
+        val filtered = LinkedHashMap<String, String>(headers.size)
+        for ((name, value) in headers) {
+            val lower = name.trim().lowercase(Locale.ROOT)
+            if (!stillSameOrigin && isSensitiveHeader(lower)) continue
+            if (downgradedToHttp && (lower == "referer" || lower == "origin")) continue
+            filtered[name] = value
+        }
+        return filtered to stillSameOrigin
+    }
+
+    /** Binds credentials to the exact origin on which they were observed. */
     fun bindHeadersToHost(headers: Map<String, String>, targetUrl: String, contextUrl: String?): Map<String, String> {
         if (contextUrl.isNullOrBlank()) return headers.filterNot { (name, _) -> isSensitiveHeader(name) }
         val targetOrigin = originOf(targetUrl)

@@ -325,34 +325,16 @@ class VrkaSubtitleManager(private val context: Context? = null) {
             )
         )
 
-        val targetExt = if (candidate.format.isNotBlank()) candidate.format else "vtt"
+        val targetExt = candidate.format.trim().lowercase(java.util.Locale.ROOT)
+            .filter { it in 'a'..'z' || it in '0'..'9' }
+            .ifBlank { "vtt" }
         val targetFile = File(stagingDirectory, "browser_sub.$targetExt")
 
         val fetchResult = runCatching {
-            val url = URL(candidate.url)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 10000
-            connection.readTimeout = 15000
-            candidate.headers.forEach { (k, v) ->
-                connection.setRequestProperty(k, v)
-            }
-            if (candidate.headers.keys.none { it.equals("User-Agent", true) }) {
-                connection.setRequestProperty("User-Agent", DownloadRequestFactory.DESKTOP_USER_AGENT)
-            }
-            if (candidate.headers.keys.none { it.equals("Referer", true) } && candidate.pageUrl.isNotBlank()) {
-                connection.setRequestProperty("Referer", candidate.pageUrl)
-            }
-
-            connection.connect()
-            val code = connection.responseCode
-            if (code in 200..299) {
-                targetFile.outputStream().use { out ->
-                    connection.inputStream.use { input -> input.copyTo(out) }
-                }
-                code to null
-            } else {
-                code to "HTTP error $code"
-            }
+            fetchBrowserSubtitleWithScopedRedirects(candidate, targetFile)
+        }.onFailure { error ->
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            targetFile.delete()
         }
 
         val (statusCode, errorMsg) = fetchResult.getOrElse {
@@ -510,7 +492,126 @@ class VrkaSubtitleManager(private val context: Context? = null) {
         }
     }
 
+    private fun fetchBrowserSubtitleWithScopedRedirects(
+        candidate: BrowserSubtitleCandidate,
+        targetFile: File,
+    ): Pair<Int, String?> {
+        com.mvrk.vrka.HeaderValidation.originOf(candidate.url)
+            ?: throw IllegalArgumentException("Rejected invalid or non-HTTP(S) subtitle URL")
+
+        val initialHeaders = java.util.TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER)
+        initialHeaders.putAll(
+            com.mvrk.vrka.HeaderValidation.parseHeaderPairs(candidate.headers.entries.map { it.key to it.value })
+                .filterKeys { it.lowercase(java.util.Locale.ROOT) !in FORBIDDEN_TRANSPORT_HEADERS }
+        )
+        if (!initialHeaders.containsKey("User-Agent")) {
+            initialHeaders["User-Agent"] = DownloadRequestFactory.DESKTOP_USER_AGENT
+        }
+        if (!initialHeaders.containsKey("Referer") && candidate.pageUrl.isNotBlank()) {
+            val validReferer = com.mvrk.vrka.HeaderValidation.originOf(candidate.pageUrl) != null &&
+                com.mvrk.vrka.HeaderValidation.validateHeaderValue(candidate.pageUrl) is com.mvrk.vrka.HeaderValidationResult.Valid &&
+                !(candidate.pageUrl.startsWith("https://", ignoreCase = true) &&
+                    candidate.url.startsWith("http://", ignoreCase = true))
+            if (validReferer) {
+                initialHeaders["Referer"] = candidate.pageUrl.trim()
+            }
+        }
+
+        var currentUrl = candidate.url
+        var activeHeaders: Map<String, String> = initialHeaders
+        var credentialsAllowed = true
+
+        for (redirectCount in 0..MAX_BROWSER_SUBTITLE_REDIRECTS) {
+            val connection = URL(currentUrl).openConnection() as HttpURLConnection
+            try {
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 10_000
+                connection.readTimeout = 15_000
+                activeHeaders.forEach { (k, v) ->
+                    connection.setRequestProperty(k, v)
+                }
+
+                connection.connect()
+                val code = connection.responseCode
+                if (code in REDIRECT_STATUS_CODES) {
+                    val location = connection.getHeaderField("Location")
+                    if (location.isNullOrBlank()) {
+                        return code to "HTTP $code redirect missing Location header"
+                    }
+                    if (redirectCount == MAX_BROWSER_SUBTITLE_REDIRECTS) {
+                        return code to "Exceeded maximum redirect depth ($MAX_BROWSER_SUBTITLE_REDIRECTS)"
+                    }
+                    val resolvedNext = com.mvrk.vrka.HeaderValidation.resolveRedirectUrl(currentUrl, location)
+                        ?: return code to "Rejected invalid or unsafe redirect target"
+                    val (nextHeaders, nextCredsAllowed) = com.mvrk.vrka.HeaderValidation.scopeHeadersForHop(
+                        headers = activeHeaders,
+                        fromUrl = currentUrl,
+                        toUrl = resolvedNext,
+                        credentialsStillAllowed = credentialsAllowed,
+                    )
+                    activeHeaders = nextHeaders
+                    credentialsAllowed = nextCredsAllowed
+                    currentUrl = resolvedNext
+                    continue
+                }
+
+                if (code in 200..299) {
+                    val declaredLength = connection.getHeaderField("Content-Length")?.trim()?.toLongOrNull() ?: -1L
+                    if (declaredLength > MAX_BROWSER_SUBTITLE_BYTES) {
+                        return code to "Subtitle payload exceeds ${MAX_BROWSER_SUBTITLE_BYTES / (1024 * 1024)} MiB limit"
+                    }
+                    writeBoundedSubtitleFile(connection.inputStream, targetFile, MAX_BROWSER_SUBTITLE_BYTES)
+                    return code to null
+                }
+
+                return code to "HTTP error $code"
+            } finally {
+                runCatching { connection.disconnect() }
+            }
+        }
+        return 0 to "Exceeded maximum redirect depth ($MAX_BROWSER_SUBTITLE_REDIRECTS)"
+    }
+
+    private fun writeBoundedSubtitleFile(input: java.io.InputStream, targetFile: File, maxBytes: Long) {
+        val buffer = ByteArray(8 * 1024)
+        var totalBytes = 0L
+        var completed = false
+        try {
+            input.use { stream ->
+                targetFile.outputStream().use { out ->
+                    while (true) {
+                        val read = stream.read(buffer)
+                        if (read < 0) break
+                        totalBytes += read
+                        if (totalBytes > maxBytes) {
+                            throw java.io.IOException(
+                                "Subtitle payload exceeds ${maxBytes / (1024 * 1024)} MiB limit"
+                            )
+                        }
+                        out.write(buffer, 0, read)
+                    }
+                }
+            }
+            completed = true
+        } finally {
+            if (!completed) {
+                targetFile.delete()
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "VRKA-SubtitleManager"
+        private const val MAX_BROWSER_SUBTITLE_REDIRECTS = 5
+        private const val MAX_BROWSER_SUBTITLE_BYTES = 8L * 1024 * 1024
+        private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
+        private val FORBIDDEN_TRANSPORT_HEADERS = setOf(
+            "host",
+            "content-length",
+            "connection",
+            "proxy-connection",
+            "transfer-encoding",
+            "upgrade",
+        )
     }
 }
