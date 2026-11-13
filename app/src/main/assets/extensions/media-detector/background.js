@@ -3,11 +3,18 @@
  * VRKA media discovery background worker and GeckoView native bridge.
  */
 
+const MAX_REQUEST_HEADERS = 64;
+const MAX_URL_HEADERS = 64;
+const MAX_SEEN_CANDIDATES = 250;
+const DOM_PLAYER_TTL_MS = 45000;
+
 const seenCandidates = new Map();
 const requestHeadersMap = new Map();
 const urlHeadersMap = new Map();
-const FIXED_CAPTURE_HEADERS = new Set([
-    "user-agent", "referer", "origin", "range", "cookie", "authorization",
+const activeDomPlayerByTab = new Map();
+
+const ALLOWED_REPLAY_CAPTURE_HEADERS = new Set([
+    "user-agent", "referer", "origin", "range", "cookie",
     "accept", "accept-language", "x-requested-with"
 ]);
 const FORBIDDEN_CAPTURE_HEADERS = new Set([
@@ -17,7 +24,7 @@ const FORBIDDEN_CAPTURE_HEADERS = new Set([
 
 function isCaptureHeader(name) {
     const lower = name.toLowerCase();
-    return (FIXED_CAPTURE_HEADERS.has(lower) || lower.startsWith("x-")) &&
+    return (ALLOWED_REPLAY_CAPTURE_HEADERS.has(lower) || lower === "authorization" || lower.startsWith("x-")) &&
         !FORBIDDEN_CAPTURE_HEADERS.has(lower) && !lower.startsWith("x-moz-") &&
         !lower.startsWith("x-forwarded-");
 }
@@ -38,6 +45,24 @@ function canonicalHeaderName(name) {
     return known[lower] || name;
 }
 
+function parseSafeOrigin(rawUrl) {
+    try {
+        const parsed = new URL(rawUrl);
+        if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.hostname || parsed.username || parsed.password) {
+            return null;
+        }
+        return parsed.origin;
+    } catch (e) {
+        return null;
+    }
+}
+
+function isDefinitelyNonMediaAssetUrl(url) {
+    if (!url) return true;
+    const lower = url.toLowerCase();
+    return Boolean(lower.match(/\.(jpg|jpeg|png|gif|svg|webp|ico|css|js|mjs|woff|woff2|ttf|otf|eot|map|wasm)(\?|$)/));
+}
+
 function isAdOrNuisanceUrl(url) {
     if (!url) return 0;
     const lower = url.toLowerCase();
@@ -50,43 +75,66 @@ function isAdOrNuisanceUrl(url) {
     return 0;
 }
 
-let activeDomPlayer = null;
-let lastDomPlayerTime = 0;
+function setBounded(map, key, value, maxSize) {
+    if (map.has(key)) {
+        map.delete(key);
+    }
+    map.set(key, value);
+    while (map.size > maxSize) {
+        const oldestKey = map.keys().next().value;
+        if (oldestKey === undefined) break;
+        map.delete(oldestKey);
+    }
+}
 
-function sendCandidateToNative(candidate) {
+function purgeTabState(tabId) {
+    if (tabId === undefined || tabId === null) return;
+    activeDomPlayerByTab.delete(tabId);
+    for (const [reqId, entry] of requestHeadersMap.entries()) {
+        if (entry && entry.tabId === tabId) {
+            requestHeadersMap.delete(reqId);
+        }
+    }
+    const tabPrefix = `${tabId}::`;
+    for (const key of urlHeadersMap.keys()) {
+        if (key.startsWith(tabPrefix)) {
+            urlHeadersMap.delete(key);
+        }
+    }
+    const seenPrefix = `${tabId}:`;
+    for (const key of seenCandidates.keys()) {
+        if (key.startsWith(seenPrefix)) {
+            seenCandidates.delete(key);
+        }
+    }
+}
+
+function sendCandidateToNative(candidate, tabId = -1) {
     if (!candidate || !candidate.url) return;
-    
-    // Normalize URL
+
     const url = candidate.url.trim();
-    try {
-        const parsed = new URL(url);
-        if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.hostname || parsed.username || parsed.password) return;
-    } catch (e) { return; }
-    
-    // Ignore static image, font, and script assets
+    if (!parseSafeOrigin(url)) return;
+
     const lower = url.toLowerCase();
     if (lower.match(/\.(jpg|jpeg|png|gif|svg|webp|ico|css|js|woff|woff2|ttf|json)(\?|$)/)) {
         return;
     }
 
-    const key = `${candidate.kind}:${url}`;
+    const key = `${tabId}:${candidate.kind}:${url}`;
     const now = Date.now();
     if (seenCandidates.has(key)) {
         const lastSeen = seenCandidates.get(key);
         if (now - lastSeen < 15000) {
-            return; // Deduplicate within 15s
+            return;
         }
     }
     seenCandidates.set(key, now);
 
-    // Prune cache if large
-    if (seenCandidates.size > 250) {
+    if (seenCandidates.size > MAX_SEEN_CANDIDATES) {
         for (const [k, t] of seenCandidates.entries()) {
             if (now - t > 60000) seenCandidates.delete(k);
         }
-        // Age pruning alone is not a hard bound when a page emits many unique URLs
-        // inside one minute. Drop the oldest insertion(s) to cap retained state.
-        while (seenCandidates.size > 250) {
+        while (seenCandidates.size > MAX_SEEN_CANDIDATES) {
             const oldestKey = seenCandidates.keys().next().value;
             if (oldestKey === undefined) break;
             seenCandidates.delete(oldestKey);
@@ -119,10 +167,17 @@ function sendCandidateToNative(candidate) {
     }
 }
 
-// 1. Capture outgoing headers
+// 1. Capture outgoing request headers scoped by requestId, tabId, and origin (bounded to 64 requests)
 browser.webRequest.onBeforeSendHeaders.addListener(
     (details) => {
-        if (!details.url) return;
+        if (!details || !details.url) return;
+        const origin = parseSafeOrigin(details.url);
+        if (!origin) return;
+        if (isDefinitelyNonMediaAssetUrl(details.url) || isAdOrNuisanceUrl(details.url) > 0) {
+            return;
+        }
+
+        const tabId = typeof details.tabId === "number" ? details.tabId : -1;
         const headers = {};
         if (details.requestHeaders) {
             for (const h of details.requestHeaders) {
@@ -130,54 +185,65 @@ browser.webRequest.onBeforeSendHeaders.addListener(
                 const value = typeof h.value === "string" ? h.value : "";
                 if (isCaptureHeader(name) && value.length > 0 && value.length <= 8192 &&
                     !/[\r\n\u0000]/.test(value) && Object.keys(headers).length < 32) {
-                    headers[canonicalHeaderName(h.name)] = value;
+                    // Never store raw secret bearer/custom X credentials in the JS header map;
+                    // preserve a non-secret presence marker only for downstream 401/403 diagnostics.
+                    const safeValue = ALLOWED_REPLAY_CAPTURE_HEADERS.has(name) ? value : "[REDACTED]";
+                    headers[canonicalHeaderName(h.name)] = safeValue;
                 }
             }
         }
-        requestHeadersMap.set(details.requestId, { url: details.url, headers });
-        if (requestHeadersMap.size > 64) {
-            const firstKey = requestHeadersMap.keys().next().value;
-            requestHeadersMap.delete(firstKey);
-        }
-        
-        // Also cache by URL and Origin for correlation with DOM events
+
+        setBounded(
+            requestHeadersMap,
+            details.requestId,
+            { url: details.url, origin: origin, tabId: tabId, headers: headers },
+            MAX_REQUEST_HEADERS
+        );
+
+        // Cache ONLY non-credential playback headers by tab + url / origin for DOM correlation
         const domHeaders = {};
         for (const [name, value] of Object.entries(headers)) {
             if (["user-agent", "referer", "origin"].includes(name.toLowerCase())) {
                 domHeaders[canonicalHeaderName(name)] = value;
             }
         }
-        urlHeadersMap.set(details.url, domHeaders);
-        try {
-            const parsed = new URL(details.url);
-            urlHeadersMap.set(parsed.origin, domHeaders);
-        } catch (e) {}
-        if (urlHeadersMap.size > 96) {
-            const firstKey = urlHeadersMap.keys().next().value;
-            urlHeadersMap.delete(firstKey);
+        if (Object.keys(domHeaders).length > 0) {
+            setBounded(urlHeadersMap, `${tabId}::${details.url}`, domHeaders, MAX_URL_HEADERS);
+            setBounded(urlHeadersMap, `${tabId}::${origin}`, domHeaders, MAX_URL_HEADERS);
         }
     },
     { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other"] },
     ["requestHeaders"]
 );
 
-// 2. Sniff responses for media content types and extensions
+// 2. Sniff responses for media content types and extensions, cleaning request state on completion/redirect
 browser.webRequest.onHeadersReceived.addListener(
     (details) => {
-        if (!details.url) return;
+        if (!details || !details.url) return;
         const url = details.url;
+        const currentOrigin = parseSafeOrigin(url);
+        const tabId = typeof details.tabId === "number" ? details.tabId : -1;
         const lowerUrl = url.toLowerCase();
-        
+
+        const cachedReq = requestHeadersMap.get(details.requestId);
+        // Consume/delete request entry unconditionally so redirects never carry prior-origin headers
+        requestHeadersMap.delete(details.requestId);
+
+        const sameScope = Boolean(
+            cachedReq &&
+            currentOrigin &&
+            cachedReq.origin === currentOrigin &&
+            cachedReq.tabId === tabId
+        );
+        const headers = sameScope && cachedReq.headers ? cachedReq.headers : {};
+
         let contentType = "";
         if (details.responseHeaders) {
             for (const h of details.responseHeaders) {
                 const name = h.name.toLowerCase();
-                if (name === "content-type") contentType = h.value.toLowerCase();
+                if (name === "content-type") contentType = (h.value || "").toLowerCase();
             }
         }
-
-        const cachedReq = requestHeadersMap.get(details.requestId);
-        const headers = (cachedReq && cachedReq.headers) ? cachedReq.headers : {};
 
         let detectedKind = null;
         let resolution = "";
@@ -217,8 +283,13 @@ browser.webRequest.onHeadersReceived.addListener(
             detectedKind = "Audio";
         }
 
-        if (detectedKind) {
+        if (detectedKind && currentOrigin) {
             const adNuisance = isAdOrNuisanceUrl(url);
+            const tabDomEntry = activeDomPlayerByTab.get(tabId);
+            const activeDom = (tabDomEntry && (Date.now() - tabDomEntry.timestamp < DOM_PLAYER_TTL_MS))
+                ? tabDomEntry.player
+                : null;
+
             let userStarted = false;
             let primaryPlayer = false;
             let playing = null;
@@ -231,19 +302,17 @@ browser.webRequest.onHeadersReceived.addListener(
                 nuisanceScore = adNuisance;
                 primaryPlayer = false;
                 userStarted = false;
-            } else if (activeDomPlayer && (Date.now() - lastDomPlayerTime < 45000)) {
-                userStarted = activeDomPlayer.userStarted;
-                primaryPlayer = activeDomPlayer.primaryPlayer;
-                playing = activeDomPlayer.playing;
-                width = activeDomPlayer.width;
-                height = activeDomPlayer.height;
-                duration = activeDomPlayer.duration;
-                if (!resolution && activeDomPlayer.resolution) {
-                    resolution = activeDomPlayer.resolution;
+            } else if (activeDom) {
+                userStarted = activeDom.userStarted;
+                primaryPlayer = activeDom.primaryPlayer;
+                playing = activeDom.playing;
+                width = activeDom.width;
+                height = activeDom.height;
+                duration = activeDom.duration;
+                if (!resolution && activeDom.resolution) {
+                    resolution = activeDom.resolution;
                 }
             } else {
-                // Desktop Build 017 fallback default (browser_fallback.py:568-581):
-                // In fallback browser session, non-ad media requests default to primary player
                 userStarted = true;
                 primaryPlayer = true;
                 playing = true;
@@ -252,7 +321,7 @@ browser.webRequest.onHeadersReceived.addListener(
             sendCandidateToNative({
                 url: url,
                 pageUrl: headers["Referer"] || "",
-                title: activeDomPlayer ? activeDomPlayer.title : "",
+                title: activeDom ? activeDom.title : "",
                 kind: detectedKind,
                 resolution: resolution,
                 mimeType: contentType,
@@ -265,54 +334,98 @@ browser.webRequest.onHeadersReceived.addListener(
                 height: height,
                 duration: duration,
                 nuisanceScore: nuisanceScore
-            });
-        }
-        if (![301, 302, 303, 307, 308].includes(details.statusCode)) {
-            requestHeadersMap.delete(details.requestId);
+            }, tabId);
         }
     },
     { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other"] },
     ["responseHeaders"]
 );
 
+function cleanupRequestEntry(details) {
+    if (details && details.requestId !== undefined) {
+        requestHeadersMap.delete(details.requestId);
+    }
+}
+
+if (browser.webRequest.onBeforeRedirect) {
+    browser.webRequest.onBeforeRedirect.addListener(
+        cleanupRequestEntry,
+        { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other"] }
+    );
+}
+if (browser.webRequest.onCompleted) {
+    browser.webRequest.onCompleted.addListener(
+        cleanupRequestEntry,
+        { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other"] }
+    );
+}
+if (browser.webRequest.onErrorOccurred) {
+    browser.webRequest.onErrorOccurred.addListener(
+        cleanupRequestEntry,
+        { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other"] }
+    );
+}
+
+if (typeof browser !== "undefined" && browser.tabs) {
+    if (browser.tabs.onRemoved) {
+        browser.tabs.onRemoved.addListener((tabId) => purgeTabState(tabId));
+    }
+    if (browser.tabs.onUpdated) {
+        browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+            if (changeInfo && changeInfo.url) {
+                purgeTabState(tabId);
+            }
+        });
+    }
+}
+
 // 3. Handle messages from Content Scripts
 browser.runtime.onMessage.addListener((msg, sender) => {
+    const tabId = (sender && sender.tab && typeof sender.tab.id === "number") ? sender.tab.id : -1;
     if (msg && msg.type === "DOM_PLAYER_ACTIVE") {
-        activeDomPlayer = {
-            pageUrl: (sender.tab ? sender.tab.url : msg.pageUrl) || "",
-            title: msg.title || "",
-            kind: msg.kind || "Video",
-            resolution: msg.resolution || "",
-            userStarted: Boolean(msg.userStarted),
-            primaryPlayer: Boolean(msg.primaryPlayer),
-            playing: msg.playing !== undefined ? Boolean(msg.playing) : null,
-            width: msg.width || 0,
-            height: msg.height || 0,
-            duration: msg.duration || 0,
-            nuisanceScore: msg.nuisanceScore || 0
-        };
-        lastDomPlayerTime = Date.now();
+        activeDomPlayerByTab.set(tabId, {
+            timestamp: Date.now(),
+            player: {
+                pageUrl: (sender && sender.tab ? sender.tab.url : msg.pageUrl) || "",
+                title: msg.title || "",
+                kind: msg.kind || "Video",
+                resolution: msg.resolution || "",
+                userStarted: Boolean(msg.userStarted),
+                primaryPlayer: Boolean(msg.primaryPlayer),
+                playing: msg.playing !== undefined ? Boolean(msg.playing) : null,
+                width: msg.width || 0,
+                height: msg.height || 0,
+                duration: msg.duration || 0,
+                nuisanceScore: msg.nuisanceScore || 0
+            }
+        });
+        while (activeDomPlayerByTab.size > 32) {
+            const oldestTab = activeDomPlayerByTab.keys().next().value;
+            if (oldestTab === undefined) break;
+            activeDomPlayerByTab.delete(oldestTab);
+        }
         return;
     }
 
     if (msg && msg.type === "DOM_MEDIA_DETECTED") {
-        let headers = urlHeadersMap.get(msg.url);
+        let headers = urlHeadersMap.get(`${tabId}::${msg.url}`);
         if (!headers) {
-            try {
-                const parsed = new URL(msg.url);
-                headers = urlHeadersMap.get(parsed.origin);
-            } catch (e) {}
+            const msgOrigin = parseSafeOrigin(msg.url);
+            if (msgOrigin) {
+                headers = urlHeadersMap.get(`${tabId}::${msgOrigin}`);
+            }
         }
         headers = headers ? Object.assign({}, headers) : {};
-        const effectivePageUrl = sender.tab ? sender.tab.url : msg.pageUrl;
-        if (!headers["Referer"] && effectivePageUrl) {
+        const effectivePageUrl = (sender && sender.tab ? sender.tab.url : msg.pageUrl) || "";
+        if (!headers["Referer"] && effectivePageUrl &&
+            !(effectivePageUrl.startsWith("https://") && msg.url && msg.url.startsWith("http://"))) {
             headers["Referer"] = effectivePageUrl;
         }
 
         sendCandidateToNative({
             url: msg.url,
             pageUrl: effectivePageUrl,
-            title: msg.title || (sender.tab ? sender.tab.title : ""),
+            title: msg.title || (sender && sender.tab ? sender.tab.title : ""),
             kind: msg.kind || "Video",
             resolution: msg.resolution || "",
             mimeType: msg.mimeType || "",
@@ -325,6 +438,6 @@ browser.runtime.onMessage.addListener((msg, sender) => {
             height: msg.height || 0,
             duration: msg.duration || 0,
             nuisanceScore: msg.nuisanceScore || 0
-        });
+        }, tabId);
     }
 });

@@ -191,9 +191,15 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                     withTimeout(timeoutMs) {
                         val controller = runtime.webExtensionController
                         removeRetiredExtension(controller)
-                        seedUblockIfMissing()
-                        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
-                        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
+                        val ublockXpi = withContext(Dispatchers.IO) {
+                            seedUblockIfMissing()
+                            val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+                            java.io.File(xpiDir, "ublock.xpi").also { file ->
+                                if (file.exists() && file.length() > 0L) {
+                                    verifyApprovedUblockXpi(file)
+                                }
+                            }
+                        }
 
                         // 1. Install & Register Media Detector WebExtension (internal bridge)
                         if (!_mediaDetectorActive.value) {
@@ -313,67 +319,76 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
         xpiFile: java.io.File,
         expectedId: String,
         expectedVersion: String,
-    ): WebExtension = withContext(Dispatchers.Main) {
+    ): WebExtension = withContext(Dispatchers.IO) {
         if (!xpiFile.exists() || xpiFile.length() == 0L) {
             throw java.io.FileNotFoundException("XPI file does not exist or is empty: ${xpiFile.absolutePath}")
         }
-        val controller = runtime.webExtensionController
-        ensurePromptDelegate(controller)
-        val fileUri = "file://${xpiFile.absolutePath}"
-        Log.i(TAG, "Installing WebExtension $expectedId from $fileUri...")
+        verifyExtensionXpi(xpiFile, expectedId, expectedVersion)
+        withContext(Dispatchers.Main) {
+            val controller = runtime.webExtensionController
+            ensurePromptDelegate(controller)
+            val fileUri = "file://${xpiFile.absolutePath}"
+            Log.i(TAG, "Installing WebExtension $expectedId from $fileUri...")
 
-        val extension = installExtensionInternal(controller, fileUri, expectedId)
-            ?: throw IllegalStateException("GeckoView WebExtensionController returned null for $expectedId")
+            val extension = installExtensionInternal(controller, fileUri, expectedId)
+                ?: throw IllegalStateException("GeckoView WebExtensionController returned null for $expectedId")
 
-        controller.setAllowedInPrivateBrowsing(extension, true).awaitResult()
+            controller.setAllowedInPrivateBrowsing(extension, true).awaitResult()
 
-        // Read-back verification from GeckoView runtime
-        val installedList = controller.list().awaitResult() ?: emptyList()
-        val confirmedExt = installedList.firstOrNull { it.id == expectedId } ?: extension
+            // Read-back verification from GeckoView runtime
+            val installedList = controller.list().awaitResult() ?: emptyList()
+            val confirmedExt = installedList.firstOrNull { it.id == expectedId } ?: extension
 
-        val actualId = confirmedExt.id
-        val actualVersion = confirmedExt.metaData?.version?.trim() ?: ""
-        val isEnabled = confirmedExt.metaData?.enabled ?: true
+            val actualId = confirmedExt.id
+            val actualVersion = confirmedExt.metaData.version.trim()
+            val isEnabled = confirmedExt.metaData.enabled
 
-        if (actualId != expectedId) {
-            throw SecurityException("Runtime verification failed: expected extension ID '$expectedId', got '$actualId'")
+            if (actualId != expectedId) {
+                throw SecurityException("Runtime verification failed: expected extension ID '$expectedId', got '$actualId'")
+            }
+            if (actualVersion.isNotBlank() && ComponentUpdateManager.cleanVersionString(actualVersion) != ComponentUpdateManager.cleanVersionString(expectedVersion)) {
+                throw IllegalStateException("Runtime verification failed: expected version '$expectedVersion', got '$actualVersion'")
+            }
+            if (!isEnabled) {
+                throw IllegalStateException("Runtime verification failed: extension $expectedId is not enabled in GeckoView")
+            }
+
+            if (expectedId == UBLOCK_ID) {
+                _uBlockActive.value = true
+            }
+            Log.i(TAG, "WebExtension verified active in GeckoView: $actualId v$actualVersion")
+            confirmedExt
         }
-        if (actualVersion.isNotBlank() && ComponentUpdateManager.cleanVersionString(actualVersion) != ComponentUpdateManager.cleanVersionString(expectedVersion)) {
-            throw IllegalStateException("Runtime verification failed: expected version '$expectedVersion', got '$actualVersion'")
-        }
-        if (!isEnabled) {
-            throw IllegalStateException("Runtime verification failed: extension $expectedId is not enabled in GeckoView")
-        }
-
-        if (expectedId == UBLOCK_ID) {
-            _uBlockActive.value = true
-        }
-        Log.i(TAG, "WebExtension verified active in GeckoView: $actualId v$actualVersion")
-        confirmedExt
     }
 
     /**
      * Restores previous known-good extension state in GeckoView if an update or verification fails.
      */
-    suspend fun rollbackExtension(previousXpi: java.io.File?, extensionId: String) = withContext(Dispatchers.Main) {
-        val controller = runtime.webExtensionController
-        ensurePromptDelegate(controller)
+    suspend fun rollbackExtension(previousXpi: java.io.File?, extensionId: String) = withContext(Dispatchers.IO) {
         runCatching {
-            if (previousXpi != null && previousXpi.exists() && previousXpi.length() > 0L) {
-                val restored = installExtensionInternal(controller, "file://${previousXpi.absolutePath}", extensionId)
-                if (restored != null) {
-                    controller.setAllowedInPrivateBrowsing(restored, true).awaitResult()
-                }
+            val verifiedRestoreXpi = if (
+                previousXpi != null &&
+                previousXpi.exists() &&
+                previousXpi.length() > 0L &&
+                runCatching { verifyExtensionXpi(previousXpi, extensionId, "") }.isSuccess
+            ) {
+                previousXpi
             } else {
                 val assetName = "ublock.xpi"
-                val targetXpi = java.io.File(context.filesDir, "extensions/xpis/$assetName")
-                runCatching {
-                    context.assets.open("extensions/$assetName").use { input ->
-                        targetXpi.outputStream().use { output -> input.copyTo(output) }
-                    }
+                val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+                val targetXpi = java.io.File(xpiDir, assetName)
+                if (targetXpi.exists()) targetXpi.delete()
+                seedBundledExtensionIfMissing(assetName)
+                targetXpi.takeIf { it.exists() && it.length() > 0L }?.also {
+                    verifyExtensionXpi(it, extensionId, "")
                 }
-                if (targetXpi.exists() && targetXpi.length() > 0L) {
-                    val restored = installExtensionInternal(controller, "file://${targetXpi.absolutePath}", extensionId)
+            }
+
+            if (verifiedRestoreXpi != null) {
+                withContext(Dispatchers.Main) {
+                    val controller = runtime.webExtensionController
+                    ensurePromptDelegate(controller)
+                    val restored = installExtensionInternal(controller, "file://${verifiedRestoreXpi.absolutePath}", extensionId)
                     if (restored != null) {
                         controller.setAllowedInPrivateBrowsing(restored, true).awaitResult()
                         if (extensionId == UBLOCK_ID) {
@@ -396,17 +411,72 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
         seedBundledExtensionIfMissing("ublock.xpi")
     }
 
+    private fun verifyApprovedUblockXpi(xpiFile: java.io.File): SecureComponentUpdater.XpiValidationResult {
+        return verifyExtensionXpi(xpiFile, UBLOCK_ID, "")
+    }
+
+    private fun verifyExtensionXpi(
+        xpiFile: java.io.File,
+        expectedId: String,
+        expectedVersion: String,
+    ): SecureComponentUpdater.XpiValidationResult {
+        val result = XpiSignatureVerifier.verifyXpi(
+            xpiFile = xpiFile,
+            expectedId = expectedId,
+            expectedVersion = expectedVersion,
+            installedGeckoVersion = SecureComponentUpdater.getInstalledGeckoViewVersion(),
+            trustedCaSpkiSha256 = SecureComponentUpdater.TRUSTED_EXTENSION_CA_SPKI_SHA256,
+        )
+        if (expectedId == UBLOCK_ID) {
+            val cleanVer = ComponentUpdateManager.cleanVersionString(result.version)
+            if (ComponentUpdateManager.isNewerVersion(SecureComponentUpdater.BUNDLED_UBLOCK_VERSION, cleanVer)) {
+                throw SecurityException(
+                    "Extension version v$cleanVer is below bundled floor v${SecureComponentUpdater.BUNDLED_UBLOCK_VERSION} for $expectedId"
+                )
+            }
+            if (cleanVer == SecureComponentUpdater.BUNDLED_UBLOCK_VERSION) {
+                val actualSha = XpiSignatureVerifier.sha256Hex(xpiFile)
+                if (!actualSha.equals(SecureComponentUpdater.BUNDLED_UBLOCK_SHA256, ignoreCase = true)) {
+                    throw SecurityException(
+                        "SHA-256 mismatch for bundled ublock v$cleanVer: expected ${SecureComponentUpdater.BUNDLED_UBLOCK_SHA256}, got $actualSha"
+                    )
+                }
+            }
+        }
+        return result
+    }
+
     private fun seedBundledExtensionIfMissing(assetName: String) {
         val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
         if (!xpiDir.exists()) xpiDir.mkdirs()
         val targetXpi = java.io.File(xpiDir, assetName)
-        if (!targetXpi.exists() || targetXpi.length() == 0L) {
-            runCatching {
-                context.assets.open("extensions/$assetName").use { input ->
-                    targetXpi.outputStream().use { output -> input.copyTo(output) }
-                }
-                Log.i(TAG, "Seeded bundled $assetName (${targetXpi.length()} bytes)")
+        if (targetXpi.exists() && targetXpi.length() > 0L) {
+            val valid = runCatching {
+                verifyApprovedUblockXpi(targetXpi)
+                true
+            }.onFailure { err ->
+                Log.w(TAG, "Extension signature validation failed for active $assetName (${err.message}); deleting and re-seeding bundled XPI")
+            }.getOrDefault(false)
+            if (valid) return
+            targetXpi.delete()
+        }
+
+        val tmpXpi = java.io.File(xpiDir, "$assetName.seed.tmp")
+        runCatching {
+            if (tmpXpi.exists()) tmpXpi.delete()
+            context.assets.open("extensions/$assetName").use { input ->
+                tmpXpi.outputStream().use { output -> input.copyTo(output) }
             }
+            verifyApprovedUblockXpi(tmpXpi)
+            if (targetXpi.exists()) targetXpi.delete()
+            if (!tmpXpi.renameTo(targetXpi)) {
+                tmpXpi.copyTo(targetXpi, overwrite = true)
+                tmpXpi.delete()
+            }
+            Log.i(TAG, "Seeded and cryptographically verified bundled $assetName (${targetXpi.length()} bytes)")
+        }.onFailure { err ->
+            if (tmpXpi.exists()) tmpXpi.delete()
+            Log.e(TAG, "Failed to verify/seed bundled $assetName: ${err.message}", err)
         }
     }
 
