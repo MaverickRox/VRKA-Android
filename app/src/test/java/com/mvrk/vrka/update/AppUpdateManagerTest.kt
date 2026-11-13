@@ -498,6 +498,34 @@ class AppUpdateManagerTest {
             AppUpdateCheckState.UpToDate("5.0.1"),
             AppUpdateManager.resolveCheckState(release, SemanticVersion(5, 0, 1), "5.0.1"),
         )
+        // Manifest older than or equal to installed versionCode (50104 <= 50105) reports UpToDate without error
+        val manifest50104 = com.mvrk.vrka.update.security.ReleaseManifest(
+            schema = "vrka-manifest-v1",
+            schemaVersion = 1,
+            metadataRevision = 4L,
+            channel = "stable",
+            repository = com.mvrk.vrka.update.security.RepositoryInfo("MaverickRox", "VRKA-Android"),
+            releaseTag = "v5.1.4",
+            applicationId = "com.mvrk.vrka",
+            versionName = "5.1.4",
+            versionCode = 50104L,
+            sourceCommit = "abcdef0123456789abcdef0123456789abcdef01",
+            issuedAt = "2026-11-10T12:00:00Z",
+            expiresAt = "2027-11-10T12:00:00Z",
+            apk = com.mvrk.vrka.update.security.ApkManifestInfo("VRKA-Android-v5.1.4.apk", 25000000L, "a".repeat(64), "b".repeat(64)),
+        )
+        val releaseWithManifest50104 = release.copy(manifest = manifest50104)
+        assertEquals(
+            AppUpdateCheckState.UpToDate("5.1.5"),
+            AppUpdateManager.resolveCheckState(releaseWithManifest50104, SemanticVersion(5, 1, 5), "5.1.5", currentVersionCode = 50105L),
+        )
+        // Manifest equal to installed versionCode (50105 <= 50105) reports UpToDate
+        val manifest50105 = manifest50104.copy(versionCode = 50105L, versionName = "5.1.5", releaseTag = "v5.1.5")
+        val releaseWithManifest50105 = release.copy(manifest = manifest50105)
+        assertEquals(
+            AppUpdateCheckState.UpToDate("5.1.5"),
+            AppUpdateManager.resolveCheckState(releaseWithManifest50105, SemanticVersion(5, 1, 5), "5.1.5", currentVersionCode = 50105L),
+        )
         assertTrue(
             AppUpdateManager.resolveCheckState(null, SemanticVersion(5, 0, 1), "5.0.1") is
                 AppUpdateCheckState.Error,
