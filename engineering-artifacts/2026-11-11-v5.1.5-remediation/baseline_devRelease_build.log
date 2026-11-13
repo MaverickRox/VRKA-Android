@@ -1,0 +1,112 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Calculating task graph as no cached configuration is available for tasks: assembleDevRelease
+WARNING: We recommend using a newer Android Gradle plugin to use compile SDK version 37.2
+
+This Android Gradle plugin (9.2.0) was tested up to compile SDK version 37.0.
+
+You are strongly encouraged to update your project to use a newer
+Android Gradle plugin that has been tested with compile SDK version 37.2.
+
+If you are already using the latest version of the Android Gradle plugin,
+you may need to wait until a newer version with support for compile SDK version 37.2 is available.
+
+For more information refer to the compatibility table:
+https://d.android.com/r/tools/api-level-support
+
+To suppress this warning, add/update
+    android.suppressUnsupportedCompileSdk=37.1,37.2
+to this project's gradle.properties.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:generateDevReleaseAssets UP-TO-DATE
+> Task :app:preDevReleaseBuild UP-TO-DATE
+> Task :app:generateDevReleaseResources
+> Task :app:mapDevReleaseSourceSetPaths
+> Task :app:extractDeepLinksDevRelease
+> Task :app:generateDevReleaseBuildConfig
+> Task :app:extractProguardFiles
+> Task :app:createDevReleaseCompatibleScreenManifests
+> Task :app:mergeDevReleaseStartupProfile
+> Task :app:extractDevReleaseVersionControlInfo
+> Task :app:validateSigningDevRelease
+> Task :app:writeDevReleaseAppMetadata
+> Task :app:writeDevReleaseSigningConfigVersions
+> Task :app:javaPreCompileDevRelease
+> Task :app:processDevReleaseNavigationResources
+> Task :app:mergeDevReleaseJniLibFolders
+> Task :app:collectDevReleaseDependencies
+> Task :app:mergeDevReleaseAssets
+> Task :app:compileDevReleaseNavigationResources
+> Task :app:sdkDevReleaseDependencyData
+> Task :app:checkDevReleaseAarMetadata
+> Task :app:processDevReleaseMainManifest
+> Task :app:processDevReleaseManifest
+> Task :app:mergeDevReleaseArtProfile
+> Task :app:processDevReleaseManifestForPackage
+> Task :app:packageDevReleaseResources
+> Task :app:parseDevReleaseLocalResources
+> Task :app:generateDevReleaseRFile
+> Task :app:compressDevReleaseAssets
+> Task :app:checkDevReleaseDuplicateClasses
+> Task :app:mergeDevReleaseNativeLibs
+
+> Task :app:stripDevReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libclearkey.so, libcrashhelper.so, libcrashtools.so, libdatastore_shared_counter.so, libffmpeg.so, libffmpeg.zip.so, libffprobe.so, libfreebl3.so, libgkcodecs.so, liblgpllibs.so, libmozavcodec.so, libmozavutil.so, libmozglue.so, libnss3.so, libplugin-container.so, libpython.so, libpython.zip.so, libqjs.so, libsoftokn3.so, libxul.so. Run with --info option to learn more.
+
+> Task :app:extractDevReleaseNativeSymbolTables
+> Task :app:mergeDevReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeDevReleaseResources
+
+> Task :app:processDevReleaseResources
+WARNING: We recommend using a newer Android Gradle plugin to use compile SDK version 37.2
+
+This Android Gradle plugin (9.2.0) was tested up to compile SDK version 37.0.
+
+You are strongly encouraged to update your project to use a newer
+Android Gradle plugin that has been tested with compile SDK version 37.2.
+
+If you are already using the latest version of the Android Gradle plugin,
+you may need to wait until a newer version with support for compile SDK version 37.2 is available.
+
+For more information refer to the compatibility table:
+https://d.android.com/r/tools/api-level-support
+
+To suppress this warning, add/update
+    android.suppressUnsupportedCompileSdk=37.1,37.2
+to this project's gradle.properties.
+
+> Task :app:kspDevReleaseKotlin
+> Task :app:compileDevReleaseKotlin
+w: file:///F:/Projects/VRKA%20Android%20V5.1.5/app/src/main/java/com/mvrk/vrka/GeckoRuntimeManager.kt:335:50 Unnecessary safe call on a non-null receiver of type 'WebExtension.MetaData'.
+w: file:///F:/Projects/VRKA%20Android%20V5.1.5/app/src/main/java/com/mvrk/vrka/GeckoRuntimeManager.kt:336:46 Unnecessary safe call on a non-null receiver of type 'WebExtension.MetaData'.
+w: file:///F:/Projects/VRKA%20Android%20V5.1.5/app/src/main/java/com/mvrk/vrka/SettingsScreen.kt:1249:61 'val LocalClipboardManager: ProvidableCompositionLocal<ClipboardManager>' is deprecated. Use LocalClipboard instead which supports suspend functions.
+w: file:///F:/Projects/VRKA%20Android%20V5.1.5/app/src/main/java/com/mvrk/vrka/Theme.kt:237:20 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///F:/Projects/VRKA%20Android%20V5.1.5/app/src/main/java/com/mvrk/vrka/Theme.kt:238:20 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///F:/Projects/VRKA%20Android%20V5.1.5/app/src/main/java/com/mvrk/vrka/ui/backdrop/internal/Paint.kt:18:10 'fun asFrameworkPaint(): Paint' is deprecated. Use platform-specific extension to get platform reference.
+w: file:///F:/Projects/VRKA%20Android%20V5.1.5/app/src/main/java/com/mvrk/vrka/ui/backdrop/internal/Paint.kt:24:10 'fun asFrameworkPaint(): Paint' is deprecated. Use platform-specific extension to get platform reference.
+w: file:///F:/Projects/VRKA%20Android%20V5.1.5/app/src/main/java/com/mvrk/vrka/update/security/ReleaseManifestSigner.kt:44:22 'constructor(p0: PGPContentSignerBuilder!): PGPSignatureGenerator' is deprecated. Deprecated in Java.
+w: file:///F:/Projects/VRKA%20Android%20V5.1.5/app/src/main/java/com/mvrk/vrka/update/security/ReleaseManifestVerifier.kt:151:96 'static field RSA_SIGN: Int' is deprecated. Deprecated in Java.
+
+> Task :app:processDevReleaseJavaRes
+> Task :app:compileDevReleaseJavaWithJavac
+> Task :app:mergeDevReleaseGeneratedProguardFiles
+> Task :app:generateDevReleaseLintVitalReportModel
+> Task :app:expandDevReleaseArtProfileWildcards
+> Task :app:mergeDevReleaseJavaResource
+> Task :app:produceDevReleaseComposeMapping
+> Task :app:reportDevReleaseComposeMappingErrors
+> Task :app:lintVitalAnalyzeDevRelease
+> Task :app:minifyDevReleaseWithR8
+> Task :app:lintVitalReportDevRelease
+> Task :app:lintVitalDevRelease
+> Task :app:convertShrunkResourcesToBinaryDevRelease
+> Task :app:optimizeDevReleaseResources
+> Task :app:mergeDevReleaseComposeMapping
+> Task :app:compileDevReleaseArtProfile
+> Task :app:packageDevRelease
+> Task :app:assembleDevRelease
+> Task :app:createDevReleaseApkListingFileRedirect
+
+BUILD SUCCESSFUL in 2m 15s
+53 actionable tasks: 53 executed
+Configuration cache entry stored.

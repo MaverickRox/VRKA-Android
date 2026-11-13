@@ -1,0 +1,274 @@
+diff --git a/app/src/main/java/com/mvrk/vrka/JobsScreen.kt b/app/src/main/java/com/mvrk/vrka/JobsScreen.kt
+index 0b3c6c3..55950f1 100644
+--- a/app/src/main/java/com/mvrk/vrka/JobsScreen.kt
++++ b/app/src/main/java/com/mvrk/vrka/JobsScreen.kt
+@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
++import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+@@ -54,6 +55,8 @@ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.unit.sp
++import androidx.paging.compose.LazyPagingItems
++import kotlinx.coroutines.launch
+ import java.text.DateFormat
+ import java.util.Date
+ 
+@@ -62,6 +65,9 @@ internal fun JobsScreen(
+     jobs: List<DownloadJob>,
+     emptyMessage: String,
+     modifier: Modifier = Modifier,
++    pagedJobs: LazyPagingItems<DownloadJob>? = null,
++    totalJobCount: Int = jobs.size,
++    onLoadAllIds: (suspend () -> List<String>)? = null,
+     onCancel: (String) -> Unit,
+     onRetry: (String) -> Unit,
+     onOpen: (String) -> Unit,
+@@ -78,6 +84,8 @@ internal fun JobsScreen(
+ ) {
+     val context = LocalContext.current
+     val isHistory = onClear != null || onClearAll != null
++    val scope = rememberCoroutineScope()
++    val displayCount = if (pagedJobs != null) totalJobCount else jobs.size
+     var pendingFolderJobId by remember { mutableStateOf<String?>(null) }
+     var isSelectionMode by remember { mutableStateOf(false) }
+     var selectedJobIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+@@ -104,6 +112,32 @@ internal fun JobsScreen(
+         pendingFolderJobId = null
+     }
+ 
++    val jobRow: @androidx.compose.runtime.Composable (DownloadJob) -> Unit = { job ->
++        JobCard(
++            job = job,
++            isSelectionMode = isSelectionMode,
++            isSelected = job.id in selectedJobIds,
++            onToggleSelect = {
++                selectedJobIds = if (job.id in selectedJobIds) {
++                    selectedJobIds - job.id
++                } else {
++                    selectedJobIds + job.id
++                }
++            },
++            onCancel = { onCancel(job.id) },
++            onRetry = { onRetry(job.id) },
++            onOpen = onOpen,
++            onShare = onShare,
++            onDelete = { singleDeleteTarget = job },
++            onShowFallback = onShowFallback?.let { fn -> { fn(job.id) } },
++            onChooseFolder = {
++                pendingFolderJobId = job.id
++                folderPicker.launch(null)
++            },
++        )
++    }
++
++
+     Column(modifier.fillMaxSize()) {
+         Row(
+             modifier = Modifier
+@@ -120,11 +154,17 @@ internal fun JobsScreen(
+                     color = VrkaTokens.TextPrimary,
+                 )
+                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    val allSelected = jobs.isNotEmpty() && selectedJobIds.size == jobs.size
++                    val allSelected = displayCount > 0 && selectedJobIds.size >= displayCount
+                     VrkaTextButton(
+                         text = if (allSelected) stringResource(R.string.btn_deselect_all) else stringResource(R.string.btn_select_all),
+                         onClick = {
+-                            selectedJobIds = if (allSelected) emptySet() else jobs.map { it.id }.toSet()
++                            if (allSelected) {
++                                selectedJobIds = emptySet()
++                            } else {
++                                scope.launch {
++                                    selectedJobIds = (onLoadAllIds?.invoke() ?: jobs.map { it.id }).toSet()
++                                }
++                            }
+                         },
+                         color = VrkaTokens.AccentLight,
+                     )
+@@ -144,7 +184,7 @@ internal fun JobsScreen(
+                     fontWeight = FontWeight.Bold,
+                     color = VrkaTokens.TextPrimary,
+                 )
+-                if (isHistory && jobs.isNotEmpty()) {
++                if (isHistory && displayCount > 0) {
+                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                         VrkaTextButton(
+                             text = stringResource(R.string.btn_select),
+@@ -185,7 +225,7 @@ internal fun JobsScreen(
+             }
+         }
+ 
+-        if (jobs.isEmpty()) {
++        if (displayCount == 0) {
+             Box(
+                 modifier = Modifier
+                     .fillMaxSize()
+@@ -233,29 +273,12 @@ internal fun JobsScreen(
+                 ),
+                 verticalArrangement = Arrangement.spacedBy(10.dp),
+             ) {
+-                items(jobs, key = DownloadJob::id) { job ->
+-                    JobCard(
+-                        job = job,
+-                        isSelectionMode = isSelectionMode,
+-                        isSelected = job.id in selectedJobIds,
+-                        onToggleSelect = {
+-                            selectedJobIds = if (job.id in selectedJobIds) {
+-                                selectedJobIds - job.id
+-                            } else {
+-                                selectedJobIds + job.id
+-                            }
+-                        },
+-                        onCancel = { onCancel(job.id) },
+-                        onRetry = { onRetry(job.id) },
+-                        onOpen = onOpen,
+-                        onShare = onShare,
+-                        onDelete = { singleDeleteTarget = job },
+-                        onShowFallback = onShowFallback?.let { fn -> { fn(job.id) } },
+-                        onChooseFolder = {
+-                            pendingFolderJobId = job.id
+-                            folderPicker.launch(null)
+-                        },
+-                    )
++                if (pagedJobs != null) {
++                    items(count = pagedJobs.itemCount, key = { index -> pagedJobs.peek(index)?.id ?: "loading-$index" }) { index ->
++                        pagedJobs[index]?.let { jobRow(it) }
++                    }
++                } else {
++                    items(jobs, key = DownloadJob::id) { jobRow(it) }
+                 }
+             }
+         }
+@@ -785,6 +808,14 @@ private fun JobCard(
+                                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                     )
+                                 }
++                                job.recoveryRequired -> {
++                                    VrkaTextButton(
++                                        text = stringResource(R.string.action_remove),
++                                        onClick = onDelete,
++                                        color = VrkaTokens.Destructive,
++                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
++                                    )
++                                }
+                                 else -> {
+                                     VrkaOutlinedButton(
+                                         text = stringResource(R.string.action_retry),
+diff --git a/app/src/main/java/com/mvrk/vrka/VrkaRoot.kt b/app/src/main/java/com/mvrk/vrka/VrkaRoot.kt
+index 19de396..1d808f6 100644
+--- a/app/src/main/java/com/mvrk/vrka/VrkaRoot.kt
++++ b/app/src/main/java/com/mvrk/vrka/VrkaRoot.kt
+@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.unit.sp
+ import androidx.core.content.ContextCompat
+ import androidx.lifecycle.compose.collectAsStateWithLifecycle
++import androidx.paging.compose.collectAsLazyPagingItems
+ import com.mvrk.vrka.ui.AppUpdateDialog
+ import com.mvrk.vrka.update.AppUpdateCheckState
+ import com.mvrk.vrka.update.AppReleaseInfo
+@@ -76,10 +77,20 @@ fun VrkaRoot(
+ ) {
+     val context = LocalContext.current
+     val jobs by manager.jobs.collectAsStateWithLifecycle()
++    val storageStatus by manager.storageStatus.collectAsStateWithLifecycle()
++    val historyPager = remember(manager) { manager.historyPager() }
++    val historyFlow = historyPager?.flow
++    val pagedHistory = if (historyFlow != null) historyFlow.collectAsLazyPagingItems() else null
++    val historyCount = remember(jobs) { jobs.count { it.state.isTerminal } }
++    var historyTotal by remember { mutableStateOf(historyCount) }
++    LaunchedEffect(pagedHistory?.itemCount, jobs) {
++        historyTotal = if (pagedHistory != null) manager.terminalJobCount() else historyCount
++    }
+     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
+     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
+     val runtime by manager.runtime.collectAsStateWithLifecycle()
+     val diagnostics by manager.diagnostics.collectAsStateWithLifecycle()
++    val deadLetterCleanupTasks by manager.deadLetterCleanupTasks.collectAsStateWithLifecycle()
+     val appUpdateCheckState by manager.appUpdateManager.checkState.collectAsStateWithLifecycle()
+     val appUpdateDownloadState by manager.appUpdateManager.downloadState.collectAsStateWithLifecycle()
+     val startupUpdateDialogData by manager.componentUpdateManager.startupUpdateDialogData.collectAsStateWithLifecycle()
+@@ -92,6 +103,21 @@ fun VrkaRoot(
+     var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
+     var pendingAppUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
+     val snackbar = remember { SnackbarHostState() }
++    LaunchedEffect(storageStatus) {
++        when (storageStatus.readiness.name) {
++            "INITIALIZING", "MIGRATING" -> snackbar.showSnackbar("Preparing local storage")
++            "MIGRATION_FAILED", "STORAGE_FAILED" -> snackbar.showSnackbar(
++                storageStatus.message.ifBlank { "Local storage is unavailable" },
++            )
++            else -> {
++                if (storageStatus.partialReadiness) {
++                    snackbar.showSnackbar(
++                        storageStatus.message.ifBlank { "Some history records require storage recovery" },
++                    )
++                }
++            }
++        }
++    }
+     val scope = rememberCoroutineScope()
+ 
+     LaunchedEffect(Unit) {
+@@ -102,7 +128,12 @@ fun VrkaRoot(
+     val notificationPermission = rememberLauncherForActivityResult(
+         ActivityResultContracts.RequestPermission(),
+     ) {
+-        pendingDownload?.let { manager.enqueue(it.request, it.estimate) }
++        pendingDownload?.let {
++            val result = manager.enqueue(it.request, it.estimate)
++            if (result is EnqueueResult.Rejected) {
++                scope.launch { snackbar.showSnackbar(result.message) }
++            }
++        }
+         pendingDownload = null
+         pendingAppUpdate?.let(manager.appUpdateManager::downloadAndInstall)
+         pendingAppUpdate = null
+@@ -118,7 +149,10 @@ fun VrkaRoot(
+             pendingDownload = PendingDownload(request, estimate)
+             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+         } else {
+-            manager.enqueue(request, estimate)
++            val result = manager.enqueue(request, estimate)
++            if (result is EnqueueResult.Rejected) {
++                scope.launch { snackbar.showSnackbar(result.message) }
++            }
+         }
+         scope.launch {
+             pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
+@@ -270,11 +304,14 @@ fun VrkaRoot(
+                             }
+                             VrkaDestination.HISTORY -> {
+                                 JobsScreen(
+-                                    jobs = historyJobs,
++                                    jobs = if (pagedHistory == null) historyJobs else emptyList(),
+                                     emptyMessage = stringResource(R.string.history_empty_message),
+                                     modifier = Modifier
+                                         .fillMaxSize()
+                                         .statusBarsPadding(),
++                                    pagedJobs = pagedHistory,
++                                    totalJobCount = historyTotal,
++                                    onLoadAllIds = { manager.allTerminalJobIds() },
+                                     onCancel = manager::cancel,
+                                     onRetry = manager::retry,
+                                     onOpen = manager::openOutput,
+@@ -297,6 +334,14 @@ fun VrkaRoot(
+                                     runtimeManager = manager.ytDlpRuntimeManager,
+                                     diagnostics = diagnostics,
+                                     onClearDiagnostics = manager::clearDiagnostics,
++                                    deadLetterCleanupTasks = deadLetterCleanupTasks,
++                                    onRetryCleanupTask = { taskId ->
++                                        scope.launch {
++                                            if (!manager.retryDeadLetterCleanup(taskId)) {
++                                                snackbar.showSnackbar("The cleanup retry could not be started")
++                                            }
++                                        }
++                                    },
+                                     modifier = Modifier
+                                         .fillMaxSize()
+                                         .statusBarsPadding(),

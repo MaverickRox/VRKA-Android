@@ -65,8 +65,8 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 50104
-        versionName = "5.1.4"
+        versionCode = 50105
+        versionName = "5.1.5"
         buildConfigField("String", "GECKOVIEW_VERSION", "\"$geckoViewVersion\"")
 
         ndk {
@@ -101,6 +101,12 @@ extensions.configure<ApplicationExtension> {
         unitTests.isIncludeAndroidResources = true
     }
 
+    sourceSets {
+        getByName("androidTest") {
+            assets.directories.add("$projectDir/schemas")
+        }
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -115,8 +121,12 @@ extensions.configure<ApplicationExtension> {
         }
     }
 
-    if (signingProperties != null) {
-        signingConfigs {
+    signingConfigs {
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+        if (signingProperties != null) {
             create("release") {
                 val storeFilePath = signingProperties.getProperty("storeFile")
                 val storeCandidate = file(storeFilePath)
