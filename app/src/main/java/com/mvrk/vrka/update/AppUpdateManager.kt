@@ -302,8 +302,11 @@ class AppUpdateManager(
 
                 settingsRepository.setLastAppUpdateCheckTimestamp(now)
 
+                val currentInstalledInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                val currentVersionCode = packageVersionCode(currentInstalledInfo)
+
                 val release = fetchLatestRelease()
-                val result = resolveCheckState(release, currentVersion, currentVersion.toString())
+                val result = resolveCheckState(release, currentVersion, currentVersion.toString(), currentVersionCode)
 
                 if (!(keepReadyUpdateVisible && (result is AppUpdateCheckState.Error || result is AppUpdateCheckState.UpToDate))) {
                     _checkState.value = if (!isManual && result is AppUpdateCheckState.Error) {
@@ -470,6 +473,7 @@ class AppUpdateManager(
                     currentInstalledVersionCode = currentCode,
                     currentStoredRevision = storedRevision,
                     expectedReleaseTag = parsedRelease.tagName,
+                    allowOlderVersionCode = true,
                 )
 
                 // Bind cryptographically authenticated manifest to release info
@@ -577,8 +581,11 @@ class AppUpdateManager(
             release: AppReleaseInfo?,
             currentVersion: SemanticVersion,
             currentVersionName: String,
+            currentVersionCode: Long = 0L,
         ): AppUpdateCheckState = when {
             release == null -> AppUpdateCheckState.Error("Latest release metadata is invalid or has no canonical APK")
+            release.manifest != null && currentVersionCode > 0L && release.manifest.versionCode <= currentVersionCode ->
+                AppUpdateCheckState.UpToDate(currentVersionName)
             release.version.isNewerThan(currentVersion) -> AppUpdateCheckState.UpdateAvailable(release)
             else -> AppUpdateCheckState.UpToDate(currentVersionName)
         }

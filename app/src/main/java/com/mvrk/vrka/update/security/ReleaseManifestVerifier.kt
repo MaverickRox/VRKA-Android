@@ -46,6 +46,7 @@ class ReleaseManifestVerifier(
         expectedReleaseTag: String,
         currentTimeMillis: Long = System.currentTimeMillis(),
         publicKey: PGPPublicKey = loadPinnedPublicKey(),
+        allowOlderVersionCode: Boolean = false,
     ): ReleaseManifest {
         if (manifestBytes.isEmpty()) {
             throw ManifestValidationException("Release manifest payload is empty")
@@ -81,6 +82,7 @@ class ReleaseManifestVerifier(
             currentStoredRevision = currentStoredRevision,
             expectedReleaseTag = expectedReleaseTag,
             currentTimeMillis = currentTimeMillis,
+            allowOlderVersionCode = allowOlderVersionCode,
         )
 
         return manifest
@@ -207,6 +209,7 @@ class ReleaseManifestVerifier(
         currentStoredRevision: Long,
         expectedReleaseTag: String,
         currentTimeMillis: Long = System.currentTimeMillis(),
+        allowOlderVersionCode: Boolean = false,
     ) {
         if (manifest.schema != ReleaseManifest.CURRENT_SCHEMA) {
             throw ManifestValidationException("Unsupported manifest schema: ${manifest.schema}")
@@ -223,7 +226,8 @@ class ReleaseManifestVerifier(
         if (manifest.releaseTag != expectedReleaseTag) {
             throw ManifestValidationException("Release tag mismatch: manifest '${manifest.releaseTag}' != expected '$expectedReleaseTag'")
         }
-        if (manifest.applicationId != currentInstalledPackage) {
+        val normalizedInstalledPackage = currentInstalledPackage.removeSuffix(".debug")
+        if (manifest.applicationId != normalizedInstalledPackage) {
             throw ManifestValidationException("Application ID mismatch: manifest '${manifest.applicationId}' != installed '$currentInstalledPackage'")
         }
 
@@ -233,7 +237,7 @@ class ReleaseManifestVerifier(
         }
 
         // Anti-downgrade: versionCode must be greater than or equal to current (and for updates, strictly greater than installed)
-        if (manifest.versionCode < currentInstalledVersionCode) {
+        if (!allowOlderVersionCode && manifest.versionCode < currentInstalledVersionCode) {
             throw ManifestValidationException("Version code downgrade rejected: ${manifest.versionCode} < installed $currentInstalledVersionCode")
         }
 

@@ -648,6 +648,22 @@ class ReleaseManifestVerifierTest {
             )
         }
         assertTrue(downgradeErr.message!!.contains("downgrade rejected"))
+
+        // When checking for available updates, allowOlderVersionCode=true permits verifying the remote manifest
+        // without throwing a downgrade exception, so UI can report "Up to date"
+        val parsedOlder = pinnedVerifier.verifyAndParseManifest(
+            manifestBytes = manifestBytes,
+            signatureBytes = signatureBytes,
+            currentInstalledPackage = "com.mvrk.vrka",
+            currentInstalledVersionCode = 50103L,
+            currentStoredRevision = 4L,
+            expectedReleaseTag = "v5.1.2",
+            currentTimeMillis = issuedEpoch + 1_000L,
+            publicKey = pinnedPublicKey,
+            allowOlderVersionCode = true,
+        )
+        assertEquals("v5.1.2", parsedOlder.releaseTag)
+        assertEquals(50102L, parsedOlder.versionCode)
     }
 
     @Test
