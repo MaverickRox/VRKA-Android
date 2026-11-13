@@ -1,4 +1,26 @@
-# v5.1.4 Release Provenance
+# v5.1.5 Release Provenance
+
+## Canonical v5.1.5 objects
+
+| Object | Value |
+|---|---|
+| Release tag | `v5.1.5` |
+| Annotated tag target | `c8ea646131634ecad6c6c941fb14b8f5f3d46d47` (direct `tag == source_commit`) |
+| APK build source commit (`C1`) | `c8ea646131634ecad6c6c941fb14b8f5f3d46d47` |
+| Tag message | `VRKA Android 5.1.5` |
+| Version | `5.1.5` / `50105` |
+| APK | `VRKA-Android-v5.1.5.apk` |
+| APK size | `155408523` bytes |
+| APK SHA-256 | `cb61a6ba2f9ae2994c6c8bc9aa2d6afaacf325529adaa813739bfdece32e7c6b` |
+| Manifest | `VRKA-Android-v5.1.5.manifest.json` (`metadata_revision` `8`) |
+| Manifest SHA-256 | `6527bc3041cf3ada52a43f100bc13a7bfcce38f0478b550ee0e36bc62ea10f73` |
+| Signature | `VRKA-Android-v5.1.5.manifest.json.asc` |
+| Signature SHA-256 | `9ccf3ac0943a857df1efcbdc6a32084744a8cd563a40efbcdd88f8e43ebc8f6d` |
+| Checksums | `SHA256SUMS` |
+
+---
+
+# Historical: v5.1.4 Release Provenance
 
 ## Canonical v5.1.4 objects
 

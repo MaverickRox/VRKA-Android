@@ -2,10 +2,10 @@
 
 ## Verified architecture
 
-| Item | Current v5.1.3 state |
+| Item | Current v5.1.5 state |
 |---|---|
 | Android APK signing | Production `release` build requires explicit signing properties; RSA 4096-bit certificate SHA-256 `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`; APK Signature Scheme v2 |
-| Updater trust anchor | Pinned OpenPGP public key in `app/src/main/res/raw/vrka_release_pubkey.asc`; fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`; RSA 4096-bit |
+| Updater trust anchor | Pinned OpenPGP public key in `app/src/main/res/raw/vrka_release_pubkey.asc`; fingerprint `71165A658B3A8612AC2568C6D519380BEBA1B9F7`; RSA 4096-bit (self-asserted User ID `<security@vrka.org>`; domain/mailbox ownership requires external maintainer verification) |
 | Manifest authentication | Detached OpenPGP signature over a versioned release manifest; SHA-2 digest allowlist, RSA-only key, hashed issuer fingerprint matching the pinned key |
 | Update authorization | Signed manifest binds version, version code, release tag, APK size, APK SHA-256, signing-certificate SHA-256, expiration, and metadata revision; anti-rollback and anti-freeze checks run before download |
 | APK verification | Size, SHA-256, package/version, certificate, and signing scheme are checked before installation |
@@ -47,7 +47,7 @@ installed clients reject the new key. The safe transition is:
 5. Revoke K1 through a signed revocation statement. Preserve the transition statement and old
    release evidence for audit.
 
-No rotation is performed in this task. Existing v5.1.3 clients have no dual-anchor support, so a
+No rotation is performed in this task. Existing v5.1.3–v5.1.5 clients have no dual-anchor support, so a
 future rotation requires a **transition application release** signed by the old APK key. Users who
 skip the transition release must install a full transition APK manually; the app cannot upgrade
 across a changed APK signing identity without the Android signing lineage or a fresh install.
@@ -60,7 +60,7 @@ across a changed APK signing identity without the Android signing lineage or a f
 - A new APK signing key without a valid lineage behaves as a different application to Android;
   affected users must uninstall/reinstall or use a separately distributed migration package,
   which may lose app data.
-- Test rotations on an emulator with an existing installation before publishing. v5.1.3 has not
+- Test rotations on an emulator with an existing installation before publishing. v5.1.3–v5.1.5 have not
   undergone a key rotation.
 
 ## Compromise and emergency response

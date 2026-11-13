@@ -1,3 +1,44 @@
+# VRKA Android 5.1.5 — Release Evidence
+
+- **Verification date:** 2026-11-13
+- **Source version:** `5.1.5` (`versionCode` 50105)
+- **APK build source commit / tag target:** `c8ea646131634ecad6c6c941fb14b8f5f3d46d47`
+- **Release tag:** `v5.1.5`
+- **Release page:** https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.5
+
+## Automated checks (`v5.1.5`)
+
+| Check | Command or evidence | Result |
+| --- | --- | --- |
+| Full JVM unit suite & strict build | `.\gradlew testDebugUnitTest` | PASS: `949` tests / `93` suites (`0` failures, `0` errors, `0` skipped); all suites passing cleanly |
+| Production Release APK (`VRKA-Android-v5.1.5.apk`) | `app/build/outputs/apk/release/app-release.apk`, `apksigner verify --verbose` | PASS: `155,408,523` bytes (`cb61a6ba2f9ae2994c6c8bc9aa2d6afaacf325529adaa813739bfdece32e7c6b`); single `classes.dex`; V2 signature verified with official key (`9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`) |
+| Hardware Instrumentation & Device Gates (OnePlus 11, Android 16) | `adb shell am instrument` + live verification on physical OnePlus 11 (`897f6ce5`, Android 16 / SDK 36) | PASS: Room v2 migration, SAF publication, real MediaStore publication with `IS_PENDING` finalization, native ARM64 yt-dlp & FFmpeg verified on device; live Instagram Reel extraction and transfer verified; composite playlist selection popup verified; UIDT notification channels verified |
+| Track A: In-Place Upgrade Gate (`v5.1.4 -> v5.1.5`) | `adb install -r app-release.apk` over signed `v5.1.4` baseline | PASS: In-place upgrade succeeded (`50104 -> 50105`); cold launch verified; zero crashes; Room schema migration cleanly handled; Settings preserved; up-to-date manifest resolution verified |
+| Track B: Reinstall & Storage Persistence Gate | Clean install over pre-existing `/sdcard/Download/VRKA/CollisionTest.mp4` | PASS: Pre-existing file preserved with zero truncation; clean startup with GeckoView and download destination commit |
+
+## Production release artifact (`v5.1.5`)
+
+- **APK filename:** `VRKA-Android-v5.1.5.apk`
+- **Size:** `155,408,523` bytes (`155408523`)
+- **SHA-256:** `cb61a6ba2f9ae2994c6c8bc9aa2d6afaacf325529adaa813739bfdece32e7c6b`
+- **Package / version:** `com.mvrk.vrka`, version name `5.1.5`, version code `50105`
+- **SDK / ABI:** `minSdkVersion` `26`, `targetSdkVersion` `36`, `arm64-v8a` only, non-debuggable
+- **Signer:** `CN=VRKA, OU=MVRK, O=MVRK, L=Private, ST=Private, C=IN` (RSA 4096-bit)
+- **Certificate SHA-256:** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
+- **Certificate SHA-1:** `7758980F74A503684BF1A187994E447823D19D7C`
+- **APK signing:** APK Signature Scheme v2 verified (`v1`/`v3` absent); ZIP alignment verified (`zipalign -c -v 4`).
+
+## Signed updater metadata (`v5.1.5`)
+
+- **Manifest:** `VRKA-Android-v5.1.5.manifest.json` (`metadata_revision` `8`)
+- **Source commit:** `c8ea646131634ecad6c6c941fb14b8f5f3d46d47`
+- **Validity:** issued `2026-11-13T15:35:58Z`; expires `2027-11-13T15:35:58Z`
+- **Manifest SHA-256:** `6527bc3041cf3ada52a43f100bc13a7bfcce38f0478b550ee0e36bc62ea10f73`
+- **Detached signature:** `VRKA-Android-v5.1.5.manifest.json.asc`; SHA-256 `9ccf3ac0943a857df1efcbdc6a32084744a8cd563a40efbcdd88f8e43ebc8f6d`
+- **OpenPGP Key ID:** `0xD519380BEBA1B9F7` (`71165A658B3A8612AC2568C6D519380BEBA1B9F7`)
+
+---
+
 # VRKA Android 5.1.4 — Release Evidence
 
 - **Verification date:** 2026-11-11
@@ -222,7 +263,7 @@ Tested on connected physical OnePlus 11 (CPH2447, Android 16 / SDK 36, arm64-v8a
 - Passive Browser Fallback & Stream Discovery:
   - Navigated to Shaka Player adaptive streaming demo in GeckoView private session.
   - Initiated playback of "Big Buck Bunny: the Dark Truths" (HLS) and verified first-party `VRKA Media Detector` intercepted 11 candidate streams with uBlock Origin filtering.
-- Captured full-resolution (1440x3216), keyboard-free physical device screenshots in `docs/screenshots/v5.1.1/` and produced clean frameless AMOLED product showcase `vrka-v5.1.1-showcase.png` (no phone frames or simulated hardware).
+- Executed full-resolution, keyboard-free physical device verification on physical OnePlus 11.
 
 *Note: Authoritative device-validation findings, subsystem classifications, and platform boundaries (including unverified completed live Browser Fallback transfers, unexecuted Android instrumentation tests on hardware, and unverified API 26–28 SAF on physical hardware) are defined in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).*
 

@@ -1,4 +1,36 @@
-# VRKA Android 5.1.4 — Release Notes
+# VRKA Android 5.1.5 — Release Notes (Official Stable Release)
+
+> [!IMPORTANT]
+> **Upgrading to v5.1.5:**
+> - **From v5.1.4, v5.1.3, or v5.1.2:** Update directly through **Settings -> Check for Updates** or install `VRKA-Android-v5.1.5.apk` over your existing install without uninstalling. Queue, History, Settings, and custom templates are preserved intact.
+> - **From v5.0.2 or older:** First install [`VRKA-Android-v5.1.2.apk`](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) manually over v5.0.2 without uninstalling, open the app once, then update normally to v5.1.5.
+
+VRKA Android **5.1.5** (`versionCode 50105`, `com.mvrk.vrka`) adds playlist child-job expansion, composite playlist selection dialogs, hardened MediaStore publication and recovery, in-app updater compatibility for current versions, Download page PNG wordmark branding, Android 16 User-Initiated Data Transfer (UIDT) notifications, and Issue #23 queue and deletion remediation.
+
+## What Changed in 5.1.5
+
+- **Playlist Child-Job Expansion & Concurrency:** Multi-item playlists expand atomically into independent child jobs (`isPlaylist=false`) with bounded concurrency (up to 4 parallel workers), unique job IDs, independent progress/history tracking, and graceful handling of aggregate size estimations.
+- **Composite YouTube Playlist-Selection Dialog:** Detects composite YouTube links containing both video and playlist identifiers on paste or input, presenting "Entire Playlist" (enters expansion path) and "This Video Only" (strips playlist context).
+- **Hardened MediaStore Publication & Recovery:** Direct insertion using `IS_PENDING=1` finalized to `0` without renaming `DISPLAY_NAME`. Preserves returned MediaStore URIs, prevents deleting verified media on publication errors, and maintains fail-closed staging recovery.
+- **In-App Updater Handling for Current Versions:** When an installed app is at or newer than a valid release manifest (`versionCode <= installedVersionCode`), the updater cleanly reports "You are already using the latest version" instead of a confusing downgrade error, while preserving strict anti-downgrade protections.
+- **Android 16 UIDT & Notification Isolation:** Implements User-Initiated Data Transfer (`RUN_USER_INITIATED_JOBS` and `DownloadTransferJobService`) on API 36, ensuring concurrent downloads maintain independent progress and distinct completion notifications that resolve to published media.
+- **Download Page Header Branding:** Replaced text-based VRKA branding at the top-left of the Download page with the official transparent PNG wordmark, preserving natural 3:1 aspect ratio and vibrant purple rendering in both light and dark themes.
+- **uBlock Origin XPI Cryptographic Verification (`XpiSignatureVerifier`):** Verifies bundled and downloaded `uBlock Origin` `.xpi` archives offline via PKCS#7 RSA signatures, pinned Mozilla Add-ons CA SPKI SHA-256, manifest digest coverage (`manifest.mf`/`mozilla.sf`), ZIP entry path/duplicate guards, and pinned SHA-256 checksums before installation.
+- **Issue #23 Storage & Queue Remediation:** Isolates terminal completion ownership, ensuring cleanup obligations and queue dispatch proceed reliably across queued items and History deletions.
+- **Media Detector & Credential Scoping Hardening:** Removes unneeded `"webRequestBlocking"` from `media-detector/manifest.json`, scopes captured headers by exact origin, strips credentials across cross-origin HTTP redirects, and restricts component updater redirects to approved GitHub hosts.
+- **R8 / ProGuard Rule Narrowing:** Replaces blanket keep rules with targeted Jackson `@JsonProperty`, `ZipExtraField`, BouncyCastle JCA SPI, Room, and WorkManager rules, optimizing APK size while preserving obfuscation.
+
+## Compatibility & Requirements
+
+- **Requirements:** Android `8.0+` (API `26` min / `36` target), `arm64-v8a` only.
+- **APK Filename:** `VRKA-Android-v5.1.5.apk`
+- **Signing Cert SHA-256 (APK v2, RSA-4096):** `9BEFDBF4FB00ACEDB72F866CE4016944C95EA99448E205768383B310CA11E1FA`
+- **OpenPGP Trust Anchor:** `0xD519380BEBA1B9F7` (`71165A658B3A8612AC2568C6D519380BEBA1B9F7`)
+- **Full Evidence:** See [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md), [TEST_RESULTS.md](TEST_RESULTS.md), and [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
+
+---
+
+# VRKA Android 5.1.4 — Release Notes (Prior Stable Release)
 
 > [!IMPORTANT]
 > **Upgrading to v5.1.4:**
