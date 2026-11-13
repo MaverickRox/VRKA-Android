@@ -286,7 +286,8 @@ internal fun JobsScreen(
 
     if (singleDeleteTarget != null) {
         val target = singleDeleteTarget!!
-        val hasFiles = target.outputUris.isNotEmpty() && target.state == JobState.DONE
+        val hasFiles = target.outputUris.isNotEmpty() &&
+            (target.state == JobState.DONE || target.state == JobState.FAILED)
         AlertDialog(
             onDismissRequest = { singleDeleteTarget = null },
             shape = RoundedCornerShape(24.dp),
@@ -510,7 +511,7 @@ internal fun JobsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = stringResource(R.string.dialog_clear_all_desc, jobs.size),
+                        text = stringResource(R.string.dialog_clear_all_desc, displayCount),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Row(

@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
@@ -108,18 +110,72 @@ class ShareReceiverActivity : ComponentActivity() {
         val manager = vrkaApplication.downloads
         val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
         val link = sharedLink
+        fun handleEnqueueAction(req: DownloadRequest, est: SizeEstimate?) {
+            val isPurePlaylist = PlaylistRouting.isPurePlaylistUrl(req.url)
+            val targetReq = when {
+                isPurePlaylist -> req.copy(isPlaylist = true)
+                !req.isPlaylist && PlaylistRouting.isVideoWithPlaylistContext(req.url) ->
+                    req.copy(url = PlaylistRouting.stripPlaylistContext(req.url))
+                else -> req
+            }
+            lifecycleScope.launch {
+                if (targetReq.isPlaylist) {
+                    val items = manager.expandPlaylist(targetReq)
+                    if (!items.isNullOrEmpty()) {
+                        val playlistGroupId = UUID.randomUUID().toString()
+                        val batchItems = items.map { item ->
+                            targetReq.copy(
+                                url = item.url,
+                                isPlaylist = false,
+                                playlistItemIndex = item.playlistItemIndex,
+                                playlistItemCount = item.playlistItemCount,
+                                playlistItemId = item.playlistItemId,
+                                playlistGroupId = playlistGroupId,
+                            ) to item.estimate
+                        }
+                        when (val result = manager.enqueueBatch(batchItems, playlistGroupId)) {
+                            is BatchEnqueueResult.Rejected -> Toast.makeText(this@ShareReceiverActivity, result.message, Toast.LENGTH_LONG).show()
+                            is BatchEnqueueResult.Accepted -> {}
+                        }
+                        return@launch
+                    } else {
+                        Toast.makeText(this@ShareReceiverActivity, "Unable to load playlist items. Please check network connection.", Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
+                }
+                val result = manager.enqueue(targetReq, est)
+                if (result is EnqueueResult.Rejected) {
+                    Toast.makeText(this@ShareReceiverActivity, result.message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
         val notificationLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) {
             val download = pendingDownload
             pendingDownload = null
             if (download != null) {
-                val result = manager.enqueue(download.request, download.estimate)
-                if (result is EnqueueResult.Rejected) {
-                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
-                }
+                handleEnqueueAction(download.request, download.estimate)
             }
             finishAndRemoveTask()
+        }
+
+        var pendingPlaylistChoiceRequest by remember { mutableStateOf<Pair<DownloadRequest, SizeEstimate?>?>(null) }
+
+        fun dispatchDownload(downloadRequest: DownloadRequest, estimate: SizeEstimate?) {
+            val needsPermission =
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        this@ShareReceiverActivity,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    ) != PackageManager.PERMISSION_GRANTED
+            if (needsPermission) {
+                pendingDownload = PendingDownload(downloadRequest, estimate)
+                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                handleEnqueueAction(downloadRequest, estimate)
+            }
         }
 
         VrkaTheme(
@@ -138,24 +194,34 @@ class ShareReceiverActivity : ComponentActivity() {
                         repository = manager.settingsRepository,
                         onEstimateSize = { downloadRequest, force -> manager.estimateSize(downloadRequest, force) },
                         onEnqueue = { downloadRequest, estimate ->
-                            val needsPermission =
-                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                                    ContextCompat.checkSelfPermission(
-                                        this@ShareReceiverActivity,
-                                        Manifest.permission.POST_NOTIFICATIONS,
-                                    ) != PackageManager.PERMISSION_GRANTED
-                            if (needsPermission) {
-                                pendingDownload = PendingDownload(downloadRequest, estimate)
-                                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            if (!downloadRequest.isPlaylist && PlaylistRouting.isVideoWithPlaylistContext(downloadRequest.url)) {
+                                pendingPlaylistChoiceRequest = downloadRequest to estimate
                             } else {
-                                val result = manager.enqueue(downloadRequest, estimate)
-                                if (result is EnqueueResult.Rejected) {
-                                    Toast.makeText(this@ShareReceiverActivity, result.message, Toast.LENGTH_LONG).show()
-                                }
+                                dispatchDownload(downloadRequest, estimate)
                             }
                         },
                         onDismiss = {
-                            if (pendingDownload == null) finishAndRemoveTask()
+                            if (pendingDownload == null && pendingPlaylistChoiceRequest == null) finishAndRemoveTask()
+                        },
+                    )
+                }
+
+                pendingPlaylistChoiceRequest?.let { (req, est) ->
+                    PlaylistChoiceDialog(
+                        url = req.url,
+                        onSelectPlaylist = {
+                            val playlistUrl = PlaylistRouting.extractPlaylistUrl(req.url) ?: req.url
+                            pendingPlaylistChoiceRequest = null
+                            dispatchDownload(req.copy(url = playlistUrl, isPlaylist = true), null)
+                        },
+                        onSelectSingleVideo = {
+                            val singleUrl = PlaylistRouting.stripPlaylistContext(req.url)
+                            pendingPlaylistChoiceRequest = null
+                            dispatchDownload(req.copy(url = singleUrl, isPlaylist = false), est)
+                        },
+                        onDismiss = {
+                            pendingPlaylistChoiceRequest = null
+                            finishAndRemoveTask()
                         },
                     )
                 }

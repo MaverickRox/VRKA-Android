@@ -7,6 +7,7 @@ import android.text.format.Formatter as AndroidFormatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -50,7 +51,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -109,6 +112,7 @@ internal fun HomeScreen(
     val estimateGate = remember { SizeEstimateGate() }
     var dialogSelectedUri by remember { mutableStateOf("") }
     var setAsDefaultChecked by remember { mutableStateOf(true) }
+    var pendingPlaylistChoiceUrl by remember { mutableStateOf<String?>(null) }
 
     // An estimate is only valid for the exact request that produced it. This prevents an
     // old 2160p callback from appearing after the user selects 1440p, and keeps the
@@ -145,7 +149,7 @@ internal fun HomeScreen(
         estimatePending = true
         val token = estimateGate.begin()
         scope.launch {
-            val result = runCatching { onEstimateSize(request, forceRefresh) }
+            val result = runCancellableCatching { onEstimateSize(request, forceRefresh) }
                 .getOrElse { SizeEstimate.unavailable("error") }
             // Reject metadata that belongs to an older selection or a dismissed dialog.
             if (!estimateGate.accepts(token)) return@launch
@@ -202,7 +206,12 @@ internal fun HomeScreen(
         customHeaders,
     ) {
         val normalized = url.trim()
-        if (!settings.showDownloadSizeConfirmation || !CustomCommandPolicy.isHttpUrl(normalized)) {
+        val targetUrl = if (!playlist && PlaylistRouting.isVideoWithPlaylistContext(normalized)) {
+            PlaylistRouting.stripPlaylistContext(normalized)
+        } else {
+            normalized
+        }
+        if (!settings.showDownloadSizeConfirmation || !CustomCommandPolicy.isHttpUrl(targetUrl)) {
             metadata = null
             return@LaunchedEffect
         }
@@ -211,7 +220,7 @@ internal fun HomeScreen(
         metadata = null
         delay(PREFLIGHT_DEBOUNCE_MS)
         val preview = DownloadRequest(
-            url = normalized,
+            url = targetUrl,
             mode = mode,
             quality = quality,
             prefer60Fps = prefer60Fps,
@@ -228,8 +237,8 @@ internal fun HomeScreen(
         )
         // The metadata view and the size estimate share one cached document, so this is not
         // a second extraction; whichever call arrives first owns the process.
-        metadata = runCatching { onLoadMetadata(preview) }.getOrNull()
-        runCatching { onEstimateSize(preview, false) }
+        metadata = runCancellableCatching { onLoadMetadata(preview) }.getOrNull()
+        runCancellableCatching { onEstimateSize(preview, false) }
     }
 
     fun confirmDownload() {
@@ -264,9 +273,45 @@ internal fun HomeScreen(
         dismissConfirmation()
     }
 
+    fun initiateDownload(targetUrl: String, targetIsPlaylist: Boolean) {
+        url = targetUrl
+        val customHeadersMap = HeaderValidation.parseHeaderPairs(customHeaders)
+        val req = DownloadRequest(
+            url = targetUrl,
+            mode = mode,
+            quality = quality,
+            prefer60Fps = prefer60Fps,
+            audioFormat = audioFormat,
+            mp3Bitrate = bitrate,
+            isPlaylist = targetIsPlaylist,
+            playlistStart = playlistStart.toIntOrNull(),
+            playlistEnd = playlistEnd.toIntOrNull(),
+            downloadSubtitles = subtitles,
+            automaticCaptions = automaticCaptions,
+            embedSubtitles = embedSubtitles,
+            subtitleLanguages = subtitleLanguages,
+            embedMetadata = embedMetadata,
+            embedThumbnail = embedThumbnail,
+            sponsorBlock = sponsorBlock,
+            sponsorCategories = sponsorCategories,
+            trimStart = trimStart,
+            trimEnd = trimEnd,
+            referer = referer.trim(),
+            origin = origin.trim(),
+            customHeaders = customHeadersMap,
+        )
+        val isLocationValid = OutputPublisher.isDestinationValid(context, settings.outputTreeUri)
+        val needsLocationPrompt = !settings.isDownloadLocationConfigured ||
+            settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME ||
+            !isLocationValid
+
+        beginConfirmation(req, needsLocationPrompt, isLocationValid)
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
@@ -275,13 +320,11 @@ internal fun HomeScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "VRKA",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
-                ),
-                color = VrkaTokens.Accent,
+            Image(
+                painter = painterResource(R.drawable.vrka_wordmark),
+                contentDescription = "VRKA",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.height(34.dp),
             )
         }
 
@@ -315,15 +358,22 @@ internal fun HomeScreen(
                 androidx.compose.foundation.text.BasicTextField(
                     value = url,
                     onValueChange = {
-                        url = it.trim()
+                        val previous = url
+                        val trimmed = it.trim()
+                        url = trimmed
                         validation = ""
+                        if (PlaylistRouting.isPurePlaylistUrl(trimmed)) {
+                            playlist = true
+                        } else if (PlaylistRouting.isVideoWithPlaylistContext(trimmed) && !playlist && trimmed.length > previous.length + 5) {
+                            pendingPlaylistChoiceUrl = trimmed
+                        }
                     },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(
                         color = VrkaTokens.TextPrimary,
                     ),
                     cursorBrush = androidx.compose.ui.graphics.SolidColor(VrkaTokens.AccentLight),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("url_input_field"),
                     decorationBox = { innerTextField ->
                         if (url.isEmpty()) {
                             Text(
@@ -364,17 +414,27 @@ internal fun HomeScreen(
                             val clipboard = context.getSystemService(
                                 Context.CLIPBOARD_SERVICE,
                             ) as ClipboardManager
-                            url = clipboard.primaryClip
+                            val pasted = clipboard.primaryClip
                                 ?.getItemAt(0)
                                 ?.coerceToText(context)
                                 ?.toString()
                                 ?.trim()
                                 .orEmpty()
                             validation = ""
+                            if (PlaylistRouting.isPurePlaylistUrl(pasted)) {
+                                url = pasted
+                                playlist = true
+                            } else if (!playlist && PlaylistRouting.isVideoWithPlaylistContext(pasted)) {
+                                url = pasted
+                                pendingPlaylistChoiceUrl = pasted
+                            } else {
+                                url = pasted
+                            }
                         },
                         shape = RoundedCornerShape(10.dp),
                         color = VrkaTokens.AccentContainer,
                         border = BorderStroke(1.dp, VrkaTokens.BorderActive),
+                        modifier = Modifier.testTag("paste_button"),
                     ) {
                         Text(
                             stringResource(R.string.btn_paste),
@@ -635,6 +695,14 @@ internal fun HomeScreen(
                     }
                     OptionToggle(stringResource(R.string.opt_playlist_range), playlist) { playlist = it }
                     if (playlist) {
+                        if (PlaylistRouting.isPurePlaylistUrl(url) && metadata == null) {
+                            Text(
+                                "Loading playlist items...",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                                color = VrkaTokens.AccentLight,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                            )
+                        }
                         Row(
                             modifier = Modifier.padding(top = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -876,6 +944,7 @@ internal fun HomeScreen(
             text = stringResource(R.string.btn_add_to_queue),
             iconRes = R.drawable.ic_download,
             enabled = url.isNotBlank(),
+            modifier = Modifier.testTag("download_button"),
             onClick = {
                 val issue = validateRequest(
                     context = context,
@@ -915,38 +984,11 @@ internal fun HomeScreen(
                     return@VrkaPrimaryButton
                 }
 
-                val customHeadersMap = HeaderValidation.parseHeaderPairs(customHeaders)
-                val rawReq = DownloadRequest(
-                    url = url,
-                    mode = mode,
-                    quality = quality,
-                    prefer60Fps = prefer60Fps,
-                    audioFormat = audioFormat,
-                    mp3Bitrate = bitrate,
-                    isPlaylist = playlist,
-                    playlistStart = playlistStart.toIntOrNull(),
-                    playlistEnd = playlistEnd.toIntOrNull(),
-                    downloadSubtitles = subtitles,
-                    automaticCaptions = automaticCaptions,
-                    embedSubtitles = embedSubtitles,
-                    subtitleLanguages = subtitleLanguages,
-                    embedMetadata = embedMetadata,
-                    embedThumbnail = embedThumbnail,
-                    sponsorBlock = sponsorBlock,
-                    sponsorCategories = sponsorCategories,
-                    trimStart = trimStart,
-                    trimEnd = trimEnd,
-                    referer = referer.trim(),
-                    origin = origin.trim(),
-                    customHeaders = customHeadersMap,
-                )
-                val req = rawReq
-                val isLocationValid = OutputPublisher.isDestinationValid(context, settings.outputTreeUri)
-                val needsLocationPrompt = !settings.isDownloadLocationConfigured ||
-                    settings.saveLocationMode == SaveLocationMode.ASK_EVERY_TIME ||
-                    !isLocationValid
-
-                beginConfirmation(req, needsLocationPrompt, isLocationValid)
+                if (!playlist && PlaylistRouting.isVideoWithPlaylistContext(url)) {
+                    pendingPlaylistChoiceUrl = url
+                    return@VrkaPrimaryButton
+                }
+                initiateDownload(url, playlist)
             },
         )
 
@@ -981,8 +1023,93 @@ internal fun HomeScreen(
             )
         }
 
+        pendingPlaylistChoiceUrl?.let { candidateUrl ->
+            PlaylistChoiceDialog(
+                url = candidateUrl,
+                onSelectPlaylist = {
+                    val playlistUrl = PlaylistRouting.extractPlaylistUrl(candidateUrl) ?: candidateUrl
+                    pendingPlaylistChoiceUrl = null
+                    initiateDownload(playlistUrl, targetIsPlaylist = true)
+                },
+                onSelectSingleVideo = {
+                    val singleVideoUrl = PlaylistRouting.stripPlaylistContext(candidateUrl)
+                    pendingPlaylistChoiceUrl = null
+                    initiateDownload(singleVideoUrl, targetIsPlaylist = false)
+                },
+                onDismiss = {
+                    val singleVideoUrl = PlaylistRouting.stripPlaylistContext(candidateUrl)
+                    pendingPlaylistChoiceUrl = null
+                    url = singleVideoUrl
+                },
+            )
+        }
+
         Spacer(Modifier.navigationBarsPadding().height(110.dp))
     }
+}
+
+@Composable
+internal fun PlaylistChoiceDialog(
+    url: String,
+    onSelectPlaylist: () -> Unit,
+    onSelectSingleVideo: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VrkaTokens.SurfaceElevated,
+        titleContentColor = VrkaTokens.TextPrimary,
+        textContentColor = VrkaTokens.TextSecondary,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Text(
+                "Playlist Detected",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = VrkaTokens.TextPrimary,
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "This video link belongs to a playlist. Would you like to download the entire playlist or only this specific video?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = VrkaTokens.TextSecondary,
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onSelectPlaylist,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = VrkaTokens.Accent,
+                    contentColor = Color.White,
+                ),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(
+                    "Entire Playlist",
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onSelectSingleVideo,
+                border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(
+                    "This Video Only",
+                    color = VrkaTokens.TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        },
+    )
 }
 
 @Composable
@@ -1036,6 +1163,8 @@ private fun OptionToggle(label: String, checked: Boolean, onChange: (Boolean) ->
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onChange(!checked) }
             .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -1073,7 +1202,7 @@ private fun CompactNumberField(
 }
 
 @Composable
-private fun DownloadConfirmationDialog(
+internal fun DownloadConfirmationDialog(
     request: DownloadRequest,
     estimate: SizeEstimate?,
     estimatePending: Boolean,
@@ -1203,6 +1332,23 @@ private fun DownloadConfirmationDialog(
                                         fontWeight = FontWeight.Bold,
                                         color = VrkaTokens.TextPrimary,
                                     )
+                                }
+                                request.isPlaylist || estimate?.detail?.startsWith("playlist") == true -> {
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        Text(
+                                            stringResource(R.string.estimate_playlist_per_item),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = VrkaTokens.TextPrimary,
+                                        )
+                                        Text(
+                                            stringResource(R.string.estimate_playlist_per_item_hint),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = VrkaTokens.TextSecondary,
+                                        )
+                                    }
                                 }
                                 else -> Column(
                                     verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -1394,4 +1540,9 @@ private fun parseTimestamp(value: String): Double? {
     if (parts.size == 3 && numbers[1] >= 60) return null
     return numbers.fold(0.0) { total, part -> total * 60 + part }
 }
+
+private inline fun <T> runCancellableCatching(block: () -> T): Result<T> =
+    runCatching(block).onFailure { error ->
+        if (error is kotlinx.coroutines.CancellationException) throw error
+    }
 

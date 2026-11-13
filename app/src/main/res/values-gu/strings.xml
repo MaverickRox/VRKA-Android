@@ -148,6 +148,8 @@
     <string name="estimate_approximate">અંદાજિત કદ</string>
     <string name="estimate_checking">કદ તપાસી રહ્યું છે…</string>
     <string name="estimate_exact">ચોક્કસ કદ</string>
+    <string name="estimate_playlist_per_item">દરેક આઇટમ મુજબ અંદાજિત</string>
+    <string name="estimate_playlist_per_item_hint">પ્લેલિસ્ટની આઇટમ્સ કતારમાં વ્યક્તિગત રીતે અંદાજવામાં આવશે અને ડાઉનલોડ થશે.</string>
     <string name="estimate_skip_future">ડાઉનલોડ પહેલાં કદના અંદાજો ન દર્શાવો</string>
     <string name="estimate_unavailable">કદ ઉપલબ્ધ નથી</string>
     <string name="estimate_unavailable_hint">VRKA આ લિંક માટે કદ વાંચી શક્યું નથી. તમે ફરી પ્રયાસ કરી શકો છો અથવા તેમ છતાં ડાઉનલોડ કરી શકો છો.</string>

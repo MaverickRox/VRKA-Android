@@ -604,6 +604,19 @@ private fun ShareEstimateCard(
                         color = VrkaTokens.TextPrimary,
                     )
                 }
+                estimate?.detail?.startsWith("playlist") == true -> {
+                    Text(
+                        stringResource(R.string.estimate_playlist_per_item),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VrkaTokens.TextPrimary,
+                    )
+                    Text(
+                        stringResource(R.string.estimate_playlist_per_item_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VrkaTokens.TextSecondary,
+                    )
+                }
                 else -> {
                     Text(
                         stringResource(R.string.estimate_unavailable),

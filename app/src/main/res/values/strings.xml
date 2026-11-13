@@ -148,6 +148,8 @@ Are you sure you want to enable concurrent downloads?</string>
     <string name="estimate_approximate">Approximate size</string>
     <string name="estimate_checking">Checking size…</string>
     <string name="estimate_exact">Exact size</string>
+    <string name="estimate_playlist_per_item">Estimated per item</string>
+    <string name="estimate_playlist_per_item_hint">Playlist items will be estimated and downloaded individually in queue.</string>
     <string name="estimate_skip_future">Don\'t show size estimates before downloads</string>
     <string name="estimate_unavailable">Size unavailable</string>
     <string name="estimate_unavailable_hint">VRKA could not read a size for this link. You can retry or download anyway.</string>
