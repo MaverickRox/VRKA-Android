@@ -1,0 +1,384 @@
+androidx.activity:activity-compose:1.13.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.activity:activity-compose:{strictly | NO_POM
+androidx.activity:activity-ktx:1.13.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.activity:activity-ktx:{strictly | NO_POM
+androidx.activity:activity:1.13.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.activity:activity:{strictly | NO_POM
+androidx.annotation:annotation-experimental:1.6.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.annotation:annotation-experimental:{strictly | NO_POM
+androidx.annotation:annotation-jvm:1.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.annotation:annotation-jvm:{strictly | NO_POM
+androidx.annotation:annotation:1.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.annotation:annotation:{strictly | NO_POM
+androidx.appcompat:appcompat-resources:1.4.2 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.appcompat:appcompat-resources:{strictly | NO_POM
+androidx.appcompat:appcompat:1.4.2 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.appcompat:appcompat:{strictly | NO_POM
+androidx.arch.core:core-common:2.2.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.arch.core:core-common:{strictly | NO_POM
+androidx.arch.core:core-runtime:2.2.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.arch.core:core-runtime:{strictly | NO_POM
+androidx.autofill:autofill:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.autofill:autofill:{strictly | NO_POM
+androidx.collection:collection-jvm:1.6.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.collection:collection-jvm:{strictly | NO_POM
+androidx.collection:collection-ktx:1.6.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.collection:collection-ktx:{strictly | NO_POM
+androidx.collection:collection:1.6.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.collection:collection:{strictly | NO_POM
+androidx.compose.animation:animation-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.animation:animation-android:{strictly | NO_POM
+androidx.compose.animation:animation-core-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.animation:animation-core-android:{strictly | NO_POM
+androidx.compose.animation:animation-core:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.animation:animation-core:{strictly | NO_POM
+androidx.compose.animation:animation:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.animation:animation:{strictly | NO_POM
+androidx.compose.foundation:foundation-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.foundation:foundation-android:{strictly | NO_POM
+androidx.compose.foundation:foundation-layout-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.foundation:foundation-layout-android:{strictly | NO_POM
+androidx.compose.foundation:foundation-layout:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.foundation:foundation-layout:{strictly | NO_POM
+androidx.compose.foundation:foundation:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.foundation:foundation:{strictly | NO_POM
+androidx.compose.material3:material3-android:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.material3:material3-android:{strictly | NO_POM
+androidx.compose.material3:material3:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.material3:material3:{strictly | NO_POM
+androidx.compose.material:material-ripple-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.material:material-ripple-android:{strictly | NO_POM
+androidx.compose.material:material-ripple:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.material:material-ripple:{strictly | NO_POM
+androidx.compose.runtime:runtime-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.runtime:runtime-android:{strictly | NO_POM
+androidx.compose.runtime:runtime-annotation-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.runtime:runtime-annotation-android:{strictly | NO_POM
+androidx.compose.runtime:runtime-annotation:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.runtime:runtime-annotation:{strictly | NO_POM
+androidx.compose.runtime:runtime-retain-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.runtime:runtime-retain-android:{strictly | NO_POM
+androidx.compose.runtime:runtime-retain:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.runtime:runtime-retain:{strictly | NO_POM
+androidx.compose.runtime:runtime-saveable-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.runtime:runtime-saveable-android:{strictly | NO_POM
+androidx.compose.runtime:runtime-saveable:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.runtime:runtime-saveable:{strictly | NO_POM
+androidx.compose.runtime:runtime:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.runtime:runtime:{strictly | NO_POM
+androidx.compose.ui:ui-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-android:{strictly | NO_POM
+androidx.compose.ui:ui-geometry-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-geometry-android:{strictly | NO_POM
+androidx.compose.ui:ui-geometry:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-geometry:{strictly | NO_POM
+androidx.compose.ui:ui-graphics-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-graphics-android:{strictly | NO_POM
+androidx.compose.ui:ui-graphics:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-graphics:{strictly | NO_POM
+androidx.compose.ui:ui-text-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-text-android:{strictly | NO_POM
+androidx.compose.ui:ui-text:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-text:{strictly | NO_POM
+androidx.compose.ui:ui-tooling-preview-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-tooling-preview-android:{strictly | NO_POM
+androidx.compose.ui:ui-tooling-preview:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-tooling-preview:{strictly | NO_POM
+androidx.compose.ui:ui-unit-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-unit-android:{strictly | NO_POM
+androidx.compose.ui:ui-unit:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-unit:{strictly | NO_POM
+androidx.compose.ui:ui-util-android:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-util-android:{strictly | NO_POM
+androidx.compose.ui:ui-util:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui-util:{strictly | NO_POM
+androidx.compose.ui:ui:1.11.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose.ui:ui:{strictly | NO_POM
+androidx.compose:compose-bom:2026.06.00 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.compose:compose-bom:{strictly | NO_POM
+androidx.concurrent:concurrent-futures-ktx:1.2.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.concurrent:concurrent-futures-ktx:{strictly | NO_POM
+androidx.concurrent:concurrent-futures:1.2.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.concurrent:concurrent-futures:{strictly | NO_POM
+androidx.core:core-ktx:1.19.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.core:core-ktx:{strictly | NO_POM
+androidx.core:core-viewtree:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.core:core-viewtree:{strictly | NO_POM
+androidx.core:core:1.19.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.core:core:{strictly | NO_POM
+androidx.cursoradapter:cursoradapter:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.cursoradapter:cursoradapter:{strictly | NO_POM
+androidx.customview:customview-poolingcontainer:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.customview:customview-poolingcontainer:{strictly | NO_POM
+androidx.customview:customview:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.customview:customview:{strictly | NO_POM
+androidx.datastore:datastore-android:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-android:{strictly | NO_POM
+androidx.datastore:datastore-core-android:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-core-android:{strictly | NO_POM
+androidx.datastore:datastore-core-okio-jvm:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-core-okio-jvm:{strictly | NO_POM
+androidx.datastore:datastore-core-okio:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-core-okio:{strictly | NO_POM
+androidx.datastore:datastore-core:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-core:{strictly | NO_POM
+androidx.datastore:datastore-preferences-android:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-preferences-android:{strictly | NO_POM
+androidx.datastore:datastore-preferences-core-android:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-preferences-core-android:{strictly | NO_POM
+androidx.datastore:datastore-preferences-core:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-preferences-core:{strictly | NO_POM
+androidx.datastore:datastore-preferences-external-protobuf:1.2.1 | BSD-3-Clause (https://opensource.org/licenses/BSD-3-Clause)
+androidx.datastore:datastore-preferences-external-protobuf:{strictly | NO_POM
+androidx.datastore:datastore-preferences-proto:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-preferences-proto:{strictly | NO_POM
+androidx.datastore:datastore-preferences:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore-preferences:{strictly | NO_POM
+androidx.datastore:datastore:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.datastore:datastore:{strictly | NO_POM
+androidx.documentfile:documentfile:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.documentfile:documentfile:{strictly | NO_POM
+androidx.drawerlayout:drawerlayout:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.drawerlayout:drawerlayout:{strictly | NO_POM
+androidx.dynamicanimation:dynamicanimation:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.dynamicanimation:dynamicanimation:{strictly | NO_POM
+androidx.emoji2:emoji2-views-helper:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.emoji2:emoji2-views-helper:{strictly | NO_POM
+androidx.emoji2:emoji2:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.emoji2:emoji2:{strictly | NO_POM
+androidx.exifinterface:exifinterface:1.3.6 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.exifinterface:exifinterface:{strictly | NO_POM
+androidx.fragment:fragment:1.3.6 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.fragment:fragment:{strictly | NO_POM
+androidx.graphics:graphics-path:1.0.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.graphics:graphics-path:{strictly | NO_POM
+androidx.interpolator:interpolator:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.interpolator:interpolator:{strictly | NO_POM
+androidx.legacy:legacy-support-core-utils:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.legacy:legacy-support-core-utils:{strictly | NO_POM
+androidx.lifecycle:lifecycle-common-java8:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-common-java8:{strictly | NO_POM
+androidx.lifecycle:lifecycle-common-jvm:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-common-jvm:{strictly | NO_POM
+androidx.lifecycle:lifecycle-common:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-common:{strictly | NO_POM
+androidx.lifecycle:lifecycle-livedata-core-ktx:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-livedata-core-ktx:{strictly | NO_POM
+androidx.lifecycle:lifecycle-livedata-core:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-livedata-core:{strictly | NO_POM
+androidx.lifecycle:lifecycle-livedata-ktx:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-livedata-ktx:{strictly | NO_POM
+androidx.lifecycle:lifecycle-livedata:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-livedata:{strictly | NO_POM
+androidx.lifecycle:lifecycle-process:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-process:{strictly | NO_POM
+androidx.lifecycle:lifecycle-runtime-android:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-runtime-android:{strictly | NO_POM
+androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-runtime-compose-android:{strictly | NO_POM
+androidx.lifecycle:lifecycle-runtime-compose:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-runtime-compose:{strictly | NO_POM
+androidx.lifecycle:lifecycle-runtime-ktx-android:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-runtime-ktx-android:{strictly | NO_POM
+androidx.lifecycle:lifecycle-runtime-ktx:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-runtime-ktx:{strictly | NO_POM
+androidx.lifecycle:lifecycle-runtime:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-runtime:{strictly | NO_POM
+androidx.lifecycle:lifecycle-service:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-service:{strictly | NO_POM
+androidx.lifecycle:lifecycle-viewmodel-android:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-viewmodel-android:{strictly | NO_POM
+androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-viewmodel-compose-android:{strictly | NO_POM
+androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-viewmodel-compose:{strictly | NO_POM
+androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-viewmodel-ktx:{strictly | NO_POM
+androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-viewmodel-savedstate-android:{strictly | NO_POM
+androidx.lifecycle:lifecycle-viewmodel-savedstate:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-viewmodel-savedstate:{strictly | NO_POM
+androidx.lifecycle:lifecycle-viewmodel:2.11.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.lifecycle:lifecycle-viewmodel:{strictly | NO_POM
+androidx.loader:loader:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.loader:loader:{strictly | NO_POM
+androidx.localbroadcastmanager:localbroadcastmanager:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.localbroadcastmanager:localbroadcastmanager:{strictly | NO_POM
+androidx.media3:media3-common:1.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.media3:media3-common:{strictly | NO_POM
+androidx.media3:media3-container:1.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.media3:media3-container:{strictly | NO_POM
+androidx.media3:media3-database:1.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.media3:media3-database:{strictly | NO_POM
+androidx.media3:media3-datasource:1.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.media3:media3-datasource:{strictly | NO_POM
+androidx.media3:media3-decoder:1.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.media3:media3-decoder:{strictly | NO_POM
+androidx.media3:media3-exoplayer-dash:1.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.media3:media3-exoplayer-dash:{strictly | NO_POM
+androidx.media3:media3-exoplayer-hls:1.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.media3:media3-exoplayer-hls:{strictly | NO_POM
+androidx.media3:media3-exoplayer:1.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.media3:media3-exoplayer:{strictly | NO_POM
+androidx.media3:media3-extractor:1.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.media3:media3-extractor:{strictly | NO_POM
+androidx.navigationevent:navigationevent-android:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.navigationevent:navigationevent-android:{strictly | NO_POM
+androidx.navigationevent:navigationevent-compose-android:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.navigationevent:navigationevent-compose-android:{strictly | NO_POM
+androidx.navigationevent:navigationevent-compose:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.navigationevent:navigationevent-compose:{strictly | NO_POM
+androidx.navigationevent:navigationevent:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.navigationevent:navigationevent:{strictly | NO_POM
+androidx.paging:paging-common-android:3.5.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.paging:paging-common-android:{strictly | NO_POM
+androidx.paging:paging-common-ktx:3.5.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.paging:paging-common-ktx:{strictly | NO_POM
+androidx.paging:paging-common:3.5.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.paging:paging-common:{strictly | NO_POM
+androidx.paging:paging-compose-android:3.5.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.paging:paging-compose-android:{strictly | NO_POM
+androidx.paging:paging-compose:3.5.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.paging:paging-compose:{strictly | NO_POM
+androidx.paging:paging-runtime:3.5.3 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.paging:paging-runtime:{strictly | NO_POM
+androidx.print:print:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.print:print:{strictly | NO_POM
+androidx.profileinstaller:profileinstaller:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.profileinstaller:profileinstaller:{strictly | NO_POM
+androidx.recyclerview:recyclerview:1.2.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.recyclerview:recyclerview:{strictly | NO_POM
+androidx.resourceinspection:resourceinspection-annotation:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.resourceinspection:resourceinspection-annotation:{strictly | NO_POM
+androidx.room:room-common-jvm:2.8.5 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.room:room-common-jvm:{strictly | NO_POM
+androidx.room:room-common:2.8.5 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.room:room-common:{strictly | NO_POM
+androidx.room:room-ktx:2.8.5 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.room:room-ktx:{strictly | NO_POM
+androidx.room:room-paging-android:2.8.5 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.room:room-paging-android:{strictly | NO_POM
+androidx.room:room-paging:2.8.5 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.room:room-paging:{strictly | NO_POM
+androidx.room:room-runtime-android:2.8.5 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.room:room-runtime-android:{strictly | NO_POM
+androidx.room:room-runtime:2.8.5 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.room:room-runtime:{strictly | NO_POM
+androidx.savedstate:savedstate-android:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.savedstate:savedstate-android:{strictly | NO_POM
+androidx.savedstate:savedstate-compose-android:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.savedstate:savedstate-compose-android:{strictly | NO_POM
+androidx.savedstate:savedstate-compose:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.savedstate:savedstate-compose:{strictly | NO_POM
+androidx.savedstate:savedstate-ktx:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.savedstate:savedstate-ktx:{strictly | NO_POM
+androidx.savedstate:savedstate:1.4.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.savedstate:savedstate:{strictly | NO_POM
+androidx.sqlite:sqlite-android:2.6.2 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.sqlite:sqlite-android:{strictly | NO_POM
+androidx.sqlite:sqlite-framework-android:2.6.2 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.sqlite:sqlite-framework-android:{strictly | NO_POM
+androidx.sqlite:sqlite-framework:2.6.2 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.sqlite:sqlite-framework:{strictly | NO_POM
+androidx.sqlite:sqlite:2.6.2 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.sqlite:sqlite:{strictly | NO_POM
+androidx.startup:startup-runtime:1.1.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.startup:startup-runtime:{strictly | NO_POM
+androidx.tracing:tracing-ktx:1.2.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.tracing:tracing-ktx:{strictly | NO_POM
+androidx.tracing:tracing:1.2.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.tracing:tracing:{strictly | NO_POM
+androidx.transition:transition:1.6.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.transition:transition:{strictly | NO_POM
+androidx.vectordrawable:vectordrawable-animated:1.1.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.vectordrawable:vectordrawable-animated:{strictly | NO_POM
+androidx.vectordrawable:vectordrawable:1.1.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.vectordrawable:vectordrawable:{strictly | NO_POM
+androidx.versionedparcelable:versionedparcelable:1.1.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.versionedparcelable:versionedparcelable:{strictly | NO_POM
+androidx.viewpager:viewpager:1.0.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.viewpager:viewpager:{strictly | NO_POM
+androidx.window:window-core-android:1.5.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.window:window-core-android:{strictly | NO_POM
+androidx.window:window-core:1.5.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.window:window-core:{strictly | NO_POM
+androidx.window:window:1.5.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.window:window:{strictly | NO_POM
+androidx.work:work-runtime-ktx:2.10.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.work:work-runtime-ktx:{strictly | NO_POM
+androidx.work:work-runtime:2.10.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+androidx.work:work-runtime:{strictly | NO_POM
+com.fasterxml.jackson.core:jackson-annotations:2.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+com.fasterxml.jackson.core:jackson-annotations:{strictly | NO_POM
+com.fasterxml.jackson.core:jackson-core:2.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+com.fasterxml.jackson.core:jackson-core:{strictly | NO_POM
+com.fasterxml.jackson.core:jackson-databind:2.11.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+com.fasterxml.jackson.core:jackson-databind:{strictly | NO_POM
+com.google.android.gms:play-services-base:18.7.2 | Android Software Development Kit License (https://developer.android.com/studio/terms.html)
+com.google.android.gms:play-services-base:{strictly | NO_POM
+com.google.android.gms:play-services-basement:18.9.0 | Android Software Development Kit License (https://developer.android.com/studio/terms.html)
+com.google.android.gms:play-services-basement:{strictly | NO_POM
+com.google.android.gms:play-services-fido:21.3.1 | Android Software Development Kit License (https://developer.android.com/studio/terms.html)
+com.google.android.gms:play-services-fido:{strictly | NO_POM
+com.google.android.gms:play-services-tasks:18.3.2 | Android Software Development Kit License (https://developer.android.com/studio/terms.html)
+com.google.android.gms:play-services-tasks:{strictly | NO_POM
+com.google.guava:failureaccess:1.0.2 | NO_LICENSE_IN_POM
+com.google.guava:failureaccess:{strictly | NO_POM
+com.google.guava:guava:33.3.1-android | NO_LICENSE_IN_POM
+com.google.guava:guava:{strictly | NO_POM
+com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava | NO_LICENSE_IN_POM
+com.google.guava:listenablefuture:{strictly | NO_POM
+com.squareup.okhttp3:okhttp:4.12.0 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+com.squareup.okhttp3:okhttp:{strictly | NO_POM
+com.squareup.okio:okio-jvm:3.9.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+com.squareup.okio:okio-jvm:{strictly | NO_POM
+com.squareup.okio:okio:3.9.1 | The Apache Software License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+com.squareup.okio:okio:{strictly | NO_POM
+commons-io:commons-io:2.5 | NO_LICENSE_IN_POM
+commons-io:commons-io:{strictly | NO_POM
+io.github.junkfood02.youtubedl-android:common:0.18.1 | GPL-3.0 license (https://www.gnu.org/licenses/gpl-3.0.en.html)
+io.github.junkfood02.youtubedl-android:common:{strictly | NO_POM
+io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1 | GPL-3.0 license (https://www.gnu.org/licenses/gpl-3.0.en.html)
+io.github.junkfood02.youtubedl-android:ffmpeg:{strictly | NO_POM
+io.github.junkfood02.youtubedl-android:library:0.18.1 | GPL-3.0 license (https://www.gnu.org/licenses/gpl-3.0.en.html)
+io.github.junkfood02.youtubedl-android:library:{strictly | NO_POM
+org.apache.commons:commons-compress:1.12 | NO_LICENSE_IN_POM
+org.apache.commons:commons-compress:{strictly | NO_POM
+org.bouncycastle:bcpg-jdk18on:1.85 | Bouncy Castle Licence (https://www.bouncycastle.org/licence.html); Apache Software License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+org.bouncycastle:bcpg-jdk18on:{strictly | NO_POM
+org.bouncycastle:bcprov-jdk18on:1.85.2 | Bouncy Castle Licence (https://www.bouncycastle.org/licence.html)
+org.bouncycastle:bcprov-jdk18on:{strictly | NO_POM
+org.bouncycastle:bcutil-jdk18on:1.85 | Bouncy Castle Licence (https://www.bouncycastle.org/licence.html)
+org.bouncycastle:bcutil-jdk18on:{strictly | NO_POM
+org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0 | The Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlin:kotlin-stdlib-jdk7:{strictly | NO_POM
+org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.21 | The Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlin:kotlin-stdlib-jdk8:{strictly | NO_POM
+org.jetbrains.kotlin:kotlin-stdlib:2.4.20 | Apache-2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlin:kotlin-stdlib:{strictly | NO_POM
+org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2 | Apache-2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlinx:kotlinx-coroutines-android:{strictly | NO_POM
+org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.10.2 | Apache-2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlinx:kotlinx-coroutines-bom:{strictly | NO_POM
+org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2 | Apache-2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:{strictly | NO_POM
+org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2 | Apache-2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlinx:kotlinx-coroutines-core:{strictly | NO_POM
+org.jetbrains.kotlinx:kotlinx-serialization-bom:1.7.3 | The Apache Software License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlinx:kotlinx-serialization-bom:{strictly | NO_POM
+org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.7.3 | The Apache Software License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:{strictly | NO_POM
+org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.3 | The Apache Software License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlinx:kotlinx-serialization-core:{strictly | NO_POM
+org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.7.3 | The Apache Software License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:{strictly | NO_POM
+org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3 | The Apache Software License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains.kotlinx:kotlinx-serialization-json:{strictly | NO_POM
+org.jetbrains:annotations:23.0.0 | The Apache Software License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jetbrains:annotations:{strictly | NO_POM
+org.jspecify:jspecify:1.0.0 | The Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+org.jspecify:jspecify:{strictly | NO_POM
+org.mozilla.geckoview:geckoview-arm64-v8a:159.0.20261022150525 | The Mozilla Public License, v. 2.0 (http://mozilla.org/MPL/2.0/)
+org.mozilla.geckoview:geckoview-arm64-v8a:{strictly | NO_POM
+org.yaml:snakeyaml:2.2 | Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.txt)
+org.yaml:snakeyaml:{strictly | NO_POM

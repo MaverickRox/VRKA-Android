@@ -1,0 +1,10 @@
+VRKA 5.1.5 release highlights:
+
+- Composite YouTube playlist selection dialog (Entire Playlist vs This Video Only).
+- Independent playlist child-job expansion with bounded concurrency and atomic queue admission.
+- Hardened MediaStore publication with IS_PENDING and fail-closed staging recovery.
+- In-app updater fix for current/equal manifest versions and anti-downgrade protections.
+- Android 16 User-Initiated Data Transfer (UIDT) and distinct download notifications.
+- Replaced Download page text header with transparent PNG wordmark.
+- Offline uBlock Origin XPI PKCS#7/SPKI cryptographic verification.
+- Fixes Issue #23 multi-item download queue completion and History deletion reliability.

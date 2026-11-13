@@ -1,0 +1,182 @@
+=== LINT RESULTS ===
+app\build\reports\lint-results-debug.xml => total=305 errors_or_fatal=0 warnings=301 info_or_hint=4
+app\build\reports\lint-results-release.xml => total=304 errors_or_fatal=0 warnings=300 info_or_hint=4
+
+=== OUTPUT ARTIFACTS ===
+F:\Projects\VRKA Android V5.1.5\app\build\outputs\apk\devRelease\VRKA-v5.1.5-dev.apk | size=155258401 bytes | sha256=ad1c643f044b9a39ea2289ba452b0e97616b7a4a1e747f6937f863d0ecad69bf
+F:\Projects\VRKA Android V5.1.5\app\build\outputs\apk\debug\app-debug.apk | size=181188244 bytes | sha256=354dbb03bf26dec1a91530cd68d3d01a4ea7dee53f52ca97d2dd4c28a6a53ee9
+F:\Projects\VRKA Android V5.1.5\app\build\outputs\apk\androidTest\debug\app-debug-androidTest.apk | size=1270435 bytes | sha256=001bff7e19810b15df57e2c724ddc8d360912f276b5507106d760006a43eb100
+F:\Projects\VRKA Android V5.1.5\app\build\outputs\mapping\devRelease\mapping.txt | size=82566768 bytes | sha256=f44408b18ca49d0eb9f537ca559092eef26668439e60ce8929d7e0cdc3a97b03
+
+=== DEX ENTRIES ===
+classes.dex: size=8401420 compressed=4144212
+
+=== APKANALYZER DEX LIST ===
+classes.dex
+
+=== APKANALYZER DEX REFERENCES ===
+classes.dex	50110
+
+=== APKANALYZER PACKAGE SUMMARY COMPARISONS ===
+P d 43707	50110	6780795	<TOTAL>
+P d 1350	1350	175739	org.bouncycastle
+P d 62	62	8651	com.mvrk.vrka
+P d 61	61	3272	com.yausername
+
+=== AAPT2 DUMP BADGING ===
+package: name='com.mvrk.vrka' versionCode='50105' versionName='5.1.5' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+minSdkVersion:'26'
+targetSdkVersion:'36'
+uses-permission: name='android.permission.INTERNET'
+uses-permission: name='android.permission.POST_NOTIFICATIONS'
+uses-permission: name='android.permission.FOREGROUND_SERVICE'
+uses-permission: name='android.permission.FOREGROUND_SERVICE_DATA_SYNC'
+uses-permission: name='android.permission.RUN_USER_INITIATED_JOBS'
+uses-permission: name='android.permission.WAKE_LOCK'
+uses-permission: name='android.permission.REQUEST_INSTALL_PACKAGES'
+uses-permission: name='android.permission.ACCESS_NETWORK_STATE'
+uses-permission: name='android.permission.RECEIVE_BOOT_COMPLETED'
+uses-permission: name='android.permission.MODIFY_AUDIO_SETTINGS'
+uses-permission: name='com.mvrk.vrka.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
+application-label:'VRKA'
+application-label-af:'VRKA'
+application-label-am:'VRKA'
+application-label-ar:'VRKA'
+application-label-as:'VRKA'
+application-label-az:'VRKA'
+application-label-be:'VRKA'
+application-label-bg:'VRKA'
+application-label-bn:'VRKA'
+application-label-bs:'VRKA'
+application-label-ca:'VRKA'
+application-label-cs:'VRKA'
+application-label-da:'VRKA'
+application-label-de:'VRKA'
+application-label-el:'VRKA'
+application-label-en-AU:'VRKA'
+application-label-en-CA:'VRKA'
+application-label-en-GB:'VRKA'
+application-label-en-IN:'VRKA'
+application-label-en-XC:'VRKA'
+application-label-es:'VRKA'
+application-label-es-US:'VRKA'
+application-label-et:'VRKA'
+application-label-eu:'VRKA'
+application-label-fa:'VRKA'
+application-label-fi:'VRKA'
+application-label-fr:'VRKA'
+application-label-fr-CA:'VRKA'
+application-label-gl:'VRKA'
+application-label-gu:'VRKA'
+application-label-hi:'VRKA'
+application-label-hr:'VRKA'
+application-label-hu:'VRKA'
+application-label-hy:'VRKA'
+application-label-in:'VRKA'
+application-label-is:'VRKA'
+application-label-it:'VRKA'
+application-label-iw:'VRKA'
+application-label-ja:'VRKA'
+application-label-ka:'VRKA'
+application-label-kk:'VRKA'
+application-label-km:'VRKA'
+application-label-kn:'VRKA'
+application-label-ko:'VRKA'
+application-label-ky:'VRKA'
+application-label-lo:'VRKA'
+application-label-lt:'VRKA'
+application-label-lv:'VRKA'
+application-label-mk:'VRKA'
+application-label-ml:'VRKA'
+application-label-mn:'VRKA'
+application-label-mr:'VRKA'
+application-label-ms:'VRKA'
+application-label-my:'VRKA'
+application-label-nb:'VRKA'
+application-label-ne:'VRKA'
+application-label-nl:'VRKA'
+application-label-or:'VRKA'
+application-label-pa:'VRKA'
+application-label-pl:'VRKA'
+application-label-pt:'VRKA'
+application-label-pt-BR:'VRKA'
+application-label-pt-PT:'VRKA'
+application-label-ro:'VRKA'
+application-label-ru:'VRKA'
+application-label-si:'VRKA'
+application-label-sk:'VRKA'
+application-label-sl:'VRKA'
+application-label-sq:'VRKA'
+application-label-sr:'VRKA'
+application-label-sr-Latn:'VRKA'
+application-label-sv:'VRKA'
+application-label-sw:'VRKA'
+application-label-ta:'VRKA'
+application-label-te:'VRKA'
+application-label-th:'VRKA'
+application-label-tl:'VRKA'
+application-label-tr:'VRKA'
+application-label-uk:'VRKA'
+application-label-ur:'VRKA'
+application-label-uz:'VRKA'
+application-label-vi:'VRKA'
+application-label-zh-CN:'VRKA'
+application-label-zh-HK:'VRKA'
+application-label-zh-TW:'VRKA'
+application-label-zu:'VRKA'
+application-icon-160:'res/IG.xml'
+application-icon-240:'res/IG.xml'
+application-icon-320:'res/IG.xml'
+application-icon-480:'res/IG.xml'
+application-icon-640:'res/IG.xml'
+application-icon-65534:'res/IG.xml'
+application-icon-65535:'res/IG.xml'
+application: label='VRKA' icon='res/IG.xml'
+launchable-activity: name='com.mvrk.vrka.MainActivity'  label='' icon=''
+uses-library-not-required:'androidx.window.extensions'
+uses-library-not-required:'androidx.window.sidecar'
+feature-group: label=''
+  uses-gl-es: '0x20000'
+  uses-feature-not-required: name='android.hardware.audio.low_latency'
+  uses-feature-not-required: name='android.hardware.camera'
+  uses-feature-not-required: name='android.hardware.camera.any'
+  uses-feature-not-required: name='android.hardware.camera.autofocus'
+  uses-feature-not-required: name='android.hardware.location'
+  uses-feature-not-required: name='android.hardware.location.gps'
+  uses-feature-not-required: name='android.hardware.microphone'
+  uses-feature-not-required: name='android.hardware.touchscreen'
+main
+other-activities
+other-receivers
+other-services
+supports-screens: 'small' 'normal' 'large' 'xlarge'
+supports-any-density: 'true'
+locales: '--_--' 'af' 'am' 'ar' 'as' 'az' 'be' 'bg' 'bn' 'bs' 'ca' 'cs' 'da' 'de' 'el' 'en-AU' 'en-CA' 'en-GB' 'en-IN' 'en-XC' 'es' 'es-US' 'et' 'eu' 'fa' 'fi' 'fr' 'fr-CA' 'gl' 'gu' 'hi' 'hr' 'hu' 'hy' 'in' 'is' 'it' 'iw' 'ja' 'ka' 'kk' 'km' 'kn' 'ko' 'ky' 'lo' 'lt' 'lv' 'mk' 'ml' 'mn' 'mr' 'ms' 'my' 'nb' 'ne' 'nl' 'or' 'pa' 'pl' 'pt' 'pt-BR' 'pt-PT' 'ro' 'ru' 'si' 'sk' 'sl' 'sq' 'sr' 'sr-Latn' 'sv' 'sw' 'ta' 'te' 'th' 'tl' 'tr' 'uk' 'ur' 'uz' 'vi' 'zh-CN' 'zh-HK' 'zh-TW' 'zu'
+densities: '160' '240' '320' '480' '640' '65534' '65535'
+native-code: 'arm64-v8a'
+
+=== ZIPALIGN CHECK (TAIL) ===
+153915908 res/zq.xml (OK - compressed)
+153916216 res/zr.png (OK)
+153924712 res/zw.9.png (OK)
+153926268 resources.arsc (OK)
+Verification successful
+
+=== APKSIGNER VERIFY ===
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: C=US, O=Android, CN=Android Debug
+Signer #1 certificate SHA-256 digest: 23e2e4a8078a3e9a629a0fe5f9bc4d9ac60206967fd3177072a8cd28d87f48b7
+Signer #1 certificate SHA-1 digest: 80fc97f42ad364c2f19ae438bf33214b0e898425
+Signer #1 certificate MD5 digest: ac6971c6be2641dd127e244713c8ed18
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 2048
+Signer #1 public key SHA-256 digest: c515dcedc7deba99afaebce0623655861a31dac28663e4a67591d6eab2f3c49c
+Signer #1 public key SHA-1 digest: 0ff696c3dbf1422ff9f116ca2e1258aeb5a78109
+Signer #1 public key MD5 digest: 26e01baae4137dd28e8b94c4a9796a6f

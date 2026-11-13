@@ -1,0 +1,113 @@
+=== GIT HEAD & TAGS ===
+HEAD: 61b0fe4f037448756e0f87cf09cd60095e2d60da
+v5.1.4 commit: 6717da543df98fca33cdce78f8bc098edf6cef60
+v5.1.3 commit: daac0b5b7f14dc5ce6b2af0be8fcaf5119ebd2b8
+v5.1.2 commit: af5c1b90d0ad9e18582481460a008aa3daf2c354
+
+=== GIT STATUS ===
+ M .github/workflows/ci.yml
+ M CHANGELOG.md
+ M CURRENT_PRODUCTION_ARCHITECTURE.md
+ M DEVICE_VALIDATION.md
+ M KNOWN_LIMITATIONS.md
+ M README.md
+ M RELEASE_EVIDENCE.md
+ M RELEASE_NOTES.md
+ M SECURITY.md
+ M SECURITY_REVIEW.md
+ M TEST_RESULTS.md
+ M THIRD_PARTY_NOTICES.md
+ M app/build.gradle.kts
+ M app/proguard-rules.pro
+ M app/src/main/assets/extensions/media-detector/background.js
+ M app/src/main/assets/extensions/media-detector/manifest.json
+ M app/src/main/java/com/mvrk/vrka/ComponentUpdateManager.kt
+ M app/src/main/java/com/mvrk/vrka/DownloadNotifications.kt
+ M app/src/main/java/com/mvrk/vrka/GeckoRuntimeManager.kt
+ M app/src/main/java/com/mvrk/vrka/HeaderValidation.kt
+ M app/src/main/java/com/mvrk/vrka/HomeScreen.kt
+ M app/src/main/java/com/mvrk/vrka/JobsScreen.kt
+ M app/src/main/java/com/mvrk/vrka/OutputPublisher.kt
+ M app/src/main/java/com/mvrk/vrka/SecureComponentUpdater.kt
+ M app/src/main/java/com/mvrk/vrka/VrkaDownloadManager.kt
+ M app/src/main/java/com/mvrk/vrka/VrkaRoot.kt
+ M app/src/main/java/com/mvrk/vrka/engine/GeckoWebExecutorTransport.kt
+ M app/src/main/java/com/mvrk/vrka/engine/MediaHttpTransport.kt
+ M app/src/main/java/com/mvrk/vrka/engine/RequestContext.kt
+ M app/src/main/java/com/mvrk/vrka/storage/RoomCleanupStore.kt
+ M app/src/main/java/com/mvrk/vrka/storage/RoomStorageRepository.kt
+ M app/src/main/java/com/mvrk/vrka/storage/StorageContracts.kt
+ M app/src/main/java/com/mvrk/vrka/subtitle/VrkaSubtitleManager.kt
+ M app/src/test/java/com/mvrk/vrka/ComponentUpdateManagerTest.kt
+ M app/src/test/java/com/mvrk/vrka/PackagingConfigurationTest.kt
+ M app/src/test/java/com/mvrk/vrka/SecureComponentUpdaterTest.kt
+ M app/src/test/java/com/mvrk/vrka/SupplyChainPolicyTest.kt
+ M docs/CI_CD_SECURITY.md
+ M docs/KEY_MANAGEMENT.md
+ M docs/NATIVE_BINARY_INVENTORY.md
+ M docs/PRIVACY_NETWORK.md
+ M docs/native-binaries.json
+ M docs/user-guide/GETTING_STARTED.md
+ M docs/user-guide/TROUBLESHOOTING.md
+ D mozconfig
+?? app/src/main/java/com/mvrk/vrka/XpiSignatureVerifier.kt
+?? app/src/test/java/com/mvrk/vrka/ApiCompatibilityAndNotificationsTest.kt
+?? app/src/test/java/com/mvrk/vrka/Section9ReliabilityAndR8Test.kt
+?? app/src/test/java/com/mvrk/vrka/TestXpiSigner.kt
+?? app/src/test/java/com/mvrk/vrka/engine/MediaDetectorAndCredentialScopingTest.kt
+?? app/src/test/java/com/mvrk/vrka/storage/HistoryDeletionExhaustiveTest.kt
+?? app/src/test/java/com/mvrk/vrka/storage/Issue23QueueAndDeletionTest.kt
+?? app/src/test/java/com/mvrk/vrka/storage/QueueLifecycleExhaustiveTest.kt
+?? app/src/test/java/com/mvrk/vrka/storage/StorageInvariantsAndFaultInjectionTest.kt
+?? engineering-artifacts/2026-11-11-v5.1.5-remediation/
+?? fastlane/metadata/android/en-US/changelogs/50105.txt
+
+=== GIT DIFF STAT ===
+ .github/workflows/ci.yml                           |   4 +-
+ CHANGELOG.md                                       |  11 +
+ CURRENT_PRODUCTION_ARCHITECTURE.md                 |  14 +-
+ DEVICE_VALIDATION.md                               |  15 +
+ KNOWN_LIMITATIONS.md                               |   8 +-
+ README.md                                          |  13 +-
+ RELEASE_EVIDENCE.md                                |  19 +
+ RELEASE_NOTES.md                                   |  18 +-
+ SECURITY.md                                        |   7 +-
+ SECURITY_REVIEW.md                                 |  32 ++
+ TEST_RESULTS.md                                    |  13 +
+ THIRD_PARTY_NOTICES.md                             |  91 +++-
+ app/build.gradle.kts                               |   4 +-
+ app/proguard-rules.pro                             |  41 +-
+ .../assets/extensions/media-detector/background.js | 285 +++++++----
+ .../assets/extensions/media-detector/manifest.json |   1 -
+ .../java/com/mvrk/vrka/ComponentUpdateManager.kt   | 129 ++++-
+ .../java/com/mvrk/vrka/DownloadNotifications.kt    |   2 +-
+ .../main/java/com/mvrk/vrka/GeckoRuntimeManager.kt | 168 +++++--
+ .../main/java/com/mvrk/vrka/HeaderValidation.kt    |  44 +-
+ app/src/main/java/com/mvrk/vrka/HomeScreen.kt      |  11 +-
+ app/src/main/java/com/mvrk/vrka/JobsScreen.kt      |   5 +-
+ app/src/main/java/com/mvrk/vrka/OutputPublisher.kt | 151 +++++-
+ .../java/com/mvrk/vrka/SecureComponentUpdater.kt   | 164 +++---
+ .../main/java/com/mvrk/vrka/VrkaDownloadManager.kt | 556 +++++++++++++++------
+ app/src/main/java/com/mvrk/vrka/VrkaRoot.kt        |  51 +-
+ .../mvrk/vrka/engine/GeckoWebExecutorTransport.kt  | 123 +++--
+ .../com/mvrk/vrka/engine/MediaHttpTransport.kt     | 100 +++-
+ .../java/com/mvrk/vrka/engine/RequestContext.kt    |  41 +-
+ .../java/com/mvrk/vrka/storage/RoomCleanupStore.kt |  90 ++++
+ .../com/mvrk/vrka/storage/RoomStorageRepository.kt |  50 +-
+ .../java/com/mvrk/vrka/storage/StorageContracts.kt |  13 +
+ .../com/mvrk/vrka/subtitle/VrkaSubtitleManager.kt  | 151 +++++-
+ .../com/mvrk/vrka/ComponentUpdateManagerTest.kt    |  80 ++-
+ .../com/mvrk/vrka/PackagingConfigurationTest.kt    |   4 +-
+ .../com/mvrk/vrka/SecureComponentUpdaterTest.kt    | 399 ++++++++++++---
+ .../java/com/mvrk/vrka/SupplyChainPolicyTest.kt    |   9 +-
+ docs/CI_CD_SECURITY.md                             |   1 +
+ docs/KEY_MANAGEMENT.md                             |   8 +-
+ docs/NATIVE_BINARY_INVENTORY.md                    |  20 +-
+ docs/PRIVACY_NETWORK.md                            |  20 +-
+ docs/native-binaries.json                          |  14 +-
+ docs/user-guide/GETTING_STARTED.md                 |  12 +-
+ docs/user-guide/TROUBLESHOOTING.md                 |   2 +-
+ mozconfig                                          |  20 -
+ 45 files changed, 2267 insertions(+), 747 deletions(-)
+
+lockfile_exit=0 diff_check_exit=0
