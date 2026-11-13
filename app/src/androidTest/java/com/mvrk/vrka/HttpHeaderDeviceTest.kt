@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.mvrk.vrka.engine.GeckoTransportRequest
 import com.mvrk.vrka.engine.GeckoWebExecutorTransport
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -13,12 +14,15 @@ import org.junit.runner.RunWith
 import org.mozilla.geckoview.GeckoRuntime
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.ServerSocket
 
 @RunWith(AndroidJUnit4::class)
 class HttpHeaderDeviceTest {
 
     private lateinit var runtime: GeckoRuntime
     private lateinit var transport: GeckoWebExecutorTransport
+    private var serverSocket: ServerSocket? = null
+    private var serverThread: Thread? = null
 
     @Before
     fun setUp() {
@@ -27,6 +31,47 @@ class HttpHeaderDeviceTest {
             runtime = GeckoRuntimeManager.getInstance(appContext).runtime
         }
         transport = GeckoWebExecutorTransport(runtime)
+
+        serverSocket = ServerSocket(8888)
+        serverThread = Thread {
+            try {
+                while (!serverSocket!!.isClosed) {
+                    val socket = serverSocket!!.accept()
+                    Thread {
+                        try {
+                            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                            val line = reader.readLine() ?: return@Thread
+                            while (true) {
+                                val header = reader.readLine() ?: break
+                                if (header.isEmpty()) break
+                            }
+                            val output = socket.getOutputStream()
+                            if (line.contains("/test.m3u8")) {
+                                val body = "#EXTM3U\n#EXT-X-VERSION:3\n".toByteArray(Charsets.UTF_8)
+                                output.write("HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                                output.write(body)
+                            } else if (line.contains("/segment0.ts")) {
+                                val body = ByteArray(188) { if (it == 0) 0x47.toByte() else 0 }
+                                output.write("HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                                output.write(body)
+                            } else {
+                                output.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                            }
+                            output.flush()
+                        } catch (_: Exception) {
+                        } finally {
+                            try { socket.close() } catch (_: Exception) {}
+                        }
+                    }.start()
+                }
+            } catch (_: Exception) {}
+        }.apply { isDaemon = true; start() }
+    }
+
+    @After
+    fun tearDown() {
+        try { serverSocket?.close() } catch (_: Exception) {}
+        try { serverThread?.interrupt() } catch (_: Exception) {}
     }
 
     @Test

@@ -520,6 +520,59 @@ class DownloadRequestFactoryTest {
         assertTrue(command.contains(URL))
     }
 
+    @Test
+    fun playlistSizeEstimateIncludesFlatPlaylist() {
+        val playlistReq = DownloadRequest(
+            url = "https://youtube.com/playlist?list=OLAK5uy_lj1KcaPJYjA1n29DoIF68QMbDehOplyEI",
+            isPlaylist = true,
+        )
+        val playlistEstimateCommand = DownloadRequestFactory.sizeEstimate(playlistReq)
+        assertTrue(playlistEstimateCommand.hasOption("--flat-playlist"))
+        assertFalse(playlistEstimateCommand.hasOption("--no-playlist"))
+
+        val singleReq = DownloadRequest(
+            url = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            isPlaylist = false,
+        )
+        val singleEstimateCommand = DownloadRequestFactory.sizeEstimate(singleReq)
+        assertFalse(singleEstimateCommand.hasOption("--flat-playlist"))
+        assertTrue(singleEstimateCommand.hasOption("--no-playlist"))
+    }
+
+    @Test
+    fun safeOutputNamesSanitizesTikTokSyntheticFixtures() {
+        // Multi-line TikTok caption with emojis, hashtags, CJK, Cyrillic, and control characters (> 300 chars)
+        val longTikTokCaption = """
+            🔥 Amazing Dance Performance! 🕺💃 #trending #viral #fyp
+            Check out this incredible choreography by @dancer_official! ✨🌟
+            한국어 댄스 챌린지 🎵 Русские субтитры 🇷🇺
+            Special thanks to all fans who supported this video! ❤️❤️❤️
+            Line 2 with \ / : * ? " < > | invalid chars and \t tabs
+        """.trimIndent()
+
+        val sanitized = SafeOutputNames.sanitize(longTikTokCaption, "mp4")
+        assertTrue(sanitized.endsWith(".mp4"))
+        assertFalse(sanitized.contains('\n'))
+        assertFalse(sanitized.contains('\r'))
+        assertFalse(sanitized.contains('\t'))
+        assertFalse(sanitized.contains('\\'))
+        assertFalse(sanitized.contains('/'))
+        assertFalse(sanitized.contains(':'))
+        assertFalse(sanitized.contains('*'))
+        assertFalse(sanitized.contains('?'))
+        assertFalse(sanitized.contains('"'))
+        assertFalse(sanitized.contains('<'))
+        assertFalse(sanitized.contains('>'))
+        assertFalse(sanitized.contains('|'))
+
+        val stem = sanitized.substringBeforeLast(".mp4")
+        val stemUtf8Bytes = stem.toByteArray(Charsets.UTF_8).size
+        assertTrue("Stem UTF-8 bytes ($stemUtf8Bytes) must be <= 120 bytes", stemUtf8Bytes <= 120)
+        // Ensure NFC normalization
+        val isNfc = java.text.Normalizer.isNormalized(stem, java.text.Normalizer.Form.NFC)
+        assertTrue("Stem must be valid NFC normalized Unicode", isNfc)
+    }
+
     private fun built(request: DownloadRequest) =
         DownloadRequestFactory.download(
             DownloadJob(id = "test-job", request = request),

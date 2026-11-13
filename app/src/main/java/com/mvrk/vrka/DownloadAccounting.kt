@@ -12,8 +12,16 @@ internal object DownloadAccounting {
         "mp3", "m4a", "mka", "aac", "opus", "flac", "wav", "ogg",
     )
 
+    val SUBTITLE_EXTENSIONS = setOf("srt", "vtt", "ass", "ssa")
+
     fun isMediaExtension(extension: String): Boolean =
         extension.lowercase() in MEDIA_EXTENSIONS
+
+    fun isSubtitleExtension(extension: String): Boolean =
+        extension.lowercase() in SUBTITLE_EXTENSIONS
+
+    fun sortOutputsPrimaryFirst(files: List<File>): List<File> =
+        files.sortedWith(compareBy({ !isMediaExtension(it.extension) }, { it.name }))
 
     fun mediaOutputBytes(files: List<File>): Long? = files
         .filter { isMediaExtension(it.extension) }

@@ -102,6 +102,7 @@ internal object DownloadRequestFactory {
                 addOption("-S", "res,fps")
             }
             if (request.isPlaylist) {
+                addOption("--flat-playlist")
                 request.playlistStart?.let { addOption("--playlist-start", it) }
                 request.playlistEnd?.let { addOption("--playlist-end", it) }
             } else {

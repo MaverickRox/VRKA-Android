@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
+import java.util.UUID
 
 enum class SizeEstimateKind {
     EXACT,
@@ -142,6 +143,50 @@ object SizeEstimateCalculator {
             playlist(entries, request, title, recalculateSelection)
         } else {
             single(root, request, title, recalculateSelection)
+        }
+    }
+
+    /**
+     * Expands playlist entries bounded by [maxItems], preserving repeated video IDs with
+     * distinct indices and unique item IDs.
+     */
+    fun expandPlaylistFromMetadataJson(
+        jsonText: String,
+        baseRequest: DownloadRequest,
+        maxItems: Int = 25,
+    ): List<PlaylistItem>? {
+        val root = parseRoot(jsonText) ?: return null
+        val entries = root.optJSONArray("entries") ?: return null
+        if (entries.length() == 0) return emptyList()
+
+        val start = (baseRequest.playlistStart ?: 1).coerceAtLeast(1) - 1
+        val end = baseRequest.playlistEnd?.coerceAtMost(entries.length()) ?: entries.length()
+        if (start >= end) return emptyList()
+        val slice = (start until end).take(maxItems)
+        val total = slice.count()
+
+        return slice.mapIndexed { idx, entryIndex ->
+            val entry = entries.optJSONObject(entryIndex)
+            val id = entry?.optString("id").orEmpty()
+            val entryUrl = entry?.optString("webpage_url")?.takeIf(String::isNotBlank)
+                ?: entry?.optString("url")?.takeIf(String::isNotBlank)
+            val url = when {
+                entryUrl != null && (entryUrl.startsWith("http://") || entryUrl.startsWith("https://")) -> entryUrl
+                id.isNotBlank() -> "https://www.youtube.com/watch?v=$id"
+                entryUrl != null -> entryUrl
+                else -> baseRequest.url
+            }
+            val title = entry?.optString("title")?.trim()?.take(MAX_TITLE_LENGTH)?.takeIf(String::isNotBlank)
+                ?: "Item ${idx + 1}"
+            val estimate = entry?.let { single(it, baseRequest, title, recalculateSelection = true) }
+            PlaylistItem(
+                url = url,
+                title = title,
+                playlistItemIndex = idx + 1,
+                playlistItemCount = total,
+                playlistItemId = UUID.randomUUID().toString(),
+                estimate = estimate,
+            )
         }
     }
 

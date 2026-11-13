@@ -164,7 +164,7 @@ internal object DownloadNotifications {
         val uri = runCatching { Uri.parse(uriText) }.getOrNull() ?: return null
         if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
         val resolver = context.contentResolver
-        val mime = resolver.getType(uri)
+        val mime = runCatching { resolver.getType(uri) }.getOrNull()
             ?: OutputPublisher.guessMimeType(resolver.queryDisplayName(uri, uriText))
         return Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, mime)

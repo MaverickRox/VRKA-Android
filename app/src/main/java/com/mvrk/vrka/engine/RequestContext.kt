@@ -19,24 +19,21 @@ data class RequestContext(
     val baseHeaders: Map<String, String> = emptyMap(),
     val cookies: List<Map<String, String>> = emptyList(),
 ) {
-    private val targetHost: String = extractHost(targetUrl)
-    private val targetOrigin: String = extractOrigin(targetUrl)
-    private val pageHost: String? = pageUrl?.let { extractHost(it) }
-    private val pageOrigin: String? = pageUrl?.let { extractOrigin(it) }
+    private val targetOrigin: String = HeaderValidation.originOf(targetUrl).orEmpty()
 
     /**
      * Resolves effective request headers for [requestUrl].
      *
      * @param requestUrl the specific endpoint being requested (playlist, segment, media).
      * @param allowRange if false (default), strips any "Range" headers to ensure full media stream acquisition.
-     * @return safe, host-scoped header map preferring browser-captured values.
+     * @return safe, origin-scoped header map preferring browser-captured values.
      */
     fun resolveHeaders(
         requestUrl: String,
         allowRange: Boolean = false
     ): Map<String, String> {
-        val reqHost = extractHost(requestUrl)
-        val isExactHost = reqHost.isNotBlank() && reqHost == targetHost
+        val reqOrigin = HeaderValidation.originOf(requestUrl)
+        val isExactOrigin = !reqOrigin.isNullOrBlank() && reqOrigin == targetOrigin
 
         val result = mutableMapOf<String, String>()
 
@@ -49,9 +46,9 @@ data class RequestContext(
                 continue
             }
 
-            // Sensitive headers are retained only for the exact observed target host.
-            if (lowerKey in SENSITIVE_HEADERS) {
-                if (isExactHost) {
+            // Sensitive headers are retained only for the exact observed target origin (scheme + host + port).
+            if (lowerKey in SENSITIVE_HEADERS || HeaderValidation.isSensitiveHeader(key)) {
+                if (isExactOrigin) {
                     result[key] = value
                 }
             } else {
@@ -59,8 +56,8 @@ data class RequestContext(
             }
         }
 
-        // 2. Cookie resolution from cookie jar if available and domain matches
-        if (isExactHost && cookies.isNotEmpty() && !result.containsKey("Cookie")) {
+        // 2. Cookie resolution from cookie jar if available and origin matches
+        if (isExactOrigin && cookies.isNotEmpty() && !result.containsKey("Cookie")) {
             val cookieStrings = cookies.mapNotNull { cookie ->
                 val name = cookie["name"]
                 val value = cookie["value"]
@@ -71,16 +68,18 @@ data class RequestContext(
             }
         }
 
-        // 3. Referer injection for cross-origin CDN media:
+        // 3. Referer injection for cross-origin CDN media (never across HTTPS -> HTTP scheme downgrade):
         // Prefers pageUrl if present; otherwise fallback to targetUrl
         if (!result.containsKey("Referer")) {
             val ref = pageUrl?.takeIf { it.isNotBlank() } ?: targetUrl
-            if (ref.isNotBlank()) {
+            val downgradedToHttp = ref.startsWith("https://", ignoreCase = true) &&
+                requestUrl.startsWith("http://", ignoreCase = true)
+            if (ref.isNotBlank() && !downgradedToHttp) {
                 result["Referer"] = ref
             }
         }
 
-        // 5. Host validation & character sanitization
+        // 5. Origin validation & character sanitization
         return HeaderValidation.bindHeadersToHost(
             headers = result,
             targetUrl = requestUrl,
@@ -106,17 +105,7 @@ data class RequestContext(
             }
         }
 
-        fun extractOrigin(url: String): String {
-            return try {
-                val uri = URI(url)
-                val scheme = uri.scheme ?: "https"
-                val host = uri.host ?: return ""
-                val port = if (uri.port > 0 && uri.port != 80 && uri.port != 443) ":${uri.port}" else ""
-                "$scheme://$host$port"
-            } catch (_: Exception) {
-                ""
-            }
-        }
+        fun extractOrigin(url: String): String = HeaderValidation.originOf(url).orEmpty()
 
         fun isSameDomainOrSubdomain(host1: String, host2: String): Boolean =
             host1.isNotBlank() && host2.isNotBlank() && host1.equals(host2, ignoreCase = true)

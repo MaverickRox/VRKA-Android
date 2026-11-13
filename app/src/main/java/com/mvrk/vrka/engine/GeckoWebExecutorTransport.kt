@@ -80,6 +80,8 @@ class GeckoWebExecutorTransport(
         private const val TAG = "VRKA-GeckoTransport"
         private const val DEFAULT_TIMEOUT_MS = 30_000L
         private const val STREAM_BUFFER_SIZE = 32_768 // 32 KB bounded buffer
+        private const val MAX_REDIRECTS = 5
+        private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
 
         private val DISALLOWED_HEADERS = setOf(
             "host",
@@ -133,57 +135,94 @@ class GeckoWebExecutorTransport(
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
     ): GeckoTransportResponse {
         val exec = getOrCreateExecutor()
-        val builder = WebRequest.Builder(request.url)
+        var currentUrl = request.url
+        var activeHeaders = request.headers
+        var credentialsAllowed = true
+        var wasRedirected = false
 
-        // Inject validated headers
-        request.headers.forEach { (key, value) ->
-            val lower = key.lowercase()
-            if (lower == "referer" && value.isNotBlank()) {
-                builder.referrer(value)
-            }
-            if (value.isNotBlank() && lower !in DISALLOWED_HEADERS && HeaderValidation.isValidHeaderName(key)) {
-                builder.addHeader(key, value)
-            }
+        val manualRedirectGuard = activeHeaders.keys.any(HeaderValidation::isSensitiveHeader) &&
+            (request.flags and GeckoWebExecutor.FETCH_FLAGS_NO_REDIRECTS) == 0
+        val effectiveFlags = if (manualRedirectGuard) {
+            request.flags or GeckoWebExecutor.FETCH_FLAGS_NO_REDIRECTS
+        } else {
+            request.flags
         }
 
-        val webRequest = builder.build()
-        val geckoResult = exec.fetch(webRequest, request.flags)
-
-        val response: WebResponse = try {
-            geckoResult.poll(timeoutMs)
-                ?: throw GeckoTransportException.Timeout("Request to ${sanitizeUrlForLogging(request.url)} timed out after ${timeoutMs}ms")
-        } catch (wre: WebRequestError) {
-            when (wre.category) {
-                WebRequestError.ERROR_CATEGORY_SECURITY ->
-                    throw GeckoTransportException.TlsFailure(wre.code, wre.message ?: "SSL/TLS validation failed", wre)
-                WebRequestError.ERROR_CATEGORY_NETWORK -> {
-                    if (wre.code == WebRequestError.ERROR_NET_TIMEOUT) {
-                        throw GeckoTransportException.Timeout(wre.message ?: "Connection timed out", wre)
-                    }
-                    throw GeckoTransportException.NetworkError(wre.code, wre.message ?: "Network error", wre)
+        for (redirectCount in 0..MAX_REDIRECTS) {
+            val builder = WebRequest.Builder(currentUrl)
+            activeHeaders.forEach { (key, value) ->
+                val lower = key.lowercase()
+                if (lower == "referer" && value.isNotBlank()) {
+                    builder.referrer(value)
                 }
-                else -> throw GeckoTransportException.NetworkError(wre.code, wre.message ?: "Web request failed", wre)
+                if (value.isNotBlank() && lower !in DISALLOWED_HEADERS && HeaderValidation.isValidHeaderName(key)) {
+                    builder.addHeader(key, value)
+                }
             }
-        } catch (te: GeckoTransportException) {
-            throw te
-        } catch (t: Throwable) {
-            throw IOException("Unexpected error during Gecko fetch: ${t.message}", t)
-        }
 
-        val status = response.statusCode
-        if (status !in 200..299) {
-            response.body?.close()
-            throw GeckoTransportException.HttpError(status, response.headers)
-        }
+            val response: WebResponse = try {
+                exec.fetch(builder.build(), effectiveFlags).poll(timeoutMs)
+                    ?: throw GeckoTransportException.Timeout("Request to ${sanitizeUrlForLogging(currentUrl)} timed out after ${timeoutMs}ms")
+            } catch (wre: WebRequestError) {
+                when (wre.category) {
+                    WebRequestError.ERROR_CATEGORY_SECURITY ->
+                        throw GeckoTransportException.TlsFailure(wre.code, wre.message ?: "SSL/TLS validation failed", wre)
+                    WebRequestError.ERROR_CATEGORY_NETWORK -> {
+                        if (wre.code == WebRequestError.ERROR_NET_TIMEOUT) {
+                            throw GeckoTransportException.Timeout(wre.message ?: "Connection timed out", wre)
+                        }
+                        throw GeckoTransportException.NetworkError(wre.code, wre.message ?: "Network error", wre)
+                    }
+                    else -> throw GeckoTransportException.NetworkError(wre.code, wre.message ?: "Web request failed", wre)
+                }
+            } catch (te: GeckoTransportException) {
+                throw te
+            } catch (t: Throwable) {
+                throw IOException("Unexpected error during Gecko fetch: ${t.message}", t)
+            }
 
-        return GeckoTransportResponse(
-            statusCode = status,
-            isSecure = response.isSecure,
-            redirected = response.redirected,
-            certSubject = response.certificate?.subjectDN?.name,
-            headers = response.headers,
-            body = response.body,
-        )
+            val status = response.statusCode
+            if (manualRedirectGuard && status in REDIRECT_STATUS_CODES) {
+                val location = response.headers.entries
+                    .firstOrNull { it.key.equals("location", ignoreCase = true) }
+                    ?.value
+                response.body?.close()
+                if (location.isNullOrBlank()) {
+                    throw GeckoTransportException.HttpError(status, response.headers)
+                }
+                if (redirectCount == MAX_REDIRECTS) {
+                    throw IOException("Exceeded maximum redirect depth ($MAX_REDIRECTS) for ${sanitizeUrlForLogging(request.url)}")
+                }
+                val resolvedNext = HeaderValidation.resolveRedirectUrl(currentUrl, location)
+                    ?: throw SecurityException("Rejected invalid or unsafe redirect target from ${sanitizeUrlForLogging(currentUrl)}")
+                val (nextHeaders, nextCredsAllowed) = HeaderValidation.scopeHeadersForHop(
+                    headers = activeHeaders,
+                    fromUrl = currentUrl,
+                    toUrl = resolvedNext,
+                    credentialsStillAllowed = credentialsAllowed,
+                )
+                activeHeaders = nextHeaders
+                credentialsAllowed = nextCredsAllowed
+                currentUrl = resolvedNext
+                wasRedirected = true
+                continue
+            }
+
+            if (status !in 200..299) {
+                response.body?.close()
+                throw GeckoTransportException.HttpError(status, response.headers)
+            }
+
+            return GeckoTransportResponse(
+                statusCode = status,
+                isSecure = response.isSecure,
+                redirected = response.redirected || wasRedirected,
+                certSubject = response.certificate?.subjectDN?.name,
+                headers = response.headers,
+                body = response.body,
+            )
+        }
+        throw IOException("Exceeded maximum redirect depth ($MAX_REDIRECTS) for ${sanitizeUrlForLogging(request.url)}")
     }
 
     /**

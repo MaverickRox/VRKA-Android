@@ -87,6 +87,17 @@ class MetadataRepository(
         load.document?.let { SizeEstimateCalculator.snapshotFromMetadataJson(it.json, request) }
     }
 
+    suspend fun expandPlaylist(
+        request: DownloadRequest,
+        runtimeVersion: String,
+        maxItems: Int = 25,
+        forceRefresh: Boolean = false,
+    ): List<PlaylistItem>? = withContext(Dispatchers.IO) {
+        val load = loadDocument(request, runtimeVersion, forceRefresh)
+        val docJson = load.document?.json ?: return@withContext null
+        SizeEstimateCalculator.expandPlaylistFromMetadataJson(docJson, request, maxItems)
+    }
+
     fun clear() {
         estimateCache.clear()
         documentCache.clear()
