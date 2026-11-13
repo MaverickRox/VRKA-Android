@@ -21,10 +21,10 @@
 
 > [!IMPORTANT]
 > **VRKA v5.1.5 (`versionCode 50105`) Official Release & Upgrade Guide:**
-> - **Current Release (`v5.1.5`):** Introduces interactive composite playlist choice dialog, bounded child-job concurrency, Room v2 atomic publication journal, robust MediaStore `IS_PENDING` recovery, modern transparent header wordmark, offline PKCS#7/SPKI + SHA-256 XPI signature verification, and full Android 16 UIDT progress notifications.
-> - **Upgrading Official Published Installs (from `v5.1.4`, `v5.1.3`, or `v5.1.2`):** Update directly through **Settings -> Check for Updates** or install `VRKA-Android-v5.1.5.apk` over your existing install without uninstalling. Signing identity is unchanged, so Queue, History, Settings, and custom templates are preserved (and existing data imports seamlessly into Room).
+> - **Current Release (`v5.1.5`):** Introduces playlist child-job expansion, composite playlist selection dialogs, hardened MediaStore publication and recovery, modern transparent header wordmark, offline extension cryptographic verification, and Android 16 download notifications.
+> - **Upgrading Official Published Installs (from `v5.1.4`, `v5.1.3`, or `v5.1.2`):** Update directly through **Settings -> Check for Updates** or install `VRKA-Android-v5.1.5.apk` over your existing install without uninstalling. Existing Queue, History, Settings, and custom templates are preserved intact.
 > - **From v5.0.2 or older:** Due to a historical staging filename bug in the old v5.0.2 client, its in-app updater cannot self-execute this upgrade. First install [`VRKA-Android-v5.1.2.apk`](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) manually over v5.0.2 **without uninstalling**, open the app once, then update normally to `v5.1.5` or newer.
-> - **Prior Official Published Release:** [https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.4](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.4)
+> - **Prior Releases:** See [CHANGELOG.md](CHANGELOG.md) or [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases) for historical release notes. Prior stable release: [`v5.1.4`](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.4).
 
 ---
 
