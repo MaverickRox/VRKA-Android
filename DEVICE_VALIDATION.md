@@ -151,7 +151,7 @@ Subsystem testing is classified into seven rigorous categories:
      - Downloaded *Big Buck Bunny* in Audio mode (MP3, 320 kbps), successfully publishing the `25.7 MiB` MP3 file to `Downloads/VRKA`.
   6. **Queue & Multi-Task Sequential Concurrency**:
      - Verified multi-job queue operation where *Tears of Steel* transferred actively at `8.72 MiB/s` (`148.0 MiB / ~171.9 MiB`) while subsequent jobs remained properly queued.
-  7. **MissAV Stream Classification (Neutral Media Stage)**:
+  7. **Stream Classification (Neutral Media Stage)**:
      - Under live testing with ambiguous/muxed media streams where earlier versions incorrectly reported "Downloading audio", the active transfer correctly displayed the neutral `"Downloading media"` stage.
   8. **Clean Full-Resolution Screenshots**:
      - High-resolution physical UI verification performed on physical OnePlus 11.
